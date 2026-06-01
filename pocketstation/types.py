@@ -1,7 +1,37 @@
 """PocketStation SDK type definitions. Phase 5."""
 from __future__ import annotations
+import dataclasses
+import enum
+import struct
 from dataclasses import dataclass, field
 from typing import Optional
+
+
+class AudioMode(enum.Enum):
+    """Audio session mode (spec §12.1)."""
+    VOICE = "voice"
+    VOICE_AGENT = "voice_agent"
+    MUSIC = "music"
+    BROADCAST = "broadcast"
+
+
+@dataclasses.dataclass
+class AudioFrame:
+    """A single audio frame received from the relay.
+
+    pcm: raw PCM bytes, 48 kHz mono f32-LE.
+    """
+    pcm: bytes
+    sample_rate: int = 48000
+    channels: int = 1
+    duration_ms: int = 20
+    sequence: int = 0
+
+    @property
+    def samples(self) -> list[float]:
+        """Decode f32-LE PCM bytes to float samples."""
+        n = len(self.pcm) // 4
+        return list(struct.unpack(f"<{n}f", self.pcm[:n * 4]))
 
 
 @dataclass
@@ -19,6 +49,7 @@ class RoomCredentials:
     source_token: str
     listener_token: str
     ice_servers: list[IceServer] = field(default_factory=list)
+    qr_url: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> "RoomCredentials":
@@ -35,6 +66,7 @@ class RoomCredentials:
             source_token=data["source_token"],
             listener_token=data["listener_token"],
             ice_servers=ice_servers,
+            qr_url=data.get("qr_url", ""),
         )
 
 
