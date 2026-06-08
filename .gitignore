@@ -11,3 +11,16 @@ coverage/
 .cache/
 .vscode/
 .idea/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+.pytest_cache/
+.tox/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.claude/

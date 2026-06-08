@@ -8,21 +8,31 @@ from typing import AsyncIterator, Callable, Optional
 import httpx
 import websockets
 
-from .types import AudioFrame, AudioMode, IceServer, RoomCredentials
+from .types import AudioFrame, AudioMode, IceServer, PocketStationError, RoomCredentials
 
 _AUDIO_FRAME_MSG_TYPE = "AUDIO_FRAME"
 _SUBSCRIBE_MSG_TYPE = "SUBSCRIBE"
 _ROOM_STATE_MSG_TYPE = "ROOM_STATE"
 
+_DEFAULT_API_URL = "http://localhost:8090"
+_DEFAULT_RELAY_URL = "ws://localhost:8080/v1/signal"
+_DEFAULT_FRAME_DURATION_MS = 20
+
 
 class PocketStation:
     """Voice agent / broadcast session manager (spec §12.1).
 
-    Usage::
+    Construct directly when you already have a room ID::
 
         station = PocketStation(room_id="abc123", mode=AudioMode.VOICE_AGENT)
         async for frame in station.listen():
-            ...
+            transcript = await stt.transcribe(frame.pcm)
+            await station.broadcast(tts_bytes)
+        await station.close()
+
+    Or create a room and connect in one step::
+
+        station = await PocketStation.create(relay_url="wss://relay.pocketstation.io")
     """
 
     def __init__(
@@ -30,9 +40,9 @@ class PocketStation:
         *,
         room_id: Optional[str] = None,
         mode: AudioMode = AudioMode.VOICE_AGENT,
-        api_url: str = "http://localhost:8090",
-        relay_url: str = "ws://localhost:8080/v1/signal",
-        opus_frame_duration_ms: int = 20,
+        api_url: str = _DEFAULT_API_URL,
+        relay_url: str = _DEFAULT_RELAY_URL,
+        opus_frame_duration_ms: int = _DEFAULT_FRAME_DURATION_MS,
         on_listener_count: Optional[Callable[[int], None]] = None,
         on_packet_loss: Optional[Callable[[], None]] = None,
     ) -> None:
@@ -46,14 +56,54 @@ class PocketStation:
         self._ws: Optional[websockets.WebSocketClientProtocol] = None
         self._credentials: Optional[RoomCredentials] = None
 
+    @classmethod
+    async def create(
+        cls,
+        *,
+        relay_url: str = _DEFAULT_RELAY_URL,
+        api_url: str = _DEFAULT_API_URL,
+        mode: AudioMode = AudioMode.VOICE_AGENT,
+        opus_frame_duration_ms: int = _DEFAULT_FRAME_DURATION_MS,
+    ) -> "PocketStation":
+        """Create a new room via the API server and return a ready PocketStation instance.
+
+        :param relay_url: WebSocket URL of the relay.
+        :param api_url: Base URL of the api-server used to provision the room.
+        :param mode: Audio session mode.
+        :param opus_frame_duration_ms: Opus frame duration in milliseconds.
+        :raises PocketStationError: on network or HTTP failure.
+        """
+        station = cls(api_url=api_url, relay_url=relay_url, mode=mode,
+                      opus_frame_duration_ms=opus_frame_duration_ms)
+        await station._ensure_room()
+        return station
+
     async def _ensure_room(self) -> RoomCredentials:
         """Create or reuse a room on the API server."""
         if self._credentials is not None:
             return self._credentials
-        async with httpx.AsyncClient() as client:
-            r = await client.post(f"{self.api_url.rstrip('/')}/v1/rooms", json={})
-            r.raise_for_status()
+
+        url = self.api_url.rstrip("/") + "/v1/rooms"
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.post(url, json={})
+        except httpx.RequestError as exc:
+            raise PocketStationError(
+                f"network error creating room: {exc}", "network_error"
+            ) from exc
+
+        if not r.is_success:
+            raise PocketStationError(
+                f"relay returned HTTP {r.status_code}: {r.text}", "http_error"
+            )
+
+        try:
             data = r.json()
+        except Exception as exc:
+            raise PocketStationError(
+                f"failed to parse room creation response: {exc}", "parse_error"
+            ) from exc
+
         creds = RoomCredentials(
             room_id=data["room_id"],
             source_token=data.get("source_token", ""),
@@ -76,8 +126,8 @@ class PocketStation:
     async def listen(self) -> AsyncIterator[AudioFrame]:
         """Subscribe to audio frames from the relay.
 
-        Connects via WebSocket SUBSCRIBE message and yields AudioFrame objects.
-        Falls back gracefully — yields nothing — if the relay is unreachable.
+        Connects via WebSocket, sends a SUBSCRIBE message, and yields AudioFrame objects.
+        Yields nothing if the relay is unreachable.
         """
         creds = await self._ensure_room()
         subscribe_msg = json.dumps({
@@ -103,7 +153,6 @@ class PocketStation:
                         if msg.get("type") == _ROOM_STATE_MSG_TYPE and self.on_listener_count:
                             self.on_listener_count(msg.get("listener_count", 0))
         except Exception:
-            # Relay unreachable or connection closed — yield nothing.
             return
         finally:
             self._ws = None
@@ -111,8 +160,7 @@ class PocketStation:
     async def broadcast(self, audio: bytes) -> None:
         """Send raw PCM bytes (f32-LE 48 kHz mono) to the relay.
 
-        Used in voice agent response path: TTS output -> broadcast back.
-        Silently no-ops when not connected.
+        No-ops silently when not connected.
         """
         if self._ws is None:
             return
@@ -124,7 +172,7 @@ class PocketStation:
         except Exception:
             pass
 
-    async def stop(self) -> None:
+    async def close(self) -> None:
         """Close the WebSocket connection."""
         if self._ws is not None:
             await self._ws.close()
