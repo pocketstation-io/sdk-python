@@ -1,4 +1,4 @@
-# ADR-007-capability-negotiation — Capability Negotiation
+# PY-007-capability-negotiation — Capability Negotiation
 
 ## Status
 Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.

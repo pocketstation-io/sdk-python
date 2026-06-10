@@ -1,4 +1,4 @@
-# ADR-010-jitter-buffer — Jitter Buffer Algorithm
+# PY-005-relay-listener-slice — Relay Listener Slice Model
 
 ## Status
 Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
@@ -7,7 +7,7 @@ Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
 PocketStation v2.3 requires this ADR before implementation lands. See `docs/architecture/pocketstation-v2.3.md`.
 
 ## Decision
-Start with adaptive jitter buffer target depth. Keep room to replace with NetEQ-class behavior after Phase 1 measurement.
+Phase 1 may use RWMutex around the listener slice. Phase 2 migrates to copy-on-write atomic pointer to avoid per-packet lock contention.
 
 ## Options considered
 

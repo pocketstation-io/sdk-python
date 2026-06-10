@@ -36,7 +36,7 @@ class AudioFrame:
 
 @dataclass
 class IceServer:
-    """ICE server configuration (ADR-023 embedded TURN)."""
+    """ICE server configuration (PY-023 embedded TURN)."""
     urls: list[str]
     username: Optional[str] = None
     credential: Optional[str] = None

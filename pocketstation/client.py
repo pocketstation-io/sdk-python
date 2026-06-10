@@ -48,7 +48,7 @@ class PocketStationSession:
 
     @property
     def credentials(self) -> RoomCredentials:
-        """Room credentials including TURN servers (ADR-023)."""
+        """Room credentials including TURN servers (PY-023)."""
         return self._credentials
 
     @property

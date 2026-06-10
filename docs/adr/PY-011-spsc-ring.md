@@ -1,4 +1,4 @@
-# ADR-005-relay-listener-slice — Relay Listener Slice Model
+# PY-011-spsc-ring — SPSC Ring Buffer Choice
 
 ## Status
 Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
@@ -7,7 +7,7 @@ Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
 PocketStation v2.3 requires this ADR before implementation lands. See `docs/architecture/pocketstation-v2.3.md`.
 
 ## Decision
-Phase 1 may use RWMutex around the listener slice. Phase 2 migrates to copy-on-write atomic pointer to avoid per-packet lock contention.
+Use rtrb by default: fixed capacity, allocation at construction, lock-free/wait-free reads and writes.
 
 ## Options considered
 
