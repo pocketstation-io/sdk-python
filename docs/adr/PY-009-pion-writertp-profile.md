@@ -1,4 +1,4 @@
-# ADR-011-spsc-ring — SPSC Ring Buffer Choice
+# PY-009-pion-writertp-profile — Pion WriteRTP Allocation Profile
 
 ## Status
 Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
@@ -7,7 +7,7 @@ Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
 PocketStation v2.3 requires this ADR before implementation lands. See `docs/architecture/pocketstation-v2.3.md`.
 
 ## Decision
-Use rtrb by default: fixed capacity, allocation at construction, lock-free/wait-free reads and writes.
+Benchmark whether WriteRTP mutates packets or allocates per listener. No claim of zero-allocation relay until measured.
 
 ## Options considered
 

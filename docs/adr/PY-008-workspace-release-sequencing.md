@@ -1,4 +1,4 @@
-# ADR-009-pion-writertp-profile — Pion WriteRTP Allocation Profile
+# PY-008-workspace-release-sequencing — Workspace Release Sequencing
 
 ## Status
 Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
@@ -7,7 +7,7 @@ Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
 PocketStation v2.3 requires this ADR before implementation lands. See `docs/architecture/pocketstation-v2.3.md`.
 
 ## Decision
-Benchmark whether WriteRTP mutates packets or allocates per listener. No claim of zero-allocation relay until measured.
+Publish crates in dependency order with retry/backoff. One root tag, same workspace version.
 
 ## Options considered
 
