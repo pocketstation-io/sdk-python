@@ -1,6 +1,7 @@
 """Unit tests for pocketstation.station — spec §12.1 voice agent pattern."""
 from __future__ import annotations
 
+import json
 import struct
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,37 +24,73 @@ def _make_pcm(n_samples: int = 4) -> bytes:
 
 
 def _mock_http_client(json_response: dict, status_code: int = 200):
-    """Return a context-manager mock for httpx.AsyncClient that yields a mock response."""
+    """Return a context-manager mock for httpx.AsyncClient."""
     mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
+    mock_response.is_success = status_code < 400
+    mock_response.status_code = status_code
+    mock_response.text = ""
     mock_response.json = MagicMock(return_value=json_response)
 
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=mock_response)
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=None)
-
     return mock_client
 
 
+class _FakeWebSocket:
+    """Minimal WebSocket stand-in for tests.
+
+    Supports: send (AsyncMock), close (AsyncMock), async iteration over a
+    fixed message list. Not a MagicMock so dunder methods work correctly.
+    """
+
+    def __init__(self, messages: list) -> None:
+        self._messages = messages
+        self.send = AsyncMock()
+        self.close = AsyncMock()
+
+    def __aiter__(self):
+        return self._gen()
+
+    async def _gen(self):
+        for msg in self._messages:
+            yield msg
+
+
+def _make_connect_mock(fake_ws: "_FakeWebSocket") -> AsyncMock:
+    """
+    Return an AsyncMock that, when called and awaited, returns fake_ws.
+
+    Patch usage:
+        with patch("pocketstation.station.websockets.connect", connect_mock):
+            ...
+    Then ``await websockets.connect(url)`` in the implementation resolves to fake_ws.
+    """
+    connect_mock = AsyncMock(return_value=fake_ws)
+    return connect_mock
+
+
 # ---------------------------------------------------------------------------
-# AudioMode / construction
+# Construction
 # ---------------------------------------------------------------------------
 
 
 def test_given_voice_agent_mode_when_created_then_fields_set():
     # Given / When
-    station = PocketStation(room_id="abc123", mode=AudioMode.VOICE_AGENT)
+    station = PocketStation(
+        room_id="abc123",
+        relay_url="ws://relay.example.com",
+        mode=AudioMode.VOICE_AGENT,
+    )
     # Then
     assert station.room_id == "abc123"
     assert station.mode is AudioMode.VOICE_AGENT
-    assert station.frame_duration_ms == 20
     assert station._ws is None
-    assert station._credentials is None
 
 
 # ---------------------------------------------------------------------------
-# AudioFrame.samples property
+# AudioFrame
 # ---------------------------------------------------------------------------
 
 
@@ -82,63 +119,221 @@ def test_given_audio_frame_with_known_values_when_samples_then_decoded_correctly
         assert abs(actual - expected) < 1e-6
 
 
-# ---------------------------------------------------------------------------
-# _ensure_room — credential reuse
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_given_room_id_when_ensure_room_then_reuses_credentials():
-    # Given — first call creates room via mocked HTTP client
-    mock_client = _mock_http_client(VALID_ROOM_RESPONSE)
-
-    station = PocketStation(room_id="existing-room")
-
-    with patch("pocketstation.station.httpx.AsyncClient", return_value=mock_client):
-        # When — call _ensure_room twice
-        creds1 = await station._ensure_room()
-        creds2 = await station._ensure_room()
-
-    # Then — same object returned; HTTP was called only once
-    assert creds1 is creds2
-    assert creds1.room_id == "room-station-001"
-    mock_client.post.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_given_no_room_id_when_ensure_room_then_room_id_assigned():
-    # Given
-    mock_client = _mock_http_client(VALID_ROOM_RESPONSE)
-
-    station = PocketStation()  # no room_id
-
-    with patch("pocketstation.station.httpx.AsyncClient", return_value=mock_client):
-        # When
-        creds = await station._ensure_room()
-
+def test_given_audio_frame_when_constructed_then_timestamp_and_sequence_present():
+    # Given / When
+    frame = AudioFrame(pcm=b"\x00" * 16, sequence=7, timestamp_ns=123456789)
     # Then
-    assert station.room_id == "room-station-001"
-    assert creds.room_id == "room-station-001"
+    assert frame.sequence == 7
+    assert frame.timestamp_ns == 123456789
 
 
 # ---------------------------------------------------------------------------
-# listen() — websocket unavailable
+# connect() — POST /v1/rooms + WebSocket SUBSCRIBE
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_given_websocket_unavailable_when_listen_then_yields_nothing():
-    # Given — HTTP room creation succeeds, WebSocket connect raises immediately
-    mock_client = _mock_http_client(VALID_ROOM_RESPONSE)
+async def test_given_voice_agent_mode_when_connect_then_posts_room_and_opens_websocket():
+    """
+    Given a PocketStation in VOICE_AGENT mode,
+    When connect() is called,
+    Then it POSTs to /v1/rooms and sends a SUBSCRIBE message over the WebSocket.
+    """
+    # Given
+    mock_http = _mock_http_client(VALID_ROOM_RESPONSE, status_code=201)
+    fake_ws = _FakeWebSocket(messages=[])
+    connect_mock = _make_connect_mock(fake_ws)
 
-    station = PocketStation(room_id="abc123", relay_url="ws://127.0.0.1:1")
+    station = PocketStation(
+        room_id="room-station-001",
+        relay_url="ws://relay.example.com",
+        mode=AudioMode.VOICE_AGENT,
+    )
 
-    with patch("pocketstation.station.httpx.AsyncClient", return_value=mock_client), \
-         patch("pocketstation.station.websockets.connect", side_effect=OSError("unreachable")):
+    with patch("pocketstation.station.httpx.AsyncClient", return_value=mock_http), \
+         patch("pocketstation.station.websockets.connect", connect_mock):
         # When
-        frames = []
+        await station.connect()
+
+        # Then — HTTP room creation happened
+        mock_http.post.assert_called_once()
+        posted_url = mock_http.post.call_args[0][0]
+        assert "/v1/rooms" in posted_url
+
+        # Then — WebSocket was opened and SUBSCRIBE was sent
+        connect_mock.assert_called_once_with("ws://relay.example.com")
+        fake_ws.send.assert_called_once()
+        sent = json.loads(fake_ws.send.call_args[0][0])
+        assert sent["type"] == "SUBSCRIBE"
+        assert sent["room_id"] == "room-station-001"
+        assert "token" in sent
+
+        await station.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# broadcast() — must send binary bytes, not base64 JSON
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_given_connected_when_broadcast_then_sends_binary_bytes_not_base64():
+    """
+    Given a connected PocketStation,
+    When broadcast(audio_bytes) is called,
+    Then the WebSocket send receives raw bytes, not a base64-encoded JSON string.
+    """
+    # Given
+    mock_http = _mock_http_client(VALID_ROOM_RESPONSE, status_code=201)
+    fake_ws = _FakeWebSocket(messages=[])
+    connect_mock = _make_connect_mock(fake_ws)
+
+    station = PocketStation(
+        room_id="room-station-001",
+        relay_url="ws://relay.example.com",
+        mode=AudioMode.VOICE_AGENT,
+    )
+    audio = _make_pcm(n_samples=16)
+
+    with patch("pocketstation.station.httpx.AsyncClient", return_value=mock_http), \
+         patch("pocketstation.station.websockets.connect", connect_mock):
+        await station.connect()
+        # Reset after the SUBSCRIBE send that happens in connect()
+        fake_ws.send.reset_mock()
+
+        # When
+        await station.broadcast(audio)
+
+        # Then — exactly one send call with the raw bytes payload
+        fake_ws.send.assert_called_once_with(audio)
+        sent_arg = fake_ws.send.call_args[0][0]
+        assert isinstance(sent_arg, bytes), (
+            f"broadcast() must send bytes, not {type(sent_arg).__name__}"
+        )
+        # Guard: must not be a JSON / base64 string
+        assert not isinstance(sent_arg, str)
+
+        await station.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# __aenter__ / __aexit__ — context manager sends LEAVE on exit
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_given_context_manager_when_exit_then_sends_leave():
+    """
+    Given a PocketStation used as an async context manager,
+    When the block exits normally,
+    Then a LEAVE message is sent and the WebSocket is closed.
+    """
+    # Given
+    mock_http = _mock_http_client(VALID_ROOM_RESPONSE, status_code=201)
+    fake_ws = _FakeWebSocket(messages=[])
+    connect_mock = _make_connect_mock(fake_ws)
+
+    with patch("pocketstation.station.httpx.AsyncClient", return_value=mock_http), \
+         patch("pocketstation.station.websockets.connect", connect_mock):
+        # When
+        async with PocketStation(
+            room_id="room-station-001",
+            relay_url="ws://relay.example.com",
+        ) as station:
+            pass  # nothing inside the block
+
+        # Then — LEAVE was sent exactly once
+        all_sends = fake_ws.send.call_args_list
+        leave_sends = [
+            c for c in all_sends
+            if isinstance(c[0][0], str) and json.loads(c[0][0]).get("type") == "LEAVE"
+        ]
+        assert len(leave_sends) == 1, (
+            f"Expected exactly one LEAVE message, got {all_sends}"
+        )
+        # Then — WebSocket was closed
+        fake_ws.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# listen() — errors must propagate, not be swallowed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_given_websocket_closed_when_listen_then_raises_connection_error_not_swallows():
+    """
+    Given that the WebSocket raises a ConnectionError during iteration,
+    When station.listen() is consumed,
+    Then the error propagates to the caller instead of being swallowed.
+    """
+    # Given
+    mock_http = _mock_http_client(VALID_ROOM_RESPONSE, status_code=201)
+
+    class _FailingWebSocket(_FakeWebSocket):
+        async def _gen(self):
+            yield _make_pcm(4)  # one good frame before the error
+            raise ConnectionError("relay dropped connection")
+
+    fake_ws = _FailingWebSocket(messages=[])
+    connect_mock = _make_connect_mock(fake_ws)
+
+    station = PocketStation(
+        room_id="room-station-001",
+        relay_url="ws://relay.example.com",
+    )
+
+    with patch("pocketstation.station.httpx.AsyncClient", return_value=mock_http), \
+         patch("pocketstation.station.websockets.connect", connect_mock):
+        await station.connect()
+
+        # When / Then — ConnectionError propagates; only the first frame arrives
+        frames: list[AudioFrame] = []
+        with pytest.raises(ConnectionError, match="relay dropped connection"):
+            async for frame in station.listen():
+                frames.append(frame)
+
+    # One frame was produced before the error
+    assert len(frames) == 1
+
+
+# ---------------------------------------------------------------------------
+# listen() — binary frames are yielded as AudioFrame objects
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_given_connected_when_listen_then_yields_audio_frames_from_binary_messages():
+    """
+    Given a WebSocket that delivers three binary PCM frames,
+    When station.listen() is iterated,
+    Then three AudioFrame objects are yielded with monotonically increasing sequences.
+    """
+    # Given
+    mock_http = _mock_http_client(VALID_ROOM_RESPONSE, status_code=201)
+    pcm_frames = [_make_pcm(4), _make_pcm(4), _make_pcm(4)]
+    fake_ws = _FakeWebSocket(messages=pcm_frames)
+    connect_mock = _make_connect_mock(fake_ws)
+
+    station = PocketStation(
+        room_id="room-station-001",
+        relay_url="ws://relay.example.com",
+    )
+
+    with patch("pocketstation.station.httpx.AsyncClient", return_value=mock_http), \
+         patch("pocketstation.station.websockets.connect", connect_mock):
+        await station.connect()
+
+        # When
+        frames: list[AudioFrame] = []
         async for frame in station.listen():
             frames.append(frame)
 
-    # Then — no frames, no exception raised
-    assert frames == []
+        # Then
+        assert len(frames) == 3
+        for i, frame in enumerate(frames):
+            assert isinstance(frame, AudioFrame)
+            assert frame.pcm == pcm_frames[i]
+            assert frame.sequence == i
+
+        await station.disconnect()
