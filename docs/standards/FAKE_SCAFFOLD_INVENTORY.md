@@ -24,7 +24,6 @@ DEFERRED    Intentionally postponed; ADR or phase plan justifies it
 
 | Component | Status | File | What's missing | Replace by | Blocked on |
 |-----------|--------|------|----------------|------------|------------|
-| `close()` LEAVE message | PARTIAL | `pocketstation/station.py` | Relay LEAVE message not sent on `close()`. WebSocket closes but relay does not receive LEAVE type. Room state may be stale until TTL. | Phase 5 | None — straightforward fix |
 | WebRTC transport | DEFERRED | N/A | Python SDK is WebSocket-only. No WebRTC / audio capture planned for this binding. | Not planned | Architecture decision: Python is listener/voice-agent tier only |
 
 ---

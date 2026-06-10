@@ -19,13 +19,16 @@ class AudioMode(enum.Enum):
 class AudioFrame:
     """A single audio frame received from the relay.
 
-    pcm: raw PCM bytes, 48 kHz mono f32-LE.
+    pcm: raw PCM bytes, 48 kHz mono f32-LE (PY-013).
+    sequence: monotonically increasing frame counter per stream.
+    timestamp_ns: monotonic nanosecond timestamp at frame receipt.
     """
     pcm: bytes
+    sequence: int = 0
+    timestamp_ns: int = 0
     sample_rate: int = 48000
     channels: int = 1
     duration_ms: int = 20
-    sequence: int = 0
 
     @property
     def samples(self) -> list[float]:
