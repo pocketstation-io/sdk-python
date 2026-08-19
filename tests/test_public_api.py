@@ -1,0 +1,217 @@
+from __future__ import annotations
+
+import ast
+import inspect
+from pathlib import Path
+
+import pocketstation
+import pocketstation._native as native
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_root_exports_are_an_intentional_stable_snapshot() -> None:
+    assert set(pocketstation.__all__) == {
+        "AudioBatch",
+        "AudioCaps",
+        "AudioFrame",
+        "AudioInput",
+        "AudioInputBufferError",
+        "AudioInputCancelledError",
+        "AudioInputClosedError",
+        "AudioInputConfig",
+        "AudioInputError",
+        "AudioInputFullError",
+        "AudioInputObservations",
+        "AudioReentryMetrics",
+        "AudioStream",
+        "BackpressurePolicy",
+        "BinaryFormat",
+        "BusSubscription",
+        "Capture",
+        "ChannelLayout",
+        "ClockDomain",
+        "Codec",
+        "ControlClient",
+        "ControlPlaneError",
+        "CopyPolicy",
+        "DeliverySemantics",
+        "DerivedStream",
+        "DerivedRouteMetrics",
+        "DiscoveredSource",
+        "EdgeContract",
+        "EdgeMetrics",
+        "EdgeObservabilityLevel",
+        "Endpoint",
+        "EndpointConfiguration",
+        "EndpointDescriptor",
+        "EndpointFailureStage",
+        "EndpointMetrics",
+        "EndpointObservationStage",
+        "EndOfStream",
+        "EventFormat",
+        "EventStream",
+        "EventQueueMetrics",
+        "ExternalSourceMetrics",
+        "ExtensionAbiVersion",
+        "ExtensionDescriptor",
+        "ExtensionError",
+        "ExtensionKind",
+        "ExtensionPort",
+        "ExtensionPortDirection",
+        "IceServer",
+        "LossPolicy",
+        "LatencyHistogram",
+        "MediaCaps",
+        "MediaKind",
+        "Multiplicity",
+        "NativeExtensionLibrary",
+        "NativeExtensionRegistration",
+        "Operator",
+        "OperatorConfiguration",
+        "OperatorInput",
+        "OperatorInputMetrics",
+        "OperatorInstance",
+        "OperatorMetrics",
+        "OperatorWorkerMetrics",
+        "PcmSource",
+        "PocketStationError",
+        "PermissionObservation",
+        "Platform",
+        "PortDirection",
+        "PortSpec",
+        "PolledAudioMetrics",
+        "ProcessInstanceSelector",
+        "ProcessTreeScope",
+        "PublisherActivation",
+        "ReceiverActivation",
+        "ReceiverInvitation",
+        "RecordingOutcome",
+        "RecordingDiscontinuity",
+        "RecordingDiscontinuityKind",
+        "RecordingState",
+        "RecordingStemOutcome",
+        "RelayError",
+        "RelayPublishOutcome",
+        "RelayPublisher",
+        "RelayRoute",
+        "RelaySession",
+        "RelayTimeoutError",
+        "RouteLatencyBoundary",
+        "RouteLatencyUnit",
+        "RouteMetrics",
+        "RouteObservationInterval",
+        "RunningSession",
+        "SampleFormat",
+        "SecretToken",
+        "SelectorPersistenceScope",
+        "Session",
+        "SessionCredentials",
+        "SessionEvent",
+        "SessionEventType",
+        "SessionFailure",
+        "SessionFailureKind",
+        "SessionFinalizationStage",
+        "SessionId",
+        "SessionLifecycleState",
+        "SessionMetrics",
+        "SessionRollbackStage",
+        "SessionSnapshot",
+        "SessionTerminalState",
+        "SessionTrace",
+        "SessionTraceConfiguration",
+        "SessionTraceRecorderOutcome",
+        "SessionTraceValidation",
+        "SidecarBackpressureError",
+        "SidecarConnection",
+        "SidecarDeadlines",
+        "SidecarError",
+        "SidecarHandle",
+        "SidecarMessage",
+        "SidecarMessageKind",
+        "SidecarProcessSpec",
+        "SidecarProtocolError",
+        "SidecarProtocolLimits",
+        "SidecarReadResult",
+        "SidecarSnapshot",
+        "SidecarState",
+        "SidecarStream",
+        "SidecarTimeoutError",
+        "STREAM_EOF",
+        "SignalAudioPayload",
+        "SignalDerivation",
+        "SignalEnvelope",
+        "SignalKind",
+        "SignalLineage",
+        "SignalPayload",
+        "SignalReadResult",
+        "SignalSpec",
+        "SignalStream",
+        "SignalSubscriptionMetrics",
+        "SignalTiming",
+        "Source",
+        "SourceConfiguration",
+        "SourceFailureClass",
+        "SourceIdentityStrength",
+        "SourceInstance",
+        "SourceKind",
+        "SourceMetrics",
+        "SourceOutput",
+        "SourceQuery",
+        "SourceRecoveryRequirement",
+        "SourceRuntimeEvent",
+        "SourceRuntimeEventKind",
+        "SourceSelectorKind",
+        "SourceState",
+        "StableSourceId",
+        "Stem",
+        "StopResult",
+        "StreamError",
+        "StreamInUseError",
+        "StreamModeError",
+        "SubscriberCredentials",
+        "TextFormat",
+        "TerminationDisposition",
+        "TypedEdgeMetrics",
+        "aio",
+        "application_capture_available",
+        "capture",
+        "discover_sources",
+        "microphone_permission_observation",
+    }
+
+
+def test_private_native_runtime_and_stub_export_the_same_classes() -> None:
+    stub = ast.parse((ROOT / "python" / "pocketstation" / "_native.pyi").read_text())
+    stub_classes = {node.name for node in stub.body if isinstance(node, ast.ClassDef)}
+    runtime_classes = {
+        name for name in dir(native) if isinstance(getattr(native, name), type)
+    }
+    feature_only_test_classes = {"ExtensionConformanceReport"}
+    assert runtime_classes - feature_only_test_classes == stub_classes
+    assert not feature_only_test_classes & stub_classes
+
+
+def test_private_native_runtime_and_stub_export_the_same_functions() -> None:
+    stub = ast.parse((ROOT / "python" / "pocketstation" / "_native.pyi").read_text())
+    stub_functions = {
+        node.name for node in stub.body if isinstance(node, ast.FunctionDef)
+    }
+    runtime_functions = {
+        name for name in dir(native) if inspect.isbuiltin(getattr(native, name))
+    }
+    feature_only_test_functions = {"run_extension_conformance"}
+    assert runtime_functions - feature_only_test_functions == stub_functions
+    assert not feature_only_test_functions & stub_functions
+
+
+def test_relay_members_already_exported_by_native_are_typed() -> None:
+    stub = (ROOT / "python" / "pocketstation" / "_native.pyi").read_text()
+    for declaration in (
+        "class RelayPublisher",
+        "class RelayPublishOutcome",
+        "def publish(self, publisher: RelayPublisher, bus_id: str) -> int",
+        "def relay_outcomes(self) -> list[RelayPublishOutcome]",
+        "def relay(",
+    ):
+        assert declaration in stub

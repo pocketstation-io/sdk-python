@@ -1,22 +1,97 @@
-name: ci-python
-on: [pull_request, push]
+name: python-sdk-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
 jobs:
-  py:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.13"]
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Check out Python SDK
+        uses: actions/checkout@v4
         with:
-          python-version: '3.12'
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-      - name: Install package (non-Windows)
-        if: runner.os != 'Windows'
-        run: python -m pip install -e ".[dev]"
-      - name: Install package (Windows)
-        if: runner.os == 'Windows'
-        run: python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -e ".[dev]"
-      - run: python -m pytest
+          path: sdk-python
+
+      - name: Check out frozen Rust core
+        uses: actions/checkout@v4
+        with:
+          repository: pocketstation-io/pocketstation
+          ref: pocketstation-v1.1.1
+          path: pocketstation
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: clippy, rustfmt
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libpipewire-0.3-dev
+
+      - name: Install SDK and development gates
+        working-directory: sdk-python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "maturin>=1.9.4,<2.0" "pytest>=8.0" "pytest-asyncio>=0.23" "mypy>=1.15" "ruff>=0.11"
+          maturin develop --release --locked --features conformance-fixtures
+
+      - name: Rust formatting
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        working-directory: sdk-python
+        run: cargo fmt --manifest-path native/Cargo.toml -- --check
+
+      - name: Native conformance
+        working-directory: sdk-python
+        run: cargo test --manifest-path native/Cargo.toml --all-features --locked
+
+      - name: Native lint
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        working-directory: sdk-python
+        run: cargo clippy --manifest-path native/Cargo.toml --all-targets --all-features --locked -- -D warnings
+
+      - name: Python lint and formatting
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        working-directory: sdk-python
+        run: |
+          ruff check python tests
+          ruff format --check python tests
+
+      - name: Python type contract
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        working-directory: sdk-python
+        run: mypy python
+
+      - name: Python tests
+        working-directory: sdk-python
+        run: python -m pytest
+
+      - name: Build wheel
+        working-directory: sdk-python
+        run: maturin build --release --locked --out dist
+
+      - name: Upload wheel for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketstation-${{ matrix.os }}-py${{ matrix.python }}
+          path: sdk-python/dist/*.whl
+          if-no-files-found: error

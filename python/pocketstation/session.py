@@ -1,0 +1,361 @@
+"""Synchronous Python ownership of the canonical native PocketStation Session."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+from types import TracebackType
+from typing import TYPE_CHECKING
+
+from ._native import (
+    AudioBatch,
+    AudioFrame,
+)
+from ._native import (
+    RunningSession as _NativeRunningSession,
+)
+from ._native import (
+    Session as _NativeSession,
+)
+from .audio_input import AudioInput, AudioInputConfig, PcmSource
+from .errors import PocketStationError, _native_call
+from .extensions import NativeExtensionLibrary
+from .graph import (
+    Endpoint,
+    Stem,
+    _GraphSessionDeclarations,
+)
+from .observations import (
+    EventStream,
+    RecordingOutcome,
+    RecordingStemOutcome,
+    RouteMetrics,
+    SessionEvent,
+    SessionMetrics,
+    SessionTraceConfiguration,
+    StopResult,
+)
+from .sidecar import SidecarConnection, SidecarHandle, SidecarProcessSpec
+from .signal import BusSubscription
+from .sources import Source
+from .streams import AudioStream, SignalStream
+
+if TYPE_CHECKING:
+    from .relay import RelayPublisher, RelaySession
+
+
+class RunningSession:
+    """Running native Session with bounded synchronous batch delivery."""
+
+    def __init__(self, native: _NativeRunningSession) -> None:
+        self._native = native
+        self._stop_result: StopResult | None = None
+        self._audio = AudioStream(
+            poll_batch=self._poll_audio_native,
+            wait_batch=self._wait_audio_native,
+            is_closed=lambda: self.is_stopped,
+        )
+        self._events = EventStream(
+            poll_event=self._poll_event_native,
+            wait_event=self._wait_event_native,
+            is_closed=lambda: self.is_stopped,
+        )
+        self._signals: dict[int, SignalStream] = {}
+        self._sidecars: dict[int, SidecarConnection] = {}
+
+    @property
+    def session_id(self) -> int:
+        return self._native.session_id
+
+    @property
+    def is_stopped(self) -> bool:
+        return self._stop_result is not None
+
+    @property
+    def stop_result(self) -> StopResult | None:
+        return self._stop_result
+
+    @property
+    def audio(self) -> AudioStream:
+        """The exclusive frame-first view of the native bounded endpoint."""
+        return self._audio
+
+    @property
+    def events(self) -> EventStream:
+        """The exclusive typed lifecycle and failure event stream."""
+        return self._events
+
+    def signals(self, subscription: BusSubscription) -> SignalStream:
+        """Return the one exclusive stream for a declared subscription."""
+        stream = self._signals.get(subscription.id)
+        if stream is None:
+            native = subscription._native
+            stream = SignalStream(
+                poll_signal=lambda: _native_call(
+                    lambda: self._native.poll_signal(native)
+                ),
+                wait_signal=lambda timeout_ms: _native_call(
+                    lambda: self._native.wait_signal(native, timeout_ms)
+                ),
+                close_signal=lambda: _native_call(
+                    lambda: self._native.close_signal(native)
+                ),
+                signal_metrics=lambda: _native_call(
+                    lambda: self._native.signal_metrics(native)
+                ),
+            )
+            self._signals[subscription.id] = stream
+        return stream
+
+    def sidecar(self, handle: SidecarHandle) -> SidecarConnection:
+        """Return the Session-owned bounded connection for one child."""
+        self._require_running()
+        if handle.session_id != self._native.session_id:
+            raise ValueError("SidecarHandle belongs to a different Session")
+        connection = self._sidecars.get(handle.id)
+        if connection is None:
+            connection = SidecarConnection(
+                handle=handle,
+                send_message=lambda message: _native_call(
+                    lambda: self._native.send_sidecar(handle.id, message)
+                ),
+                poll_message=lambda: _native_call(
+                    lambda: self._native.poll_sidecar(handle.id)
+                ),
+                wait_message=lambda timeout_ms: _native_call(
+                    lambda: self._native.wait_sidecar(handle.id, timeout_ms)
+                ),
+                snapshot=lambda: _native_call(
+                    lambda: self._native.sidecar_snapshot(handle.id)
+                ),
+                is_session_stopped=lambda: self.is_stopped,
+            )
+            self._sidecars[handle.id] = connection
+        return connection
+
+    def poll_audio(self) -> AudioBatch | None:
+        """Compatibility alias for the advanced non-blocking batch mode."""
+        self._require_running()
+        return self.audio.poll_batch()
+
+    def wait_audio(self, *, timeout_ms: int = 100) -> AudioBatch | None:
+        """Compatibility alias for the advanced bounded batch mode."""
+        self._require_running()
+        if not 0 <= timeout_ms <= 1_000:
+            raise ValueError("timeout_ms must be between 0 and 1000")
+        return self.audio.read_batch(timeout_s=timeout_ms / 1_000)
+
+    def audio_batches(self, *, wait_timeout_ms: int = 100) -> Iterator[AudioBatch]:
+        """Compatibility alias for ``audio.batches()``."""
+        self._require_running()
+        if not 0 <= wait_timeout_ms <= 1_000:
+            raise ValueError("wait_timeout_ms must be between 0 and 1000")
+        return self.audio.batches(wait_timeout_s=wait_timeout_ms / 1_000)
+
+    def poll_event(self) -> SessionEvent | None:
+        """Compatibility alias for ``events.poll()``."""
+        self._require_running()
+        return self.events.poll()
+
+    def wait_event(self, *, timeout_ms: int = 100) -> SessionEvent | None:
+        """Compatibility alias for the bounded ``events.read()`` mode."""
+        self._require_running()
+        if not 0 <= timeout_ms <= 1_000:
+            raise ValueError("timeout_ms must be between 0 and 1000")
+        return self.events.read(timeout_s=timeout_ms / 1_000)
+
+    def metrics(self) -> SessionMetrics:
+        """Return a complete immutable point-in-time metrics snapshot."""
+        self._require_running()
+        return SessionMetrics._from_native(_native_call(self._native.metrics))
+
+    def stop(self) -> StopResult:
+        """Stop once, finalize endpoints/recording, and cache the outcome."""
+        if self._stop_result is None:
+            self._stop_result = StopResult._from_native(_native_call(self._native.stop))
+        return self._stop_result
+
+    def cancel(self) -> StopResult:
+        """Cancel asynchronous work and sidecars, then join and reap once."""
+        if self._stop_result is None:
+            self._stop_result = StopResult._from_native(
+                _native_call(self._native.cancel)
+            )
+        return self._stop_result
+
+    def close(self) -> None:
+        """Context-manager compatible alias that deterministically stops."""
+        self.stop()
+
+    def __enter__(self) -> RunningSession:
+        self._require_running()
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.stop()
+
+    def _require_running(self) -> None:
+        if self.is_stopped:
+            raise PocketStationError("Session has stopped", "session.stopped")
+
+    def _poll_audio_native(self) -> AudioBatch | None:
+        self._require_running()
+        return _native_call(self._native.poll_audio)
+
+    def _wait_audio_native(self, timeout_ms: int) -> AudioBatch | None:
+        self._require_running()
+        return _native_call(lambda: self._native.wait_audio(timeout_ms))
+
+    def _poll_event_native(self) -> SessionEvent | None:
+        self._require_running()
+        event = _native_call(self._native.poll_event)
+        return None if event is None else SessionEvent._from_native(event)
+
+    def _wait_event_native(self, timeout_ms: int) -> SessionEvent | None:
+        self._require_running()
+        event = _native_call(lambda: self._native.wait_event(timeout_ms))
+        return None if event is None else SessionEvent._from_native(event)
+
+
+class Session(_GraphSessionDeclarations):
+    """Explicit synchronous façade over the canonical Rust Session."""
+
+    def __init__(
+        self,
+        *,
+        recording_root: str | Path | None = None,
+        trace: SessionTraceConfiguration | None = None,
+        sample_rate_hz: int = 48_000,
+        channels: int = 1,
+    ) -> None:
+        root = None if recording_root is None else Path(recording_root)
+        self._native = _NativeSession(
+            recording_root=root,
+            trace_path=None if trace is None else trace.path,
+            trace_capacity_records=256 if trace is None else trace.capacity_records,
+            sample_rate_hz=sample_rate_hz,
+            channels=channels,
+        )
+        self._sample_rate_hz = sample_rate_hz
+        self._channels = channels
+
+    @classmethod
+    def _from_native(cls, native: _NativeSession) -> Session:
+        """Construct an internal façade around a canonical conformance Session."""
+        session = cls.__new__(cls)
+        session._native = native
+        session._sample_rate_hz = 48_000
+        session._channels = 1
+        return session
+
+    @property
+    def id(self) -> int:
+        return self._native.id
+
+    def capture(self, source: Source) -> Stem:
+        """Declare one independent source-aware stem."""
+        return _native_call(lambda: Stem(self._native.capture(source._native)))
+
+    def audio_input(
+        self,
+        name: str,
+        *,
+        sample_rate_hz: int | None = None,
+        channels: int | None = None,
+        capacity_frames: int = 8,
+        frame_samples_per_channel: int = 480,
+    ) -> AudioInput:
+        """Open bounded input for PCM already owned by this application."""
+        config = AudioInputConfig(
+            name=name,
+            sample_rate_hz=(
+                self._sample_rate_hz if sample_rate_hz is None else sample_rate_hz
+            ),
+            channels=self._channels if channels is None else channels,
+            capacity_frames=capacity_frames,
+            frame_samples_per_channel=frame_samples_per_channel,
+        )
+        native = _native_call(
+            lambda: self._native.audio_input(
+                config.sample_rate_hz,
+                config.channels,
+                config.capacity_frames,
+                config.frame_samples_per_channel,
+            )
+        )
+        return AudioInput(native, config)
+
+    def pcm_source(self, config: AudioInputConfig) -> PcmSource:
+        """Open the advanced explicit source-output and writer ownership API."""
+        native = _native_call(
+            lambda: self._native.pcm_source(
+                config.sample_rate_hz,
+                config.channels,
+                config.capacity_frames,
+                config.frame_samples_per_channel,
+            )
+        )
+        return PcmSource(native, config)
+
+    def polled_audio(self) -> Endpoint:
+        """Declare the bounded managed-language polling endpoint."""
+        return _native_call(lambda: Endpoint(self._native.polled_audio()))
+
+    def register_sidecar(self, spec: SidecarProcessSpec) -> SidecarHandle:
+        """Register a bounded PKSS child to spawn during transactional start."""
+        sidecar_id = _native_call(
+            lambda: self._native.register_sidecar(spec._to_native())
+        )
+        return SidecarHandle(id=sidecar_id, session_id=self._native.id)
+
+    def load_native_extension_library(
+        self,
+        path: str | Path,
+    ) -> NativeExtensionLibrary:
+        """Load trusted native code into this Session draft.
+
+        This accepts a raw dynamic library. PocketStation validates its ABI
+        records and imports registrations transactionally, but does not verify
+        a publisher, signature, checksum, or sandbox the loaded code. Callers
+        must establish trust in the exact library and its ABI implementation.
+        """
+        native = _native_call(
+            lambda: self._native.load_native_extension_library(Path(path))
+        )
+        return NativeExtensionLibrary._from_native(native)
+
+    def relay(self, remote: RelaySession) -> RelayPublisher:
+        """Declare the existing bounded Rust relay connector."""
+        return remote.publisher(self)
+
+    def start(self) -> RunningSession:
+        """Transactionally start the frozen native Session declaration."""
+        return _native_call(lambda: RunningSession(self._native.start()))
+
+
+__all__ = [
+    "AudioBatch",
+    "AudioFrame",
+    "AudioInput",
+    "AudioInputConfig",
+    "Endpoint",
+    "RecordingOutcome",
+    "RecordingStemOutcome",
+    "RouteMetrics",
+    "RunningSession",
+    "Session",
+    "SessionEvent",
+    "SessionMetrics",
+    "SidecarConnection",
+    "SidecarHandle",
+    "SidecarProcessSpec",
+    "SignalStream",
+    "Source",
+    "Stem",
+    "StopResult",
+]
