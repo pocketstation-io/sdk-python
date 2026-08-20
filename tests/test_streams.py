@@ -5,8 +5,8 @@ from __future__ import annotations
 import threading
 
 import pytest
-
 from pocketstation import (
+    STREAM_EOF,
     AudioStream,
     RunningSession,
     StreamInUseError,
@@ -69,6 +69,7 @@ def test_running_session_exposes_the_same_exclusive_stream() -> None:
     class NativeRunning:
         def __init__(self) -> None:
             self.batches = [["a"]]
+            self.lifecycle_state = "running"
 
         def poll_audio(self):
             return None
@@ -149,6 +150,21 @@ def test_iteration_rejects_a_busy_poll_timeout() -> None:
         next(stream.frames(wait_timeout_s=0.0))
 
 
+def test_audio_batch_result_distinguishes_empty_timeout_and_closed() -> None:
+    state = {"closed": False}
+    stream = AudioStream(
+        poll_batch=lambda: None,
+        wait_batch=lambda _timeout_ms: None,
+        is_closed=lambda: state["closed"],
+    )
+
+    assert stream.poll() is None
+    assert stream.read_result(timeout_s=0.001) is None
+    state["closed"] = True
+    assert stream.poll() is STREAM_EOF
+    assert stream.read_result(timeout_s=0.001) is STREAM_EOF
+
+
 def test_frame_stream_preserves_two_stems_from_canonical_native_session(
     tmp_path,
 ) -> None:
@@ -166,6 +182,16 @@ def test_frame_stream_preserves_two_stems_from_canonical_native_session(
         assert first.sequence_number >= 0
         assert first.timestamp_start_ns >= 0
         assert first.discontinuity_epoch >= 0
+        assert first.clock.id == first.clock_id
+        assert first.clock.kind == "process-monotonic"
+        assert first.clock.origin == "process-start"
+        assert first.clock.tick_rate_hz == 1_000_000_000
+        assert first.route_enqueued_at_ns > 0
+        assert first.route_received_at_ns >= first.route_enqueued_at_ns
+        assert first.endpoint_enqueued_at_ns is not None
+        assert first.endpoint_enqueued_at_ns >= first.route_received_at_ns
+        assert first.polled_at_ns is not None
+        assert first.polled_at_ns >= first.endpoint_enqueued_at_ns
         assert first.samples.readonly
 
         with pytest.raises(StreamInUseError):

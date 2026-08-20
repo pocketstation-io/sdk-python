@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import Generic, TypeAlias, TypeVar, cast
 
 from ._native import BusSubscription as _NativeBusSubscription
+from ._native import ClockDomainDescriptor
 from ._native import _SignalAudioPayload as _NativeSignalAudioPayload
 from ._native import _SignalDerivation as _NativeSignalDerivation
 from ._native import _SignalEnvelope as _NativeSignalEnvelope
@@ -13,6 +14,16 @@ from ._native import _SignalLineage as _NativeSignalLineage
 from ._native import _SignalSubscriptionMetrics as _NativeSignalSubscriptionMetrics
 from ._native import _SignalTiming as _NativeSignalTiming
 from .graph import EdgeContract, SignalSpec
+from .identity import (
+    ClockDomainId,
+    ConnectorId,
+    RuntimeSessionId,
+    SourceId,
+    StreamId,
+)
+
+_PayloadT = TypeVar("_PayloadT")
+_PayloadT_co = TypeVar("_PayloadT_co", covariant=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,10 +49,11 @@ class SignalTiming:
 class SignalLineage:
     """Source and stream identity that survives graph and language boundaries."""
 
-    session_id: int
-    stream_id: int
-    source_id: int
-    clock_id: int
+    session_id: RuntimeSessionId
+    stream_id: StreamId
+    source_id: SourceId
+    clock_id: ClockDomainId
+    clock: ClockDomainDescriptor
     sequence_number: int
     source_generation: int
     discontinuity_epoch: int
@@ -50,10 +62,11 @@ class SignalLineage:
     @classmethod
     def _from_native(cls, value: _NativeSignalLineage) -> SignalLineage:
         return cls(
-            session_id=value.session_id,
-            stream_id=value.stream_id,
-            source_id=value.source_id,
-            clock_id=value.clock_id,
+            session_id=RuntimeSessionId(value.session_id),
+            stream_id=StreamId(value.stream_id),
+            source_id=SourceId(value.source_id),
+            clock_id=ClockDomainId(value.clock_id),
+            clock=value.clock,
             sequence_number=value.sequence_number,
             source_generation=value.source_generation,
             discontinuity_epoch=value.discontinuity_epoch,
@@ -70,7 +83,7 @@ class SignalDerivation:
     operator_id: str
     operator_revision: int
     operator_generation: int
-    connector_id: int | None
+    connector_id: ConnectorId | None
 
     @classmethod
     def _from_native(cls, value: _NativeSignalDerivation) -> SignalDerivation:
@@ -80,7 +93,9 @@ class SignalDerivation:
             operator_id=value.operator_id,
             operator_revision=value.operator_revision,
             operator_generation=value.operator_generation,
-            connector_id=value.connector_id,
+            connector_id=(
+                None if value.connector_id is None else ConnectorId(value.connector_id)
+            ),
         )
 
 
@@ -92,8 +107,8 @@ class SignalAudioPayload:
     sample_count: int
     sample_rate_hz: int
     channel_count: int
-    stream_id: int
-    source_id: int
+    stream_id: StreamId
+    source_id: SourceId
     sequence_number: int
     timestamp_ns: int
 
@@ -104,8 +119,8 @@ class SignalAudioPayload:
             sample_count=value.sample_count,
             sample_rate_hz=value.sample_rate_hz,
             channel_count=value.channel_count,
-            stream_id=value.stream_id,
-            source_id=value.source_id,
+            stream_id=StreamId(value.stream_id),
+            source_id=SourceId(value.source_id),
             sequence_number=value.sequence_number,
             timestamp_ns=value.timestamp_ns,
         )
@@ -154,17 +169,19 @@ class SignalSubscriptionMetrics:
 
 
 @dataclass(frozen=True, slots=True)
-class SignalEnvelope:
+class SignalEnvelope(Generic[_PayloadT_co]):
     """One owned payload with its exact signal, timing, lineage, and derivation."""
 
-    signal: SignalSpec
+    signal: SignalSpec[_PayloadT_co]
     timing: SignalTiming
     lineage: SignalLineage | None
     derivation: SignalDerivation | None
-    payload: SignalPayload
+    payload: _PayloadT_co
 
     @classmethod
-    def _from_native(cls, value: _NativeSignalEnvelope) -> SignalEnvelope:
+    def _from_native(
+        cls, value: _NativeSignalEnvelope
+    ) -> SignalEnvelope[SignalPayload]:
         if value.payload_kind == "audio":
             if value.audio is None:
                 raise RuntimeError("native audio signal omitted its payload")
@@ -181,8 +198,10 @@ class SignalEnvelope:
             raise RuntimeError(
                 f"native signal has unknown payload kind {value.payload_kind!r}"
             )
-        return cls(
-            signal=SignalSpec._from_native(value.signal),
+        return SignalEnvelope[SignalPayload](
+            signal=cast(
+                SignalSpec[SignalPayload], SignalSpec._from_native(value.signal)
+            ),
             timing=SignalTiming._from_native(value.timing),
             lineage=(
                 None
@@ -198,7 +217,7 @@ class SignalEnvelope:
         )
 
 
-class BusSubscription:
+class BusSubscription(Generic[_PayloadT_co]):
     """Session-scoped receipt for one bounded typed ``AudioBus`` route."""
 
     __slots__ = ("_native",)
@@ -219,8 +238,10 @@ class BusSubscription:
         return self._native.route_id
 
     @property
-    def signal(self) -> SignalSpec:
-        return SignalSpec._from_native(self._native.signal)
+    def signal(self) -> SignalSpec[_PayloadT_co]:
+        return cast(
+            SignalSpec[_PayloadT_co], SignalSpec._from_native(self._native.signal)
+        )
 
     @property
     def edge(self) -> EdgeContract:
@@ -237,7 +258,7 @@ class EndOfStream:
 
 
 STREAM_EOF = EndOfStream()
-SignalReadResult: TypeAlias = SignalEnvelope | EndOfStream | None
+SignalReadResult: TypeAlias = SignalEnvelope[_PayloadT] | EndOfStream | None
 
 
 __all__ = [

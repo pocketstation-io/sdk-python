@@ -78,7 +78,7 @@ class _WhisperNode(pks_aio.OperatorNode):
     async def process(
         self,
         input_port: str,
-        envelope: pocketstation.SignalEnvelope,
+        envelope: pocketstation.SignalEnvelope[object],
     ) -> tuple[pocketstation.OperatorEmission, ...]:
         if input_port != "audio":
             raise ValueError(f"unexpected input port: {input_port}")

@@ -6,7 +6,6 @@ import threading
 from types import SimpleNamespace
 
 import pytest
-
 from pocketstation import (
     EventStream,
     RunningSession,
@@ -82,6 +81,8 @@ def test_concurrent_event_reader_fails_immediately() -> None:
 
 def test_running_session_exposes_events_without_public_poll_loop() -> None:
     class NativeRunning:
+        lifecycle_state = "running"
+
         def poll_audio(self):
             return None
 

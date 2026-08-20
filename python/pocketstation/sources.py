@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from ._native import CaptureAuthorizationSnapshot as _NativeCaptureAuthorizationSnapshot
+from ._native import CapturePermissionLifecycle as _NativeCapturePermissionLifecycle
+from ._native import CapturePermissionTransition as _NativeCapturePermissionTransition
 from ._native import DiscoveredSource as _NativeDiscoveredSource
 from ._native import SessionEvent as _NativeSessionEvent
 from ._native import Source as _NativeSource
@@ -16,6 +19,7 @@ from ._native import (
     microphone_permission_observation as _native_microphone_permission_observation,
 )
 from .errors import PocketStationError, _native_call
+from .identity import SourceId
 
 
 class Platform(StrEnum):
@@ -78,6 +82,133 @@ class PermissionObservation(StrEnum):
     NOT_APPLICABLE = "not-applicable"
 
 
+class CapturePermissionTransitionKind(StrEnum):
+    CHANGED = "permission-changed"
+    REVOKED = "permission-revoked"
+
+
+class CaptureCapabilityState(StrEnum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    UNSUPPORTED = "unsupported"
+
+
+class ApplicationPolicyObservation(StrEnum):
+    ALLOWED = "allowed"
+    DENIED = "denied"
+    NOT_OBSERVABLE = "not-observable"
+    NOT_APPLICABLE = "not-applicable"
+
+
+class CaptureSessionGrant(StrEnum):
+    GRANTED_BY_EXPLICIT_SELECTION = "granted-by-explicit-selection"
+    DENIED = "denied"
+    NOT_EVALUATED = "not-evaluated"
+
+
+class CaptureScopeKind(StrEnum):
+    EXACT_APPLICATION = "exact-application"
+    EXACT_INPUT_DEVICE = "exact-input-device"
+    EXACT_OUTPUT_DEVICE = "exact-output-device"
+    SYSTEM_MIX = "system-mix"
+
+
+class CaptureOpenOutcome(StrEnum):
+    NOT_ATTEMPTED = "not-attempted"
+    SUCCEEDED = "succeeded"
+    PERMISSION_DENIED = "permission-denied"
+    SOURCE_UNAVAILABLE = "source-unavailable"
+    BACKEND_FAILED = "backend-failed"
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureAuthorizationSnapshot:
+    """Point-in-time authorization evidence for one exact discovered source."""
+
+    capability: CaptureCapabilityState
+    os_permission: PermissionObservation
+    application_policy: ApplicationPolicyObservation
+    session_grant: CaptureSessionGrant
+    capture_scope: CaptureScopeKind
+    scope_stable_id: str | None
+    identity_strength: SourceIdentityStrength
+    permission_epoch: int
+    observed_at_ns: int
+    open_outcome: CaptureOpenOutcome
+
+    @classmethod
+    def _from_native(
+        cls, snapshot: _NativeCaptureAuthorizationSnapshot
+    ) -> CaptureAuthorizationSnapshot:
+        return cls(
+            capability=CaptureCapabilityState(snapshot.capability),
+            os_permission=PermissionObservation(snapshot.os_permission),
+            application_policy=ApplicationPolicyObservation(
+                snapshot.application_policy
+            ),
+            session_grant=CaptureSessionGrant(snapshot.session_grant),
+            capture_scope=CaptureScopeKind(snapshot.capture_scope),
+            scope_stable_id=snapshot.scope_stable_id,
+            identity_strength=SourceIdentityStrength(snapshot.identity_strength),
+            permission_epoch=snapshot.permission_epoch,
+            observed_at_ns=snapshot.observed_at_ns,
+            open_outcome=CaptureOpenOutcome(snapshot.open_outcome),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CapturePermissionTransition:
+    """One authoritative host-supplied permission-state transition."""
+
+    kind: CapturePermissionTransitionKind
+    previous: PermissionObservation
+    current: PermissionObservation
+    permission_epoch: int
+
+    @classmethod
+    def _from_native(
+        cls, transition: _NativeCapturePermissionTransition
+    ) -> CapturePermissionTransition:
+        return cls(
+            kind=CapturePermissionTransitionKind(transition.kind),
+            previous=PermissionObservation(transition.previous),
+            current=PermissionObservation(transition.current),
+            permission_epoch=transition.permission_epoch,
+        )
+
+
+class CapturePermissionLifecycle:
+    """Canonical control-plane permission epoch owner.
+
+    The host supplies authoritative platform observations. Equal observations
+    produce no transition; PocketStation never converts generic backend errors
+    into permission state.
+    """
+
+    def __init__(self, current: PermissionObservation) -> None:
+        self._native = _native_call(
+            lambda: _NativeCapturePermissionLifecycle(current.value)
+        )
+
+    @property
+    def current(self) -> PermissionObservation:
+        return PermissionObservation(self._native.current)
+
+    @property
+    def permission_epoch(self) -> int:
+        return self._native.permission_epoch
+
+    def observe(
+        self, current: PermissionObservation
+    ) -> CapturePermissionTransition | None:
+        transition = _native_call(lambda: self._native.observe(current.value))
+        return (
+            None
+            if transition is None
+            else CapturePermissionTransition._from_native(transition)
+        )
+
+
 class SourceSelectorKind(StrEnum):
     APPLICATION_NAME = "application-name"
     APPLICATION_BUNDLE_ID = "application-bundle-id"
@@ -86,6 +217,7 @@ class SourceSelectorKind(StrEnum):
     APPLICATION_PROCESS_INSTANCE = "application-process-instance"
     MICROPHONE_DEFAULT = "microphone-default"
     MICROPHONE_ID = "microphone-id"
+    SYSTEM_MIX = "system-mix"
 
 
 class SourceRuntimeEventKind(StrEnum):
@@ -110,7 +242,7 @@ class StableSourceId:
     platform: Platform
     kind: SourceKind
     stable_key: str
-    source_id: int | None
+    source_id: SourceId | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +260,9 @@ class DiscoveredSource:
     identity_strength: SourceIdentityStrength
     selector_persistence_scope: SelectorPersistenceScope | None
     process_tree_scope: ProcessTreeScope | None
+    _native: _NativeDiscoveredSource | None = field(
+        default=None, repr=False, compare=False
+    )
 
     @classmethod
     def _from_native(cls, source: _NativeDiscoveredSource) -> DiscoveredSource:
@@ -136,7 +271,7 @@ class DiscoveredSource:
                 platform=Platform(source.platform),
                 kind=SourceKind(source.kind),
                 stable_key=source.stable_key,
-                source_id=source.source_id,
+                source_id=SourceId(source.source_id),
             ),
             name=source.name,
             process_id=source.process_id,
@@ -156,7 +291,34 @@ class DiscoveredSource:
                 if source.process_tree_scope is None
                 else ProcessTreeScope(source.process_tree_scope)
             ),
+            _native=source,
         )
+
+    def authorization_before_open(
+        self,
+        *,
+        os_permission: PermissionObservation = PermissionObservation.NOT_OBSERVABLE,
+        application_policy: ApplicationPolicyObservation = (
+            ApplicationPolicyObservation.NOT_OBSERVABLE
+        ),
+        session_grant: CaptureSessionGrant = CaptureSessionGrant.NOT_EVALUATED,
+        permission_epoch: int = 1,
+    ) -> CaptureAuthorizationSnapshot:
+        """Create truthful pre-open evidence without inferring backend success."""
+        native = self._native
+        if native is None:
+            raise ValueError(
+                "authorization evidence requires a native discovery result"
+            )
+        snapshot = _native_call(
+            lambda: native.authorization_before_open(
+                os_permission.value,
+                application_policy.value,
+                session_grant.value,
+                permission_epoch,
+            )
+        )
+        return CaptureAuthorizationSnapshot._from_native(snapshot)
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,13 +475,20 @@ class Source:
         )
 
     @classmethod
+    def system_mix(cls) -> Source:
+        """Capture the host system output mix through native loopback."""
+        return cls(
+            _native_call(_NativeSource.system_mix),
+            SourceKind.SYSTEM_MIX,
+            SourceSelectorKind.SYSTEM_MIX,
+        )
+
+    @classmethod
     def from_discovered(cls, source: DiscoveredSource) -> Source:
         """Build the strongest supported Session declaration from discovery.
 
-        System mix and output devices can be discovered as host capabilities,
-        but the frozen public ``Session`` does not expose them as built-in
-        ``Source`` variants. This method rejects them instead of fabricating a
-        lowering path.
+        Output devices remain discovery-only. System mix is a built-in Session
+        source and retains the platform-owned loopback capability decision.
         """
         stable_id = source.stable_id
         if stable_id.kind is SourceKind.APPLICATION:
@@ -335,6 +504,8 @@ class Source:
             )
         if stable_id.kind is SourceKind.INPUT_DEVICE:
             return cls.microphone_id(source.device_uid or stable_id.stable_key)
+        if stable_id.kind is SourceKind.SYSTEM_MIX:
+            return cls.system_mix()
         raise PocketStationError(
             "discovered "
             f"{stable_id.kind.value!r} is not a frozen built-in Session Source",
@@ -378,7 +549,7 @@ class SourceRuntimeEvent:
                 platform=Platform(event.source_platform),
                 kind=SourceKind(event.source_kind),
                 stable_key=event.source_stable_key,
-                source_id=event.source_source_id,
+                source_id=SourceId(event.source_source_id),
             ),
             generation=event.source_generation,
             recovery_requirement=(
@@ -429,6 +600,15 @@ def _platform_value(platform: Platform | str) -> str:
 
 
 __all__ = [
+    "ApplicationPolicyObservation",
+    "CaptureAuthorizationSnapshot",
+    "CaptureCapabilityState",
+    "CaptureOpenOutcome",
+    "CapturePermissionLifecycle",
+    "CapturePermissionTransition",
+    "CapturePermissionTransitionKind",
+    "CaptureScopeKind",
+    "CaptureSessionGrant",
     "DiscoveredSource",
     "PermissionObservation",
     "Platform",

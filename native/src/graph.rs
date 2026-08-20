@@ -406,6 +406,12 @@ impl PythonMediaCaps {
         self.value.is_compatible_with(&other.value)
     }
 
+    fn negotiate(&self, other: &Self) -> Option<Self> {
+        self.value
+            .negotiate(&other.value)
+            .map(|value| Self { value })
+    }
+
     fn supports_signal(&self, signal: &PythonSignalSpec) -> bool {
         self.value.supports_signal(&signal.value)
     }

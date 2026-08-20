@@ -44,3 +44,5 @@ select = ["B", "E", "F", "I", "RUF", "UP"]
 manifest-path = "native/Cargo.toml"
 python-source = "python"
 module-name = "pocketstation._native"
+include = [{ path = "examples/**/*", format = "sdist" }]
+exclude = ["**/__pycache__/**", "**/*.pyc", "**/*.pyo"]

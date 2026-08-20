@@ -111,7 +111,7 @@ class _FasterWhisperNode(pks_aio.OperatorNode):
     async def process(
         self,
         input_port: str,
-        envelope: pocketstation.SignalEnvelope,
+        envelope: pocketstation.SignalEnvelope[object],
     ) -> tuple[pocketstation.OperatorEmission, ...]:
         if input_port != "audio":
             raise ValueError(f"unexpected input port: {input_port}")
@@ -237,7 +237,7 @@ class FasterWhisper:
         stream: pocketstation.Stem
         | pocketstation.SourceOutput
         | pocketstation.DerivedStream,
-    ) -> pocketstation.BusSubscription:
+    ) -> pocketstation.BusSubscription[str]:
         """Attach transcription to any Session-owned PCM stream in two lines."""
         operator = session.register_operator(self.provider()).declare()
         stream.connect(operator.input("audio"))

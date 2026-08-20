@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 from array import array
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
+from types import SimpleNamespace
 
 import pytest
 from pocketstation import (
+    ApplicationPolicyObservation,
     AudioInputBufferError,
     AudioInputClosedError,
     AudioInputConfig,
     AudioInputFullError,
+    CaptureCapabilityState,
+    CaptureOpenOutcome,
+    CaptureScopeKind,
+    CaptureSessionGrant,
     DiscoveredSource,
+    PermissionObservation,
     Platform,
     PocketStationError,
     ProcessTreeScope,
@@ -56,6 +63,9 @@ def test_source_declarations_are_immutable_and_descriptive() -> None:
     assert application.selector_value == "PocketStation Fixture"
     assert microphone.kind is SourceKind.INPUT_DEVICE
     assert microphone.selector_kind is SourceSelectorKind.MICROPHONE_DEFAULT
+    system_mix = Source.system_mix()
+    assert system_mix.kind is SourceKind.SYSTEM_MIX
+    assert system_mix.selector_kind is SourceSelectorKind.SYSTEM_MIX
     with pytest.raises(FrozenInstanceError):
         application.selector_value = "changed"
 
@@ -74,12 +84,49 @@ def test_discovered_input_device_lowers_to_microphone_id() -> None:
     assert selected.selector_value == "device-42"
 
 
-@pytest.mark.parametrize("kind", [SourceKind.SYSTEM_MIX, SourceKind.OUTPUT_DEVICE])
-def test_discovery_does_not_fabricate_unsupported_builtin_session_sources(
-    kind: SourceKind,
-) -> None:
+def test_discovered_system_mix_lowers_to_builtin_session_source() -> None:
+    selected = Source.from_discovered(_discovered(SourceKind.SYSTEM_MIX))
+
+    assert selected.kind is SourceKind.SYSTEM_MIX
+    assert selected.selector_kind is SourceSelectorKind.SYSTEM_MIX
+
+
+def test_discovered_source_projects_typed_pre_open_authorization_evidence() -> None:
+    native_snapshot = SimpleNamespace(
+        capability="available",
+        os_permission="allowed",
+        application_policy="allowed",
+        session_grant="granted-by-explicit-selection",
+        capture_scope="exact-application",
+        scope_stable_id="fixture:application",
+        identity_strength="platform-stable-id",
+        permission_epoch=4,
+        observed_at_ns=10,
+        open_outcome="not-attempted",
+    )
+    discovered = replace(
+        _discovered(SourceKind.APPLICATION),
+        _native=SimpleNamespace(
+            authorization_before_open=lambda *_args: native_snapshot
+        ),
+    )
+
+    snapshot = discovered.authorization_before_open(
+        os_permission=PermissionObservation.ALLOWED,
+        application_policy=ApplicationPolicyObservation.ALLOWED,
+        session_grant=CaptureSessionGrant.GRANTED_BY_EXPLICIT_SELECTION,
+        permission_epoch=4,
+    )
+
+    assert snapshot.capability is CaptureCapabilityState.AVAILABLE
+    assert snapshot.capture_scope is CaptureScopeKind.EXACT_APPLICATION
+    assert snapshot.open_outcome is CaptureOpenOutcome.NOT_ATTEMPTED
+    assert snapshot.permission_epoch == 4
+
+
+def test_discovery_does_not_fabricate_output_device_session_source() -> None:
     with pytest.raises(PocketStationError) as failure:
-        Source.from_discovered(_discovered(kind))
+        Source.from_discovered(_discovered(SourceKind.OUTPUT_DEVICE))
     assert failure.value.code == "source.unsupported_session_kind"
 
 
@@ -113,6 +160,7 @@ def test_application_owned_pcm_uses_the_canonical_source_and_recording_path(
     assert frame.source_id == audio.source_id
     assert frame.stream_id == audio.stream_id
     assert frame.sequence_number == 0
+    assert not hasattr(frame, "sequence_num")
     assert frame.discontinuity_epoch == 1
     assert list(frame.samples.cast("f")) == pytest.approx([0.25, -0.25, 0.5, -0.5])
     assert audio.observations().accepted_total == 1
@@ -150,3 +198,30 @@ def test_audio_input_reports_invalid_full_and_closed_without_blocking() -> None:
     assert observations.full_total == 1
     assert observations.invalid_total == 1
     assert observations.closed
+
+
+def test_audio_input_write_waits_finitely_without_hiding_nonblocking_try_write() -> (
+    None
+):
+    session = Session()
+    audio = session.audio_input(
+        "generated",
+        capacity_frames=1,
+        frame_samples_per_channel=4,
+    )
+    samples = array("f", [0.0, 0.0, 0.0, 0.0])
+    audio.try_write(samples)
+
+    with pytest.raises(AudioInputFullError) as full:
+        audio.write(samples, timeout_s=0.005)
+
+    assert full.value.code == "audio_input.full"
+    assert audio.observations().full_total > 0
+
+
+@pytest.mark.parametrize("timeout", [True, -0.1, 60.1])
+def test_audio_input_write_rejects_invalid_timeouts(timeout: object) -> None:
+    audio = Session().audio_input("generated", frame_samples_per_channel=4)
+
+    with pytest.raises((TypeError, ValueError)):
+        audio.write(array("f", [0.0] * 4), timeout_s=timeout)  # type: ignore[arg-type]

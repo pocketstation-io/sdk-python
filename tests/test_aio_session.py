@@ -8,7 +8,12 @@ import time
 from array import array
 
 import pytest
-from pocketstation import Connector, ConnectorDeliveryOutcome, ConnectorManifest
+from pocketstation import (
+    Connector,
+    ConnectorDeliveryOutcome,
+    ConnectorManifest,
+    SessionLifecycleState,
+)
 from pocketstation.aio import (
     Connector as AsyncConnector,
 )
@@ -56,9 +61,12 @@ async def test_application_owned_pcm_has_an_async_writer() -> None:
     audio.output.send(session.polled_audio())
 
     running = await session.start()
+    assert running.state is SessionLifecycleState.RUNNING
     await audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
     frame = await running.audio.read(timeout_s=1.0)
     await running.stop()
+    assert running.state is SessionLifecycleState.STOPPED
+    assert running.is_stopped
 
     assert frame is not None
     assert frame.source_id == audio.source_id
@@ -79,6 +87,10 @@ async def test_async_audio_write_wait_is_finite_and_adds_no_python_queue() -> No
 
     with pytest.raises(AudioInputFullError):
         await audio.write(samples, timeout_s=0.01)
+    with pytest.raises(TypeError):
+        await audio.write(samples, timeout_s=True)
+    with pytest.raises(ValueError):
+        await audio.write(samples, timeout_s=61)
 
     observations = await audio.observations()
     assert observations.capacity_frames == 1
@@ -110,6 +122,29 @@ async def test_async_session_registers_the_same_core_connector_contract() -> Non
     await audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
     assert await asyncio.to_thread(delivered.wait, 1.0)
     assert (await running.stop()).success
+
+
+@pytest.mark.asyncio
+async def test_async_session_destination_reuses_one_connector_registration() -> None:
+    async def receive(_item, _context):
+        return ConnectorDeliveryOutcome.DELIVERED
+
+    provider = AsyncConnector.from_handler(
+        ConnectorManifest.audio(
+            "io.pocketstation.test.aio-destination.v1",
+            package_version="1.0.0",
+        ),
+        receive,
+    )
+    session = Session()
+
+    first = session.destination(provider)
+    registration = session.register_connector(provider)
+    second = registration.declare()
+
+    assert first.session_id == session.id
+    assert second.session_id == session.id
+    assert session.register_connector(provider).session_id == session.id
 
 
 @pytest.mark.asyncio
@@ -166,7 +201,7 @@ async def test_async_audio_connector_convenience_runs_on_owning_loop() -> None:
     )
     session = Session()
     audio = session.audio_input("remote-call", frame_samples_per_channel=4)
-    audio.output.send(session.register_connector(connector).declare())
+    audio.output.send(session.destination(connector))
 
     running = await session.start()
     await audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))

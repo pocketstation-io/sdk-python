@@ -26,6 +26,7 @@ from pocketstation import (
     PortDirection,
     PortSpec,
     Session,
+    SessionStartError,
     SignalSpec,
     Source,
     SourceConfiguration,
@@ -117,7 +118,13 @@ def test_media_caps_and_port_specs_are_rust_validated() -> None:
 
     assert wildcard.is_compatible_with(exact)
     assert not exact.is_compatible_with(stereo)
+    assert MediaCaps.any().negotiate(exact) == exact
+    assert wildcard.negotiate(exact) == exact
+    assert exact.negotiate(MediaCaps.text()) is None
     assert exact.supports_signal(SignalSpec.audio())
+    assert ChannelLayout.MONO.channel_count == 1
+    assert ChannelLayout.STEREO.channel_count == 2
+    assert ChannelLayout.ANY.channel_count is None
     port = PortSpec(
         "audio-in",
         PortDirection.INPUT,
@@ -163,6 +170,9 @@ def test_edge_presets_and_modifiers_preserve_bounded_contracts() -> None:
     assert realtime.copy_policy is CopyPolicy.SHARE_READ_ONLY
     assert realtime.observability is EdgeObservabilityLevel.COUNTERS
     assert realtime.max_payload_bytes is None
+    assert realtime.clock.is_realtime
+    assert not ClockDomain.INHERITED.is_realtime
+    assert EdgeObservabilityLevel.FULL.rank > realtime.observability.rank
 
     bounded = EdgeContract.bounded_async()
     assert bounded.clock is ClockDomain.INHERITED
@@ -195,6 +205,15 @@ def test_configuration_values_are_immutable_snapshots() -> None:
     assert source.values == (("model", "small"),)
     assert endpoint.values == (("model", "small"),)
     assert operator.with_value("model", "large").values == (("model", "large"),)
+
+
+@pytest.mark.parametrize(
+    "configuration_type",
+    (OperatorConfiguration, SourceConfiguration, EndpointConfiguration),
+)
+def test_configuration_rejects_duplicate_keys(configuration_type) -> None:
+    with pytest.raises(ValueError, match="duplicate configuration key 'mode'"):
+        configuration_type((("mode", "first"), ("mode", "second")))
 
 
 def test_graph_declarations_lower_immediately_to_one_rust_session(tmp_path) -> None:
@@ -277,6 +296,10 @@ def test_unknown_operator_is_rejected_by_the_canonical_compiler() -> None:
         session.start()
     assert failure.value.code == "session.compile_failed"
     assert "operator org.example.missing.v1 is not registered" in str(failure.value)
+    assert isinstance(failure.value, SessionStartError)
+    assert failure.value.diagnostic is not None
+    assert failure.value.diagnostic.code == "compile.unknown_async_operator"
+    assert failure.value.diagnostic.operator_id == "org.example.missing.v1"
 
 
 def test_sync_and_async_sessions_share_the_same_graph_declaration_surface() -> None:

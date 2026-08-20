@@ -6,7 +6,6 @@ from time import monotonic
 from types import SimpleNamespace
 
 import pytest
-
 from pocketstation import (
     RecordingDiscontinuityKind,
     RecordingOutcome,
@@ -44,6 +43,13 @@ def test_application_and_microphone_record_as_independent_stems(tmp_path) -> Non
     assert stop.success
     assert stop.recording is not None
     assert stop.recording.complete
+    assert stop.recording.session_id == running.session_id
+    assert stop.recording.group_id == "session.multistem.default.v1"
+    assert stop.recording.manifest_path == (
+        stop.recording.session_directory / "manifest.json"
+    )
+    assert stop.recording.manifest_path.is_file()
+    assert stop.recording.manifest_schema_version == 1
     outcomes = {stem.stem_name: stem for stem in stop.recording.stems}
     assert set(outcomes) == {"application", "microphone"}
     assert all(stem.frames_written_total > 0 for stem in outcomes.values())
@@ -77,11 +83,15 @@ def test_incomplete_recording_preserves_stable_code_and_gap_detail(tmp_path) -> 
     )
     outcome = RecordingOutcome._from_native(
         SimpleNamespace(
+            session_id=7,
+            group_id="session.multistem.default.v1",
             state="incomplete",
             complete=False,
             completed_stems=0,
             failed_stems=1,
             session_directory=str(tmp_path),
+            manifest_path=str(tmp_path / "manifest.json"),
+            manifest_schema_version=1,
             error_code="recording.incomplete",
             stems=lambda: [stem],
         )

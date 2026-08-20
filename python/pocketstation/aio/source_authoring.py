@@ -73,8 +73,6 @@ class SourceDriver:
 
 @runtime_checkable
 class SourceFactory(Protocol):
-    def validate_config(self, configuration: Mapping[str, str]) -> None: ...
-
     async def create(self, configuration: Mapping[str, str]) -> SourceDriver: ...
 
 
@@ -288,12 +286,15 @@ def _wait_for_source(
 __all__ = [
     "RegisteredSource",
     "SourceCancellation",
+    "SourceConfigValidator",
     "SourceDeadlines",
     "SourceDriver",
     "SourceDriverBuilder",
+    "SourceEmission",
     "SourceFactory",
     "SourceIterableFactory",
     "SourceManifest",
+    "SourcePrepareContext",
     "SourceProvider",
     "source",
 ]

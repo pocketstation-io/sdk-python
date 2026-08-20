@@ -5,16 +5,17 @@ import sys
 from pathlib import Path
 from time import monotonic
 
-import pytest
-
 import pocketstation as pks
 import pocketstation.aio as aio
+import pytest
 from pocketstation._native import Session as NativeSession
 
 CHILD = Path(__file__).with_name("_pkss_child.py")
 
 
 def session_with_product_sources(tmp_path: Path) -> pks.Session:
+    if not hasattr(NativeSession, "conformance"):
+        pytest.skip("native extension was not built with conformance-fixtures")
     session = pks.Session._from_native(NativeSession.conformance(tmp_path))
     audio = session.polled_audio()
     session.capture(pks.Source.application("PocketStation Python Fixture")).send(audio)
@@ -162,6 +163,8 @@ def test_sidecar_handle_is_session_scoped(tmp_path: Path) -> None:
 
 def test_asyncio_sidecar_uses_same_native_owner(tmp_path: Path) -> None:
     async def scenario() -> None:
+        if not hasattr(NativeSession, "conformance"):
+            pytest.skip("native extension was not built with conformance-fixtures")
         session = aio.Session._from_native(NativeSession.conformance(tmp_path))
         audio = session.polled_audio()
         session.capture(pks.Source.application("PocketStation Python Fixture")).send(

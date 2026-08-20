@@ -20,7 +20,36 @@ pub(crate) fn session_endpoint_error(error: pocketstation::SessionEndpointError)
 
 #[allow(clippy::needless_pass_by_value)] // Direct adapter for Result::map_err.
 pub(crate) fn session_start_error(error: SessionStartError) -> PyErr {
-    PyRuntimeError::new_err(coded_reason(error.code().as_str(), error.to_string()))
+    let exception = PyRuntimeError::new_err(coded_reason(error.code().as_str(), error.to_string()));
+    if let Some(diagnostic) = error.compile_diagnostic() {
+        Python::attach(|py| {
+            let value = exception.value(py);
+            let _ = value.setattr("_pocketstation_compile_code", diagnostic.code());
+            let _ = value.setattr("_pocketstation_compile_node_index", diagnostic.node_index());
+            let _ = value.setattr("_pocketstation_compile_edge_index", diagnostic.edge_index());
+            let _ = value.setattr(
+                "_pocketstation_compile_operator_id",
+                diagnostic.operator_id(),
+            );
+            let _ = value.setattr(
+                "_pocketstation_compile_operator_instance_id",
+                diagnostic.operator_instance_id(),
+            );
+            let _ = value.setattr(
+                "_pocketstation_compile_node_type_id",
+                diagnostic.node_type_id(),
+            );
+            let _ = value.setattr(
+                "_pocketstation_compile_source_type_id",
+                diagnostic.source_type_id(),
+            );
+            let _ = value.setattr("_pocketstation_compile_port_name", diagnostic.port_name());
+            let _ = value.setattr("_pocketstation_compile_direction", diagnostic.direction());
+            let _ = value.setattr("_pocketstation_compile_expected", diagnostic.expected());
+            let _ = value.setattr("_pocketstation_compile_actual", diagnostic.actual());
+        });
+    }
+    exception
 }
 
 #[allow(clippy::needless_pass_by_value)] // Direct adapter for Result::map_err.

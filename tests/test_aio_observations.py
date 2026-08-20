@@ -6,7 +6,6 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-
 from pocketstation import StreamInUseError, StreamModeError, _native
 from pocketstation.aio import EventStream, RunningSession
 from pocketstation.aio.session import _native_async
@@ -86,6 +85,8 @@ async def test_concurrent_async_event_reader_fails_immediately() -> None:
 @pytest.mark.asyncio
 async def test_async_running_session_exposes_event_stream() -> None:
     class NativeRunning:
+        lifecycle_state = "running"
+
         def poll_audio(self):
             return None
 

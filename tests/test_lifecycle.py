@@ -8,11 +8,13 @@ import pytest
 from pocketstation import (
     EndpointFailureStage,
     Session,
+    SessionComponentKind,
     SessionEvent,
     SessionFailureKind,
     SessionTerminalState,
     SessionTrace,
     SessionTraceConfiguration,
+    SessionTraceRecordType,
     Source,
     TerminationDisposition,
     _native,
@@ -81,6 +83,11 @@ def test_trace_round_trip_preserves_terminal_lifecycle_and_hash(tmp_path) -> Non
     assert validation.terminal_state is SessionTerminalState.STOPPED
     assert validation.source_failures_total == 0
     assert validation.endpoint_failures_total == 0
+    assert len(trace.records) == trace.records_total
+    assert trace.records[0].sequence_index == 0
+    assert trace.records[0].kind is SessionTraceRecordType.LIFECYCLE
+    assert trace.records[-1].kind is SessionTraceRecordType.TERMINAL
+    assert trace.records[-1].terminal_state is SessionTerminalState.STOPPED
 
 
 def test_trace_configuration_rejects_unbounded_or_zero_capacity(tmp_path) -> None:
@@ -100,6 +107,7 @@ def test_terminal_event_keeps_fault_categories_and_owner_ids_separate() -> None:
             error_code="fixture.endpoint" if kind == "endpoint" else None,
             retryability="retryable" if kind == "endpoint" else None,
             component="Runtime" if kind == "finalization" else None,
+            component_kind="runtime" if kind == "finalization" else None,
             message="endpoint failed" if kind == "endpoint" else None,
             stem_id=identifiers.get("stem_id"),
             route_id=identifiers.get("route_id"),
@@ -146,3 +154,6 @@ def test_terminal_event_keeps_fault_categories_and_owner_ids_separate() -> None:
     assert event.failures[0].error_code == "fixture.endpoint"
     assert event.failures[0].retryability.value == "retryable"
     assert event.failures[1].kind is SessionFailureKind.FINALIZATION
+    assert event.failures[1].component is not None
+    assert event.failures[1].component.kind is SessionComponentKind.RUNTIME
+    assert event.failures[1].component_diagnostic == "Runtime"

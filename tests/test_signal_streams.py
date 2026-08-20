@@ -97,6 +97,10 @@ def test_real_session_delivers_audio_text_and_bytes_with_complete_provenance(
 
     assert audio.signal == SignalSpec.audio()
     assert audio.lineage is not None
+    assert audio.lineage.clock.id == audio.lineage.clock_id
+    assert audio.lineage.clock.kind == "process-monotonic"
+    assert audio.lineage.clock.origin == "process-start"
+    assert audio.lineage.clock.tick_rate_hz == 1_000_000_000
     assert audio.derivation is not None
     assert audio.derivation.upstream_lineage == audio.lineage
     assert audio_payload.source_id == audio.lineage.source_id

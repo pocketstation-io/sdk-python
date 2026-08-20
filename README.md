@@ -217,13 +217,21 @@ publisher = pocketstation.Connector.from_audio_handler(
     package_version="1.0.0",
 )
 session = pocketstation.Session()
-endpoint = session.register_connector(publisher).declare()
+audio = session.audio_input("agent-output")
+audio.output.send(session.destination(publisher))
 ```
 
 `pocketstation.aio.Connector.from_audio_handler(...)` accepts a coroutine and
 enforces finite delivery deadlines. The complete manifest, typed
 configuration, driver, grouped worker, and observation APIs remain available
-for reusable provider packages.
+for reusable provider packages. When one implementation needs several
+independently configured Endpoints, retain the explicit form:
+
+```python
+registered = session.register_connector(publisher)
+primary = registered.declare(primary_configuration)
+backup = registered.declare(backup_configuration)
+```
 
 Stateful providers implement `ConnectorDriver` and register with
 `Connector.with_driver(...)`. Their factory receives every resolved input

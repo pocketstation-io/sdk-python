@@ -49,7 +49,7 @@ class OperatorNode:
         """Observe compiled port and edge contracts before processing."""
 
     async def process(
-        self, input_port: str, envelope: SignalEnvelope
+        self, input_port: str, envelope: SignalEnvelope[object]
     ) -> Sequence[OperatorEmission]:
         raise NotImplementedError
 
@@ -65,8 +65,6 @@ class OperatorNode:
 
 @runtime_checkable
 class OperatorFactory(Protocol):
-    def validate_config(self, configuration: Mapping[str, str]) -> None: ...
-
     async def create(self, configuration: Mapping[str, str]) -> OperatorNode: ...
 
 
@@ -74,7 +72,7 @@ OperatorNodeBuilder: TypeAlias = Callable[
     [Mapping[str, str]], Coroutine[Any, Any, OperatorNode]
 ]
 OperatorHandler: TypeAlias = Callable[
-    [str, SignalEnvelope], Coroutine[Any, Any, Sequence[OperatorEmission]]
+    [str, SignalEnvelope[object]], Coroutine[Any, Any, Sequence[OperatorEmission]]
 ]
 
 
@@ -85,7 +83,7 @@ class _HandlerNode(OperatorNode):
         self._handler = handler
 
     async def process(
-        self, input_port: str, envelope: SignalEnvelope
+        self, input_port: str, envelope: SignalEnvelope[object]
     ) -> Sequence[OperatorEmission]:
         return await self._handler(input_port, envelope)
 
@@ -130,7 +128,7 @@ class _NodeAdapter(SyncOperatorNode):
         )
 
     def process(
-        self, input_port: str, envelope: SignalEnvelope
+        self, input_port: str, envelope: SignalEnvelope[object]
     ) -> Sequence[OperatorEmission]:
         return _wait_for_operator(
             self._loop,
@@ -289,12 +287,15 @@ def _wait_for_operator(
 
 
 __all__ = [
+    "OperatorConfigValidator",
     "OperatorDeadlines",
+    "OperatorEmission",
     "OperatorFactory",
     "OperatorHandler",
     "OperatorManifest",
     "OperatorNode",
     "OperatorNodeBuilder",
+    "OperatorPrepareContext",
     "OperatorProvider",
     "RegisteredOperator",
     "operator",

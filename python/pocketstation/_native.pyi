@@ -3,6 +3,21 @@
 from collections.abc import Iterator
 from pathlib import Path
 
+from .identity import (
+    ClockDomainId,
+    ClockDomainKind,
+    ClockDomainOrigin,
+    ConnectorId,
+    EndpointId,
+    OperatorInstanceId,
+    RouteId,
+    RuntimeSessionId,
+    SourceId,
+    SourceInstanceId,
+    StemId,
+    StreamId,
+)
+
 class _ExtensionAbiVersion:
     struct_size_bytes: int
     abi_major: int
@@ -53,12 +68,14 @@ class Source:
     def microphone_default() -> Source: ...
     @staticmethod
     def microphone_id(device_id: str) -> Source: ...
+    @staticmethod
+    def system_mix() -> Source: ...
 
 class DiscoveredSource:
     platform: str
     kind: str
     stable_key: str
-    source_id: int
+    source_id: SourceId
     name: str
     process_id: int | None
     application_id: str | None
@@ -69,6 +86,37 @@ class DiscoveredSource:
     identity_strength: str
     selector_persistence_scope: str | None
     process_tree_scope: str | None
+    def authorization_before_open(
+        self,
+        os_permission: str = "not-observable",
+        application_policy: str = "not-observable",
+        session_grant: str = "not-evaluated",
+        permission_epoch: int = 1,
+    ) -> CaptureAuthorizationSnapshot: ...
+
+class CaptureAuthorizationSnapshot:
+    capability: str
+    os_permission: str
+    application_policy: str
+    session_grant: str
+    capture_scope: str
+    scope_stable_id: str | None
+    identity_strength: str
+    permission_epoch: int
+    observed_at_ns: int
+    open_outcome: str
+
+class CapturePermissionTransition:
+    kind: str
+    previous: str
+    current: str
+    permission_epoch: int
+
+class CapturePermissionLifecycle:
+    def __init__(self, current: str) -> None: ...
+    current: str
+    permission_epoch: int
+    def observe(self, current: str) -> CapturePermissionTransition | None: ...
 
 def discover_sources(
     query_kind: str = "any",
@@ -110,6 +158,7 @@ class _MediaCaps:
     frame_samples: int | None
     channel_layout: str | None
     def is_compatible_with(self, other: _MediaCaps) -> bool: ...
+    def negotiate(self, other: _MediaCaps) -> _MediaCaps | None: ...
     def supports_signal(self, signal: _SignalSpec) -> bool: ...
 
 class _PortSpec:
@@ -152,8 +201,8 @@ class _EdgeContract:
 
 class BusSubscription:
     id: int
-    session_id: int
-    route_id: int
+    session_id: RuntimeSessionId
+    route_id: RouteId
     signal: _SignalSpec
     edge: _EdgeContract
 
@@ -164,10 +213,11 @@ class _SignalTiming:
     duration_ns: int | None
 
 class _SignalLineage:
-    session_id: int
-    stream_id: int
-    source_id: int
-    clock_id: int
+    session_id: RuntimeSessionId
+    stream_id: StreamId
+    source_id: SourceId
+    clock_id: ClockDomainId
+    clock: ClockDomainDescriptor
     sequence_number: int
     source_generation: int
     discontinuity_epoch: int
@@ -179,7 +229,7 @@ class _SignalDerivation:
     operator_id: str
     operator_revision: int
     operator_generation: int
-    connector_id: int | None
+    connector_id: ConnectorId | None
 
 class _SignalAudioPayload:
     samples: memoryview
@@ -187,8 +237,8 @@ class _SignalAudioPayload:
     sample_count: int
     sample_rate_hz: int
     channel_count: int
-    stream_id: int
-    source_id: int
+    stream_id: StreamId
+    source_id: SourceId
     sequence_number: int
     timestamp_ns: int
     sample_format: str
@@ -380,9 +430,9 @@ class _RegisteredConnector:
     def observation(self, endpoint: Endpoint) -> _ConnectorObservations | None: ...
 
 class Endpoint:
-    id: int
-    session_id: int
-    connector_id: int | None
+    id: EndpointId
+    session_id: RuntimeSessionId
+    connector_id: ConnectorId | None
 
 class RelayPublisher: ...
 
@@ -390,17 +440,17 @@ class OperatorInput:
     port_name: str
 
 class OperatorInstance:
-    session_id: int
-    instance_id: int
+    session_id: RuntimeSessionId
+    instance_id: OperatorInstanceId
     def input(self, port_name: str) -> OperatorInput: ...
     def output(self, port_name: str) -> DerivedStream: ...
 
 class Stem:
     @property
-    def id(self) -> int: ...
-    def send(self, endpoint: Endpoint) -> int: ...
-    def send_to(self, endpoint: Endpoint, input_port: str | None) -> int: ...
-    def connect(self, input: OperatorInput) -> int: ...
+    def id(self) -> StemId: ...
+    def send(self, endpoint: Endpoint) -> RouteId: ...
+    def send_to(self, endpoint: Endpoint, input_port: str | None) -> RouteId: ...
+    def connect(self, input: OperatorInput) -> RouteId: ...
     def through(
         self,
         operator_id: str,
@@ -409,15 +459,15 @@ class Stem:
         output_port: str | None = None,
     ) -> DerivedStream: ...
     def record(self, stem_name: str) -> Endpoint: ...
-    def publish(self, publisher: RelayPublisher, bus_id: str) -> int: ...
-    session_id: int
+    def publish(self, publisher: RelayPublisher, bus_id: str) -> RouteId: ...
+    session_id: RuntimeSessionId
 
 class DerivedStream:
-    session_id: int
-    operator_instance_id: int
+    session_id: RuntimeSessionId
+    operator_instance_id: OperatorInstanceId
     output_port: str | None
     def output(self, port_name: str) -> DerivedStream: ...
-    def connect(self, input: OperatorInput) -> int: ...
+    def connect(self, input: OperatorInput) -> RouteId: ...
     def through(
         self,
         operator_id: str,
@@ -425,23 +475,23 @@ class DerivedStream:
         input_port: str | None = None,
         output_port: str | None = None,
     ) -> DerivedStream: ...
-    def send(self, endpoint: Endpoint) -> int: ...
-    def send_to(self, endpoint: Endpoint, input_port: str | None) -> int: ...
+    def send(self, endpoint: Endpoint) -> RouteId: ...
+    def send_to(self, endpoint: Endpoint, input_port: str | None) -> RouteId: ...
     def reenter_audio(self) -> Stem: ...
 
 class SourceInstance:
-    session_id: int
-    instance_id: int
-    source_id: int
+    session_id: RuntimeSessionId
+    instance_id: SourceInstanceId
+    source_id: SourceId
     def output(self, port_name: str) -> SourceOutput: ...
 
 class SourceOutput:
-    session_id: int
-    source_instance_id: int
-    source_id: int
-    stream_id: int
+    session_id: RuntimeSessionId
+    source_instance_id: SourceInstanceId
+    source_id: SourceId
+    stream_id: StreamId
     output_port: str
-    def connect(self, input: OperatorInput) -> int: ...
+    def connect(self, input: OperatorInput) -> RouteId: ...
     def through(
         self,
         operator_id: str,
@@ -449,29 +499,39 @@ class SourceOutput:
         input_port: str | None = None,
         output_port: str | None = None,
     ) -> DerivedStream: ...
-    def send(self, endpoint: Endpoint) -> int: ...
-    def send_to(self, endpoint: Endpoint, input_port: str | None) -> int: ...
+    def send(self, endpoint: Endpoint) -> RouteId: ...
+    def send_to(self, endpoint: Endpoint, input_port: str | None) -> RouteId: ...
     def record(self, stem_name: str) -> Endpoint: ...
-    def publish(self, publisher: RelayPublisher, bus_id: str) -> int: ...
+    def publish(self, publisher: RelayPublisher, bus_id: str) -> RouteId: ...
+
+class ClockDomainDescriptor:
+    id: ClockDomainId
+    kind: ClockDomainKind
+    origin: ClockDomainOrigin
+    tick_rate_hz: int | None
 
 class AudioFrame:
     sample_rate_hz: int
     channel_count: int
-    session_id: int
-    stream_id: int
-    source_id: int
-    stem_id: int
-    clock_id: int
-    sequence_num: int
+    session_id: RuntimeSessionId
+    stream_id: StreamId
+    source_id: SourceId
+    stem_id: StemId
+    clock_id: ClockDomainId
+    clock: ClockDomainDescriptor
     sequence_number: int
     timestamp_start_ns: int
     duration_ns: int
     source_generation: int
     discontinuity_epoch: int
     permission_epoch: int
-    endpoint_id: int
-    connector_id: int
-    route_id: int
+    endpoint_id: EndpointId
+    connector_id: ConnectorId | None
+    route_id: RouteId
+    route_enqueued_at_ns: int
+    route_received_at_ns: int
+    endpoint_enqueued_at_ns: int | None
+    polled_at_ns: int | None
     @property
     def samples(self) -> memoryview: ...
     @property
@@ -511,11 +571,15 @@ class RecordingStemOutcome:
     def discontinuities(self) -> list[RecordingDiscontinuity]: ...
 
 class RecordingOutcome:
+    session_id: RuntimeSessionId
+    group_id: str
     complete: bool
     state: str
     completed_stems: int
     failed_stems: int
     session_directory: str
+    manifest_path: str
+    manifest_schema_version: int
     error_code: str | None
     def stems(self) -> list[RecordingStemOutcome]: ...
 
@@ -580,6 +644,7 @@ class _SessionFailure:
     error_code: str | None
     retryability: str | None
     component: str | None
+    component_kind: str | None
     message: str | None
     stem_id: int | None
     route_id: int | None
@@ -856,12 +921,31 @@ class _SessionTraceValidation:
     finalization_failures_total: int
     records_validated_total: int
 
+class SessionTraceRecord:
+    sequence_index: int
+    observed_at_ns: int
+    session_id: int
+    kind: str
+    lifecycle_state: str | None
+    terminal_state: str | None
+    stem_id: int | None
+    route_id: int | None
+    endpoint_id: int | None
+    endpoint_stage: str | None
+    rollback_stage: str | None
+    finalization_stage: str | None
+    source_failures_total: int | None
+    endpoint_failures_total: int | None
+    rollback_failures_total: int | None
+    finalization_failures_total: int | None
+
 class SessionTrace:
     @staticmethod
     def read(path: Path) -> SessionTrace: ...
     session_id: int
     outcome: SessionTraceRecorderOutcome
     records_total: int
+    def records(self) -> list[SessionTraceRecord]: ...
     def validate(self) -> _SessionTraceValidation: ...
 
 class _SidecarProcessSpec:
@@ -950,8 +1034,8 @@ class _AudioInputObservations:
     closed: bool
 
 class _AudioInput:
-    source_id: int
-    stream_id: int
+    source_id: SourceId
+    stream_id: StreamId
     output: SourceOutput
     def try_write(
         self,
@@ -1006,12 +1090,12 @@ class _SourceEmission:
 
 class _SourceOutputIdentity:
     output_port: str
-    stream_id: int
+    stream_id: StreamId
 
 class _SourcePrepareContext:
     source_type_id: str
-    session_id: int | None
-    source_id: int | None
+    session_id: RuntimeSessionId | None
+    source_id: SourceId | None
     outputs: list[_SourceOutputIdentity]
 
 class _SourceCancellation:
@@ -1165,6 +1249,7 @@ class Session:
 
 class RunningSession:
     session_id: int
+    lifecycle_state: str
     def poll_audio(self) -> AudioBatch | None: ...
     def wait_audio(self, timeout_ms: int = 100) -> AudioBatch | None: ...
     def poll_event(self) -> SessionEvent | None: ...

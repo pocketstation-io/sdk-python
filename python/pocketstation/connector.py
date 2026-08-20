@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol, TypeAlias, cast, runtime_checkable
@@ -115,8 +115,8 @@ class ConnectorError(PocketStationError):
     ) -> None:
         super().__init__(message, code)
         self.message = message
-        self.stage = stage.value
-        self.retryability = retryability.value
+        self.stage = stage
+        self.retryability = retryability
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,6 +384,13 @@ class ConnectorConfigurationSchema:
     )
 
     def __post_init__(self) -> None:
+        duplicate = _first_duplicate(entry.name for entry in self.fields)
+        if duplicate is not None:
+            raise ConnectorError(
+                f"duplicate Connector configuration field {duplicate!r}",
+                code="connector.configuration.duplicate_field",
+                stage=ConnectorErrorStage.CONFIGURATION,
+            )
         native = _native_call(
             lambda: _NativeConnectorConfigurationSchema(
                 self.revision, [entry._native for entry in self.fields]
@@ -394,7 +401,14 @@ class ConnectorConfigurationSchema:
     def configuration(
         self, values: ConnectorConfigurationInput = ()
     ) -> _NativeConnectorConfiguration:
-        entries = values.items() if isinstance(values, Mapping) else values
+        entries = tuple(values.items() if isinstance(values, Mapping) else values)
+        duplicate = _first_duplicate(name for name, _value in entries)
+        if duplicate is not None:
+            raise ConnectorError(
+                f"duplicate Connector configuration value {duplicate!r}",
+                code="connector.configuration.duplicate_value",
+                stage=ConnectorErrorStage.CONFIGURATION,
+            )
         by_name = {entry.name: entry for entry in self.fields}
         native_entries: list[tuple[str, _NativeConnectorConfigurationValue]] = []
         for name, value in entries:
@@ -530,7 +544,7 @@ class ConnectorInputDescriptor:
         return self._native.signal_wire_id
 
     @property
-    def signal(self) -> SignalSpec:
+    def signal(self) -> SignalSpec[object]:
         return SignalSpec._from_native(self._native.signal)
 
     @property
@@ -567,7 +581,7 @@ class ConnectorItem:
         return self._native.audio
 
     @property
-    def signal(self) -> SignalEnvelope | None:
+    def signal(self) -> SignalEnvelope[object] | None:
         native = self._native.signal
         return None if native is None else SignalEnvelope._from_native(native)
 
@@ -1047,6 +1061,15 @@ def _coerce_configuration_value(
         code="connector.configuration.type_mismatch",
         stage=ConnectorErrorStage.CONFIGURATION,
     )
+
+
+def _first_duplicate(values: Iterable[str]) -> str | None:
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            return value
+        seen.add(value)
+    return None
 
 
 def _default_edge(manifest: ConnectorManifest) -> EdgeContract:

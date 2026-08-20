@@ -118,6 +118,54 @@ def test_python_operator_processes_source_signal_with_derivation() -> None:
     assert node.closed.wait(1.0)
 
 
+def test_operator_factory_does_not_require_a_noop_validator() -> None:
+    input_signal = SignalSpec.text(role="request")
+    output_signal = SignalSpec.text(role="result")
+    source = SourceProvider.from_iterable(
+        SourceManifest(
+            "io.pocketstation.source.no-validator-operator-input.v1",
+            outputs=(PortSpec.output("events", input_signal),),
+        ),
+        lambda _configuration: (
+            SourceEmission.text("events", "hello", signal=input_signal),
+        ),
+    )
+
+    class Uppercase(OperatorNode):
+        def process(self, _input_port, envelope):
+            return (
+                OperatorEmission.text(
+                    str(envelope.payload).upper(), signal=output_signal
+                ),
+            )
+
+    class Factory:
+        def create(self, _configuration) -> Uppercase:
+            return Uppercase()
+
+    provider = OperatorProvider.with_node(
+        OperatorManifest(
+            "io.pocketstation.operator.no-validator-test.v1",
+            inputs=(PortSpec.input("input", input_signal),),
+            outputs=(PortSpec.output("output", output_signal),),
+        ),
+        Factory(),
+    )
+    session = Session()
+    source_instance = session.register_source(source).declare()
+    operator_instance = session.register_operator(provider).declare()
+    source_instance.output("events").connect(operator_instance.input("input"))
+    subscription = session.subscribe(
+        operator_instance.output("output"), signal=output_signal
+    )
+
+    with session.start() as running:
+        value = running.signals(subscription).read(timeout_s=1.0)
+
+    assert isinstance(value, SignalEnvelope)
+    assert value.payload == "HELLO"
+
+
 @pytest.mark.asyncio
 async def test_async_operator_runs_on_owning_loop() -> None:
     input_signal = SignalSpec.text(role="async.request")

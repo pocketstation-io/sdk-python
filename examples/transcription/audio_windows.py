@@ -37,7 +37,7 @@ class AudioWindowBuffer:
 
     def push(
         self,
-        envelope: pocketstation.SignalEnvelope,
+        envelope: pocketstation.SignalEnvelope[object],
     ) -> tuple[AudioWindow, ...]:
         payload = envelope.payload
         if not isinstance(payload, pocketstation.SignalAudioPayload):

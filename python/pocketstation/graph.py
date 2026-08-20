@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar, cast
 
 from ._native import DerivedStream as _NativeDerivedStream
 from ._native import Endpoint as _NativeEndpoint
@@ -21,10 +21,24 @@ from ._native import _MediaCaps as _NativeMediaCaps
 from ._native import _PortSpec as _NativePortSpec
 from ._native import _SignalSpec as _NativeSignalSpec
 from .errors import _native_call
+from .identity import (
+    ConnectorId,
+    EndpointId,
+    OperatorInstanceId,
+    RouteId,
+    RuntimeSessionId,
+    SourceId,
+    SourceInstanceId,
+    StemId,
+    StreamId,
+)
 
 if TYPE_CHECKING:
     from .relay import RelayPublisher, RelayRoute
-    from .signal import BusSubscription
+    from .signal import BusSubscription, SignalAudioPayload
+
+_PayloadT = TypeVar("_PayloadT")
+_PayloadT_co = TypeVar("_PayloadT_co", covariant=True)
 
 
 class SignalKind(StrEnum):
@@ -72,7 +86,7 @@ SignalFormat: TypeAlias = Codec | TextFormat | EventFormat | BinaryFormat
 
 
 @dataclass(frozen=True, slots=True)
-class SignalSpec:
+class SignalSpec(Generic[_PayloadT_co]):
     """Stable language-neutral signal identity, role, and schema contract."""
 
     kind: SignalKind
@@ -95,7 +109,7 @@ class SignalSpec:
         object.__setattr__(self, "_native", native)
 
     @classmethod
-    def _from_native(cls, native: _NativeSignalSpec) -> SignalSpec:
+    def _from_native(cls, native: _NativeSignalSpec) -> SignalSpec[object]:
         kind = SignalKind(native.kind)
         format_value: SignalFormat | None = None
         if native.format is not None:
@@ -120,12 +134,19 @@ class SignalSpec:
         )
 
     @classmethod
-    def any(cls, *, role: str | None = None, schema: str | None = None) -> SignalSpec:
+    def any(
+        cls, *, role: str | None = None, schema: str | None = None
+    ) -> SignalSpec[object]:
         return cls(SignalKind.ANY, role=role, schema=schema)
 
     @classmethod
-    def audio(cls, *, role: str | None = None, schema: str | None = None) -> SignalSpec:
-        return cls(SignalKind.PCM_AUDIO, role=role, schema=schema)
+    def audio(
+        cls, *, role: str | None = None, schema: str | None = None
+    ) -> SignalSpec[SignalAudioPayload]:
+        return cast(
+            "SignalSpec[SignalAudioPayload]",
+            cls(SignalKind.PCM_AUDIO, role=role, schema=schema),
+        )
 
     @classmethod
     def encoded_audio(
@@ -134,8 +155,11 @@ class SignalSpec:
         *,
         role: str | None = None,
         schema: str | None = None,
-    ) -> SignalSpec:
-        return cls(SignalKind.ENCODED_AUDIO, codec, role=role, schema=schema)
+    ) -> SignalSpec[bytes]:
+        return cast(
+            SignalSpec[bytes],
+            cls(SignalKind.ENCODED_AUDIO, codec, role=role, schema=schema),
+        )
 
     @classmethod
     def text(
@@ -144,8 +168,10 @@ class SignalSpec:
         *,
         role: str | None = None,
         schema: str | None = None,
-    ) -> SignalSpec:
-        return cls(SignalKind.TEXT, format, role=role, schema=schema)
+    ) -> SignalSpec[str]:
+        return cast(
+            SignalSpec[str], cls(SignalKind.TEXT, format, role=role, schema=schema)
+        )
 
     @classmethod
     def event(
@@ -154,19 +180,19 @@ class SignalSpec:
         *,
         role: str | None = None,
         schema: str | None = None,
-    ) -> SignalSpec:
+    ) -> SignalSpec[object]:
         return cls(SignalKind.EVENT, format, role=role, schema=schema)
 
     @classmethod
     def metrics(
         cls, *, role: str | None = None, schema: str | None = None
-    ) -> SignalSpec:
+    ) -> SignalSpec[object]:
         return cls(SignalKind.METRICS, role=role, schema=schema)
 
     @classmethod
     def control(
         cls, *, role: str | None = None, schema: str | None = None
-    ) -> SignalSpec:
+    ) -> SignalSpec[object]:
         return cls(SignalKind.CONTROL, role=role, schema=schema)
 
     @classmethod
@@ -176,8 +202,11 @@ class SignalSpec:
         *,
         role: str | None = None,
         schema: str | None = None,
-    ) -> SignalSpec:
-        return cls(SignalKind.BINARY, format, role=role, schema=schema)
+    ) -> SignalSpec[bytes]:
+        return cast(
+            SignalSpec[bytes],
+            cls(SignalKind.BINARY, format, role=role, schema=schema),
+        )
 
     @classmethod
     def custom(
@@ -186,7 +215,7 @@ class SignalSpec:
         *,
         role: str | None = None,
         schema: str | None = None,
-    ) -> SignalSpec:
+    ) -> SignalSpec[object]:
         return cls(
             SignalKind.CUSTOM,
             custom_id=signal_id,
@@ -202,7 +231,7 @@ class SignalSpec:
     def is_audio(self) -> bool:
         return self._native.is_audio
 
-    def is_compatible_with(self, other: SignalSpec) -> bool:
+    def is_compatible_with(self, other: SignalSpec[object]) -> bool:
         return self._native.is_compatible_with(other._native)
 
 
@@ -221,6 +250,14 @@ class ChannelLayout(StrEnum):
     MONO = "mono"
     STEREO = "stereo"
     ANY = "any"
+
+    @property
+    def channel_count(self) -> int | None:
+        if self is ChannelLayout.MONO:
+            return 1
+        if self is ChannelLayout.STEREO:
+            return 2
+        return None
 
 
 class SampleFormat(StrEnum):
@@ -299,7 +336,7 @@ class MediaCaps:
         return cls(MediaKind.ANY)
 
     @classmethod
-    def for_signal(cls, signal: SignalSpec) -> MediaCaps:
+    def for_signal(cls, signal: SignalSpec[object]) -> MediaCaps:
         """Select the canonical wildcard media contract for a signal."""
         if signal.kind is SignalKind.PCM_AUDIO:
             return cls.audio()
@@ -325,7 +362,12 @@ class MediaCaps:
     def is_compatible_with(self, other: MediaCaps) -> bool:
         return self._native.is_compatible_with(other._native)
 
-    def supports_signal(self, signal: SignalSpec) -> bool:
+    def negotiate(self, other: MediaCaps) -> MediaCaps | None:
+        """Return Core's narrow compatible media contract, if one exists."""
+        native = self._native.negotiate(other._native)
+        return None if native is None else type(self)._from_native(native)
+
+    def supports_signal(self, signal: SignalSpec[object]) -> bool:
         return self._native.supports_signal(signal._native)
 
 
@@ -345,7 +387,7 @@ class PortSpec:
 
     name: str
     direction: PortDirection
-    signal: SignalSpec
+    signal: SignalSpec[object]
     media: MediaCaps
     multiplicity: Multiplicity = Multiplicity.ONE
     required: bool = True
@@ -368,7 +410,7 @@ class PortSpec:
     def input(
         cls,
         name: str,
-        signal: SignalSpec,
+        signal: SignalSpec[object],
         *,
         media: MediaCaps | None = None,
         multiplicity: Multiplicity = Multiplicity.ONE,
@@ -388,7 +430,7 @@ class PortSpec:
     def output(
         cls,
         name: str,
-        signal: SignalSpec,
+        signal: SignalSpec[object],
         *,
         media: MediaCaps | None = None,
         multiplicity: Multiplicity = Multiplicity.ONE,
@@ -411,6 +453,10 @@ class ClockDomain(StrEnum):
     NETWORK = "network"
     INHERITED = "inherited"
     WALLCLOCK = "wallclock"
+
+    @property
+    def is_realtime(self) -> bool:
+        return self in {ClockDomain.CAPTURE, ClockDomain.PLAYBACK}
 
 
 class BackpressurePolicy(StrEnum):
@@ -442,6 +488,14 @@ class EdgeObservabilityLevel(StrEnum):
     OFF = "off"
     COUNTERS = "counters"
     FULL = "full"
+
+    @property
+    def rank(self) -> int:
+        return {
+            EdgeObservabilityLevel.OFF: 0,
+            EdgeObservabilityLevel.COUNTERS: 1,
+            EdgeObservabilityLevel.FULL: 2,
+        }[self]
 
 
 @dataclass(frozen=True, slots=True)
@@ -524,7 +578,12 @@ ConfigurationInput: TypeAlias = Mapping[str, str] | Iterable[tuple[str, str]]
 
 
 def _configuration_items(values: ConfigurationInput) -> tuple[tuple[str, str], ...]:
-    entries = values.items() if isinstance(values, Mapping) else values
+    entries = tuple(values.items() if isinstance(values, Mapping) else values)
+    seen: set[str] = set()
+    for key, _value in entries:
+        if key in seen:
+            raise ValueError(f"duplicate configuration key {key!r}")
+        seen.add(key)
     return tuple(sorted(entries))
 
 
@@ -609,16 +668,17 @@ class Endpoint:
         self._native = native
 
     @property
-    def id(self) -> int:
-        return self._native.id
+    def id(self) -> EndpointId:
+        return EndpointId(self._native.id)
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     @property
-    def connector_id(self) -> int | None:
-        return self._native.connector_id
+    def connector_id(self) -> ConnectorId | None:
+        value = self._native.connector_id
+        return None if value is None else ConnectorId(value)
 
 
 class OperatorInput:
@@ -643,12 +703,12 @@ class OperatorInstance:
         self._native = native
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     @property
-    def instance_id(self) -> int:
-        return self._native.instance_id
+    def instance_id(self) -> OperatorInstanceId:
+        return OperatorInstanceId(self._native.instance_id)
 
     def input(self, port_name: str) -> OperatorInput:
         return _native_call(lambda: OperatorInput(self._native.input(port_name)))
@@ -662,13 +722,15 @@ class _RoutableStream:
 
     _native: _NativeStem | _NativeDerivedStream | _NativeSourceOutput
 
-    def send(self, endpoint: Endpoint, *, input_port: str | None = None) -> int:
+    def send(self, endpoint: Endpoint, *, input_port: str | None = None) -> RouteId:
         if input_port is None:
-            return _native_call(lambda: self._native.send(endpoint._native))
-        return _native_call(lambda: self._native.send_to(endpoint._native, input_port))
+            return RouteId(_native_call(lambda: self._native.send(endpoint._native)))
+        return RouteId(
+            _native_call(lambda: self._native.send_to(endpoint._native, input_port))
+        )
 
-    def connect(self, input: OperatorInput) -> int:
-        return _native_call(lambda: self._native.connect(input._native))
+    def connect(self, input: OperatorInput) -> RouteId:
+        return RouteId(_native_call(lambda: self._native.connect(input._native)))
 
     def through(
         self,
@@ -699,12 +761,12 @@ class Stem(_RoutableStream):
         self._native = native
 
     @property
-    def id(self) -> int:
-        return self._native.id
+    def id(self) -> StemId:
+        return StemId(self._native.id)
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     def record(self, stem_name: str) -> Endpoint:
         return _native_call(lambda: Endpoint(self._native.record(stem_name)))
@@ -716,7 +778,7 @@ class Stem(_RoutableStream):
         if not isinstance(publisher, RelayPublisher):
             raise TypeError("publisher must be a RelayPublisher")
         route_id = _native_call(lambda: self._native.publish(publisher._native, bus_id))
-        return RelayRoute(bus_id=bus_id, route_id=route_id)
+        return RelayRoute(bus_id=bus_id, route_id=RouteId(route_id))
 
 
 class DerivedStream(_RoutableStream):
@@ -729,12 +791,12 @@ class DerivedStream(_RoutableStream):
         self._native = native
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     @property
-    def operator_instance_id(self) -> int:
-        return self._native.operator_instance_id
+    def operator_instance_id(self) -> OperatorInstanceId:
+        return OperatorInstanceId(self._native.operator_instance_id)
 
     @property
     def output_port(self) -> str | None:
@@ -757,16 +819,16 @@ class SourceInstance:
         self._native = native
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     @property
-    def instance_id(self) -> int:
-        return self._native.instance_id
+    def instance_id(self) -> SourceInstanceId:
+        return SourceInstanceId(self._native.instance_id)
 
     @property
-    def source_id(self) -> int:
-        return self._native.source_id
+    def source_id(self) -> SourceId:
+        return SourceId(self._native.source_id)
 
     def output(self, port_name: str) -> SourceOutput:
         return _native_call(lambda: SourceOutput(self._native.output(port_name)))
@@ -782,20 +844,20 @@ class SourceOutput(_RoutableStream):
         self._native = native
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     @property
-    def source_instance_id(self) -> int:
-        return self._native.source_instance_id
+    def source_instance_id(self) -> SourceInstanceId:
+        return SourceInstanceId(self._native.source_instance_id)
 
     @property
-    def source_id(self) -> int:
-        return self._native.source_id
+    def source_id(self) -> SourceId:
+        return SourceId(self._native.source_id)
 
     @property
-    def stream_id(self) -> int:
-        return self._native.stream_id
+    def stream_id(self) -> StreamId:
+        return StreamId(self._native.stream_id)
 
     @property
     def output_port(self) -> str:
@@ -811,7 +873,7 @@ class SourceOutput(_RoutableStream):
         if not isinstance(publisher, RelayPublisher):
             raise TypeError("publisher must be a RelayPublisher")
         route_id = _native_call(lambda: self._native.publish(publisher._native, bus_id))
-        return RelayRoute(bus_id=bus_id, route_id=route_id)
+        return RelayRoute(bus_id=bus_id, route_id=RouteId(route_id))
 
 
 class _GraphSessionDeclarations:
@@ -820,9 +882,9 @@ class _GraphSessionDeclarations:
     _native: _NativeSession
 
     @property
-    def id(self) -> int:
+    def id(self) -> RuntimeSessionId:
         """Stable identity allocated by the canonical Rust Session."""
-        return self._native.id
+        return RuntimeSessionId(self._native.id)
 
     def source(
         self,
@@ -871,9 +933,9 @@ class _GraphSessionDeclarations:
         self,
         stream: DerivedStream | SourceOutput,
         *,
-        signal: SignalSpec,
+        signal: SignalSpec[_PayloadT],
         edge: EdgeContract | None = None,
-    ) -> BusSubscription:
+    ) -> BusSubscription[_PayloadT]:
         """Declare one bounded, exclusive typed-signal subscription.
 
         The subscription is a real endpoint in the canonical Rust Session.
@@ -929,7 +991,7 @@ def _media_from_native(native: _NativeMediaCaps) -> MediaCaps:
     return MediaCaps(kind)
 
 
-def _media_for_signal(signal: SignalSpec) -> MediaCaps:
+def _media_for_signal(signal: SignalSpec[object]) -> MediaCaps:
     if signal.kind is SignalKind.PCM_AUDIO:
         return MediaCaps.audio()
     if signal.kind is SignalKind.ENCODED_AUDIO:

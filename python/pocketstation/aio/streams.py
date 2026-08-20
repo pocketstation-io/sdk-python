@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Generic, TypeVar, cast
 
 from .._native import AudioBatch, AudioFrame, _SignalRead, _SignalSubscriptionMetrics
 from ..errors import StreamError
@@ -16,10 +17,13 @@ from ..signal import (
 )
 from ..streams import (
     _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    AudioBatchReadResult,
     _iteration_timeout_milliseconds,
     _ReaderState,
     _timeout_milliseconds,
 )
+
+_PayloadT = TypeVar("_PayloadT")
 
 
 class AudioStream:
@@ -63,12 +67,35 @@ class AudioStream:
         finally:
             self._state.release(token)
 
+    async def poll(self) -> AudioBatchReadResult:
+        """Read immediately with distinct batch, empty, and closed outcomes."""
+        token = self._state.claim("batches")
+        try:
+            if self.is_closed:
+                return STREAM_EOF
+            batch = await self._poll_batch()
+            return STREAM_EOF if batch is None and self.is_closed else batch
+        finally:
+            self._state.release(token)
+
     async def read_batch(self, *, timeout_s: float = 1.0) -> AudioBatch | None:
         """Advanced bounded batch read using the exclusive batch mode."""
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("batches")
         try:
             return None if self.is_closed else await self._wait_batch(timeout_ms)
+        finally:
+            self._state.release(token)
+
+    async def read_result(self, *, timeout_s: float = 1.0) -> AudioBatchReadResult:
+        """Wait finitely with distinct batch, timeout, and closed outcomes."""
+        timeout_ms = _timeout_milliseconds(timeout_s)
+        token = self._state.claim("batches")
+        try:
+            if self.is_closed:
+                return STREAM_EOF
+            batch = await self._wait_batch(timeout_ms)
+            return STREAM_EOF if batch is None and self.is_closed else batch
         finally:
             self._state.release(token)
 
@@ -129,7 +156,7 @@ class AudioStream:
         return self._pending_frames.popleft()
 
 
-class SignalStream:
+class SignalStream(Generic[_PayloadT]):
     """Cancellation-safe asyncio view of one native ``BusSubscription``."""
 
     def __init__(
@@ -155,7 +182,7 @@ class SignalStream:
     def is_closed(self) -> bool:
         return self._closed
 
-    async def poll(self) -> SignalReadResult:
+    async def poll(self) -> SignalReadResult[_PayloadT]:
         token = self._state.claim("signal_read")
         try:
             return (
@@ -164,7 +191,7 @@ class SignalStream:
         finally:
             self._state.release(token)
 
-    async def read(self, *, timeout_s: float = 1.0) -> SignalReadResult:
+    async def read(self, *, timeout_s: float = 1.0) -> SignalReadResult[_PayloadT]:
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("signal_read")
         try:
@@ -176,17 +203,17 @@ class SignalStream:
         finally:
             self._state.release(token)
 
-    def __aiter__(self) -> AsyncIterator[SignalEnvelope]:
+    def __aiter__(self) -> AsyncIterator[SignalEnvelope[_PayloadT]]:
         return self.iter_signals()
 
     def iter_signals(
         self,
         *,
         wait_timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
-    ) -> AsyncIterator[SignalEnvelope]:
+    ) -> AsyncIterator[SignalEnvelope[_PayloadT]]:
         timeout_ms = _iteration_timeout_milliseconds(wait_timeout_s)
 
-        async def iterate() -> AsyncIterator[SignalEnvelope]:
+        async def iterate() -> AsyncIterator[SignalEnvelope[_PayloadT]]:
             token = self._state.claim("signals")
             try:
                 while not self._closed:
@@ -210,14 +237,17 @@ class SignalStream:
         """Snapshot capacity, payload-byte bounds, depth, delivery, and drops."""
         return SignalSubscriptionMetrics._from_native(await self._signal_metrics())
 
-    def _decode(self, result: _SignalRead) -> SignalReadResult:
+    def _decode(self, result: _SignalRead) -> SignalReadResult[_PayloadT]:
         if result.status == "item":
             if result.envelope is None:
                 raise StreamError(
                     "native signal read omitted its envelope",
                     "stream.invalid_read",
                 )
-            return SignalEnvelope._from_native(result.envelope)
+            return cast(
+                SignalEnvelope[_PayloadT],
+                SignalEnvelope._from_native(result.envelope),
+            )
         if result.status == "empty":
             return None
         if result.status == "closed":
@@ -235,4 +265,4 @@ class SignalStream:
         )
 
 
-__all__ = ["AudioStream", "SignalStream"]
+__all__ = ["AudioBatchReadResult", "AudioStream", "SignalStream"]

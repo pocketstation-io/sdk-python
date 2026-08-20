@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import sys
 
-import pytest
-
 import pocketstation
-from pocketstation import PermissionObservation
+import pytest
+from pocketstation import (
+    CapturePermissionLifecycle,
+    CapturePermissionTransitionKind,
+    PermissionObservation,
+)
 
 
 def test_permission_observation_is_typed_and_has_no_prompt_api() -> None:
@@ -27,6 +30,27 @@ def test_permission_states_do_not_collapse_to_a_boolean() -> None:
         "not-applicable",
     }
     assert not issubclass(PermissionObservation, bool)
+
+
+def test_permission_lifecycle_preserves_transitions_and_epochs() -> None:
+    lifecycle = CapturePermissionLifecycle(PermissionObservation.ALLOWED)
+
+    assert lifecycle.current is PermissionObservation.ALLOWED
+    assert lifecycle.permission_epoch == 1
+    assert lifecycle.observe(PermissionObservation.ALLOWED) is None
+
+    revoked = lifecycle.observe(PermissionObservation.REVOKED)
+    assert revoked is not None
+    assert revoked.kind is CapturePermissionTransitionKind.REVOKED
+    assert revoked.previous is PermissionObservation.ALLOWED
+    assert revoked.current is PermissionObservation.REVOKED
+    assert revoked.permission_epoch == 2
+    assert lifecycle.permission_epoch == 2
+
+    changed = lifecycle.observe(PermissionObservation.NOT_DETERMINED)
+    assert changed is not None
+    assert changed.kind is CapturePermissionTransitionKind.CHANGED
+    assert changed.permission_epoch == 3
 
 
 def test_linux_truth_is_not_reinterpreted_as_allowed_or_denied() -> None:

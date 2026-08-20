@@ -68,9 +68,12 @@ class AudioInput(PcmSource):
         timeout_s: float = 1.0,
     ) -> None:
         """Wait finitely for one native buffer without growing a Python queue."""
+        if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)):
+            raise TypeError("timeout_s must be a number")
         if not 0 <= timeout_s <= 60:
             raise ValueError("timeout_s must be between 0 and 60")
-        deadline = monotonic() + timeout_s
+        deadline = monotonic() + float(timeout_s)
+        wait_s = 0.000_25
         while True:
             try:
                 await self.try_write(samples, discontinuity=discontinuity)
@@ -79,7 +82,8 @@ class AudioInput(PcmSource):
                 remaining = deadline - monotonic()
                 if remaining <= 0:
                     raise
-                await asyncio.sleep(min(0.001, remaining))
+                await asyncio.sleep(min(wait_s, remaining))
+                wait_s = min(wait_s * 2, 0.005)
 
 
 __all__ = ["AudioInput", "PcmSource"]

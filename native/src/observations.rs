@@ -67,6 +67,10 @@ impl PythonRecordingStemOutcome {
 #[pyclass(name = "RecordingOutcome", frozen)]
 pub(crate) struct PythonRecordingOutcome {
     #[pyo3(get)]
+    session_id: u64,
+    #[pyo3(get)]
+    group_id: String,
+    #[pyo3(get)]
     complete: bool,
     #[pyo3(get)]
     state: String,
@@ -76,6 +80,10 @@ pub(crate) struct PythonRecordingOutcome {
     failed_stems: usize,
     #[pyo3(get)]
     session_directory: String,
+    #[pyo3(get)]
+    manifest_path: String,
+    #[pyo3(get)]
+    manifest_schema_version: u32,
     #[pyo3(get)]
     error_code: Option<String>,
     stems: Vec<Py<PythonRecordingStemOutcome>>,
@@ -140,6 +148,8 @@ pub(crate) struct PythonSessionFailure {
     retryability: Option<String>,
     #[pyo3(get)]
     component: Option<String>,
+    #[pyo3(get)]
+    component_kind: Option<String>,
     #[pyo3(get)]
     message: Option<String>,
     #[pyo3(get)]
@@ -771,6 +781,42 @@ pub(crate) struct PythonSessionTraceValidation {
     records_validated_total: u64,
 }
 
+#[pyclass(name = "SessionTraceRecord", frozen)]
+pub(crate) struct PythonSessionTraceRecord {
+    #[pyo3(get)]
+    sequence_index: u64,
+    #[pyo3(get)]
+    observed_at_ns: u64,
+    #[pyo3(get)]
+    session_id: u64,
+    #[pyo3(get)]
+    kind: String,
+    #[pyo3(get)]
+    lifecycle_state: Option<String>,
+    #[pyo3(get)]
+    terminal_state: Option<String>,
+    #[pyo3(get)]
+    stem_id: Option<u64>,
+    #[pyo3(get)]
+    route_id: Option<u64>,
+    #[pyo3(get)]
+    endpoint_id: Option<u64>,
+    #[pyo3(get)]
+    endpoint_stage: Option<String>,
+    #[pyo3(get)]
+    rollback_stage: Option<String>,
+    #[pyo3(get)]
+    finalization_stage: Option<String>,
+    #[pyo3(get)]
+    source_failures_total: Option<u64>,
+    #[pyo3(get)]
+    endpoint_failures_total: Option<u64>,
+    #[pyo3(get)]
+    rollback_failures_total: Option<u64>,
+    #[pyo3(get)]
+    finalization_failures_total: Option<u64>,
+}
+
 #[pyclass(name = "SessionTrace", frozen)]
 pub(crate) struct PythonSessionTrace {
     trace: pocketstation::SessionTrace,
@@ -798,6 +844,15 @@ impl PythonSessionTrace {
     #[getter]
     fn records_total(&self) -> usize {
         self.trace.records().len()
+    }
+
+    fn records(&self) -> Vec<PythonSessionTraceRecord> {
+        self.trace
+            .records()
+            .iter()
+            .copied()
+            .map(PythonSessionTraceRecord::from)
+            .collect()
     }
 
     fn validate(&self) -> PyResult<PythonSessionTraceValidation> {
@@ -833,16 +888,21 @@ struct OwnedRecordingDiscontinuity {
 }
 
 pub(crate) struct OwnedRecordingOutcome {
+    session_id: u64,
+    group_id: String,
     pub(crate) complete: bool,
     state: String,
     completed_stems: usize,
     failed_stems: usize,
     session_directory: String,
+    manifest_path: String,
+    manifest_schema_version: u32,
     error_code: Option<String>,
     pub(crate) stems: Vec<OwnedRecordingStemOutcome>,
 }
 
 pub(crate) struct OwnedStopResult {
+    pub(crate) lifecycle_state: &'static str,
     pub(crate) success: bool,
     pub(crate) already_stopped: bool,
     pub(crate) disposition: String,
@@ -894,6 +954,7 @@ struct OwnedSessionFailure {
     error_code: Option<String>,
     retryability: Option<String>,
     component: Option<String>,
+    component_kind: Option<String>,
     message: Option<String>,
     stem_id: Option<u64>,
     route_id: Option<u64>,
@@ -1445,14 +1506,42 @@ fn owned_control_failure(
     stage: Option<String>,
     failure: &pocketstation::SessionControlFailure,
 ) -> OwnedSessionFailure {
-    OwnedSessionFailure {
+    let mut owned = OwnedSessionFailure {
         kind: kind.to_owned(),
         stage,
         operation: Some(failure.operation().to_owned()),
         error_class: Some(failure.error_class().to_owned()),
         component: Some(format!("{:?}", failure.component())),
         ..OwnedSessionFailure::default()
+    };
+    match failure.component() {
+        pocketstation::SessionComponentId::Source { stem_id } => {
+            owned.component_kind = Some("source".to_owned());
+            owned.stem_id = Some(stem_id.get());
+        }
+        pocketstation::SessionComponentId::Endpoint {
+            route_id,
+            endpoint_id,
+        } => {
+            owned.component_kind = Some("endpoint".to_owned());
+            owned.route_id = Some(route_id.get());
+            owned.endpoint_id = Some(endpoint_id.get());
+        }
+        pocketstation::SessionComponentId::Operator {
+            operator_instance_id,
+        } => {
+            owned.component_kind = Some("operator".to_owned());
+            owned.operator_instance_id = Some(operator_instance_id.value());
+        }
+        pocketstation::SessionComponentId::Sidecar { sidecar_id } => {
+            owned.component_kind = Some("sidecar".to_owned());
+            owned.sidecar_id = Some(sidecar_id);
+        }
+        pocketstation::SessionComponentId::Runtime => {
+            owned.component_kind = Some("runtime".to_owned());
+        }
     }
+    owned
 }
 
 fn populate_source_runtime_event(
@@ -1524,6 +1613,7 @@ pub(crate) fn python_session_event(
                     error_code: failure.error_code,
                     retryability: failure.retryability,
                     component: failure.component,
+                    component_kind: failure.component_kind,
                     message: failure.message,
                     stem_id: failure.stem_id,
                     route_id: failure.route_id,
@@ -1830,6 +1920,83 @@ impl From<pocketstation::SessionTraceValidation> for PythonSessionTraceValidatio
     }
 }
 
+impl From<pocketstation::SessionTraceRecord> for PythonSessionTraceRecord {
+    fn from(record: pocketstation::SessionTraceRecord) -> Self {
+        let mut output = Self {
+            sequence_index: record.sequence_index,
+            observed_at_ns: record.observed_at_ns,
+            session_id: record.session_id.get(),
+            kind: String::new(),
+            lifecycle_state: None,
+            terminal_state: None,
+            stem_id: None,
+            route_id: None,
+            endpoint_id: None,
+            endpoint_stage: None,
+            rollback_stage: None,
+            finalization_stage: None,
+            source_failures_total: None,
+            endpoint_failures_total: None,
+            rollback_failures_total: None,
+            finalization_failures_total: None,
+        };
+        match record.kind {
+            pocketstation::SessionTraceRecordKind::Lifecycle { state } => {
+                output.kind = "lifecycle".to_owned();
+                output.lifecycle_state = Some(lifecycle_state_name(state).to_owned());
+            }
+            pocketstation::SessionTraceRecordKind::SourceFailure { stem_id } => {
+                output.kind = "source-failure".to_owned();
+                output.stem_id = Some(stem_id.get());
+            }
+            pocketstation::SessionTraceRecordKind::EndpointFailure {
+                route_id,
+                endpoint_id,
+                stage_code,
+            } => {
+                output.kind = "endpoint-failure".to_owned();
+                output.route_id = Some(route_id.get());
+                output.endpoint_id = Some(endpoint_id.get());
+                output.endpoint_stage = endpoint_trace_stage_name(stage_code).map(str::to_owned);
+            }
+            pocketstation::SessionTraceRecordKind::RollbackFailure { stage } => {
+                output.kind = "rollback-failure".to_owned();
+                output.rollback_stage = Some(rollback_stage_name(stage));
+            }
+            pocketstation::SessionTraceRecordKind::FinalizationFailure { stage } => {
+                output.kind = "finalization-failure".to_owned();
+                output.finalization_stage = Some(finalization_stage_name(stage));
+            }
+            pocketstation::SessionTraceRecordKind::Terminal {
+                state,
+                source_failures_total,
+                endpoint_failures_total,
+                rollback_failures_total,
+                finalization_failures_total,
+            } => {
+                output.kind = "terminal".to_owned();
+                output.terminal_state = Some(terminal_state_name(state).to_owned());
+                output.source_failures_total = Some(source_failures_total);
+                output.endpoint_failures_total = Some(endpoint_failures_total);
+                output.rollback_failures_total = Some(rollback_failures_total);
+                output.finalization_failures_total = Some(finalization_failures_total);
+            }
+        }
+        output
+    }
+}
+
+const fn endpoint_trace_stage_name(stage_code: u8) -> Option<&'static str> {
+    match stage_code {
+        1 => Some("prepare"),
+        2 => Some("cancel-preparation"),
+        3 => Some("start"),
+        4 => Some("request-stop"),
+        5 => Some("join-finalize"),
+        _ => None,
+    }
+}
+
 fn session_trace_validation_error(error: pocketstation::SessionTraceValidationError) -> PyErr {
     let code = match &error {
         pocketstation::SessionTraceValidationError::Io(_) => "trace.io",
@@ -2043,11 +2210,15 @@ pub(crate) fn owned_recording_outcome(
         })
         .collect();
     Some(OwnedRecordingOutcome {
+        session_id: outcome.session_id.get(),
+        group_id: outcome.group_id.as_str().to_owned(),
         complete: outcome.state == pocketstation::SessionRecordingState::Complete,
         state: format!("{:?}", outcome.state).to_lowercase(),
         completed_stems: outcome.completed_stems,
         failed_stems: outcome.failed_stems,
         session_directory: outcome.session_dir.display().to_string(),
+        manifest_path: outcome.manifest_path.display().to_string(),
+        manifest_schema_version: outcome.manifest_schema_version,
         error_code: pocketstation::session_recording_outcome_error_code(outcome)
             .map(|code| code.as_str().to_owned()),
         stems,
@@ -2101,11 +2272,15 @@ pub(crate) fn python_recording_outcome(
     Py::new(
         py,
         PythonRecordingOutcome {
+            session_id: outcome.session_id,
+            group_id: outcome.group_id,
             complete: outcome.complete,
             state: outcome.state,
             completed_stems: outcome.completed_stems,
             failed_stems: outcome.failed_stems,
             session_directory: outcome.session_directory,
+            manifest_path: outcome.manifest_path,
+            manifest_schema_version: outcome.manifest_schema_version,
             error_code: outcome.error_code,
             stems,
         },
@@ -2132,6 +2307,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PythonAudioReentryMetrics>()?;
     module.add_class::<PythonSessionTraceRecorderOutcome>()?;
     module.add_class::<PythonSessionTraceValidation>()?;
+    module.add_class::<PythonSessionTraceRecord>()?;
     module.add_class::<PythonSessionTrace>()?;
     Ok(())
 }

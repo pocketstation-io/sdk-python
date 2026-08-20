@@ -6,6 +6,7 @@ from pathlib import Path
 from time import monotonic
 
 import pocketstation as pks
+import pytest
 from pocketstation._native import Session as NativeSession
 
 ROOT = Path(__file__).parents[1]
@@ -14,6 +15,8 @@ CHILD = Path(__file__).with_name("_pkss_child.py")
 
 
 def session_with_hung_sidecar(tmp_path: Path) -> pks.RunningSession:
+    if not hasattr(NativeSession, "conformance"):
+        pytest.skip("native extension was not built with conformance-fixtures")
     session = pks.Session._from_native(NativeSession.conformance(tmp_path))
     audio = session.polled_audio()
     session.capture(pks.Source.application("PocketStation Python Fixture")).send(audio)

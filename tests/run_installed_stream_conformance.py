@@ -11,14 +11,22 @@ import tempfile
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-TESTS = (
-    REPOSITORY / "tests" / "test_streams.py",
-    REPOSITORY / "tests" / "test_aio_streams.py",
-    REPOSITORY / "tests" / "test_connector.py",
-    REPOSITORY / "tests" / "test_source_authoring.py",
-    REPOSITORY / "tests" / "test_operator_authoring.py",
-    REPOSITORY / "tests" / "test_aio_session.py",
-    REPOSITORY / "tests" / "test_transcription_example.py",
+TEST_CASES = (
+    "tests/test_streams.py::test_read_and_batch_modes_use_canonical_native_session",
+    "tests/test_streams.py::test_audio_batch_result_distinguishes_empty_timeout_and_closed",
+    "tests/test_aio_streams.py::test_async_read_and_batch_modes_use_canonical_native_session",
+    "tests/test_aio_streams.py::test_async_audio_batch_result_distinguishes_states",
+    "tests/test_sources.py::test_application_owned_pcm_uses_the_canonical_source_and_recording_path",
+    "tests/test_aio_session.py::test_application_owned_pcm_has_an_async_writer",
+    "tests/test_source_authoring.py::test_iterable_source_runs_in_core_and_receives_session_lineage",
+    "tests/test_source_authoring.py::test_async_iterable_source_runs_on_the_owning_event_loop",
+    "tests/test_operator_authoring.py::test_python_operator_processes_source_signal_with_derivation",
+    "tests/test_operator_authoring.py::test_async_operator_runs_on_owning_loop",
+    "tests/test_connector.py::test_connector_worker_receives_finite_native_owned_batches",
+    "tests/test_aio_session.py::test_async_connector_worker_receives_finite_native_batches",
+    "tests/test_audio_bridge.py::test_given_pcm_iterable_when_bridge_runs_then_core_drains_one_connector",
+    "tests/test_aio_audio_bridge.py::test_given_async_pcm_when_bridge_runs_then_core_drains_connector",
+    "tests/test_source_aware_transcription_example.py::test_two_source_lanes_keep_identity_through_one_model_operator",
 )
 
 
@@ -95,19 +103,7 @@ def main() -> int:
                 "pytest",
                 "-q",
                 "--import-mode=importlib",
-                *(os.fspath(test) for test in TESTS),
-                "-k",
-                (
-                    "canonical_native_session or "
-                    "connector_worker_receives_finite_native_owned_batches or "
-                    "async_connector_worker_receives_finite_native_batches or "
-                    "iterable_source_runs_in_core or "
-                    "async_iterable_source_runs_on_the_owning_event_loop or "
-                    "python_operator_processes_source_signal_with_derivation or "
-                    "async_operator_runs_on_owning_loop or "
-                    "whisper_example_declares_a_bounded_source_aware_operator or "
-                    "real_whisper_process_preserves_source_identity"
-                ),
+                *(os.fspath(REPOSITORY / test_case) for test_case in TEST_CASES),
                 "-rs",
             ],
             cwd=root,

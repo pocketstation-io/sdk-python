@@ -1,6 +1,5 @@
 use std::sync::mpsc::{sync_channel, SyncSender};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use pocketstation::PolledAudioPollError;
 use pyo3::exceptions::{PyIndexError, PyRuntimeError};
@@ -8,6 +7,51 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyMemoryView};
 
 use crate::session::SessionCommand;
+
+#[derive(Clone, Copy)]
+#[pyclass(name = "ClockDomainDescriptor", frozen)]
+pub(crate) struct PythonClockDomainDescriptor {
+    #[pyo3(get)]
+    id: u32,
+    #[pyo3(get)]
+    kind: &'static str,
+    #[pyo3(get)]
+    origin: &'static str,
+    #[pyo3(get)]
+    tick_rate_hz: Option<u64>,
+}
+
+#[pymethods]
+impl PythonClockDomainDescriptor {
+    fn __eq__(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.kind == other.kind
+            && self.origin == other.origin
+            && self.tick_rate_hz == other.tick_rate_hz
+    }
+}
+
+pub(crate) fn clock_domain_descriptor(
+    id: pocketstation::ClockDomainId,
+) -> PythonClockDomainDescriptor {
+    let descriptor = pocketstation::timing::describe_clock_domain(id);
+    let kind = match descriptor.kind() {
+        pocketstation::timing::ClockDomainKind::Unspecified => "unspecified",
+        pocketstation::timing::ClockDomainKind::ProcessMonotonic => "process-monotonic",
+        pocketstation::timing::ClockDomainKind::ProviderDefined => "provider-defined",
+    };
+    let origin = match descriptor.origin() {
+        pocketstation::timing::ClockDomainOrigin::Unspecified => "unspecified",
+        pocketstation::timing::ClockDomainOrigin::ProcessStart => "process-start",
+        pocketstation::timing::ClockDomainOrigin::ProviderDefined => "provider-defined",
+    };
+    PythonClockDomainDescriptor {
+        id: descriptor.id().get(),
+        kind,
+        origin,
+        tick_rate_hz: descriptor.tick_rate_hz(),
+    }
+}
 
 #[pyclass(name = "AudioFrame", frozen)]
 pub(crate) struct PythonAudioFrame {
@@ -27,8 +71,7 @@ pub(crate) struct PythonAudioFrame {
     stem_id: u64,
     #[pyo3(get)]
     clock_id: u32,
-    #[pyo3(get)]
-    sequence_num: u64,
+    sequence_number: u64,
     #[pyo3(get)]
     timestamp_start_ns: u64,
     #[pyo3(get)]
@@ -42,9 +85,17 @@ pub(crate) struct PythonAudioFrame {
     #[pyo3(get)]
     endpoint_id: u64,
     #[pyo3(get)]
-    connector_id: u64,
+    connector_id: Option<u64>,
     #[pyo3(get)]
     route_id: u64,
+    #[pyo3(get)]
+    route_enqueued_at_ns: u64,
+    #[pyo3(get)]
+    route_received_at_ns: u64,
+    #[pyo3(get)]
+    endpoint_enqueued_at_ns: Option<u64>,
+    #[pyo3(get)]
+    polled_at_ns: Option<u64>,
 }
 
 #[pymethods]
@@ -54,7 +105,7 @@ impl PythonAudioFrame {
             "AudioFrame(stem_id={}, source_id={}, sequence_number={}, timestamp_start_ns={}, sample_count={}, sample_rate_hz={}, channel_count={}, discontinuity_epoch={})",
             self.stem_id,
             self.source_id,
-            self.sequence_num,
+            self.sequence_number,
             self.timestamp_start_ns,
             self.sample_count,
             self.sample_rate_hz,
@@ -88,7 +139,12 @@ impl PythonAudioFrame {
 
     #[getter]
     const fn sequence_number(&self) -> u64 {
-        self.sequence_num
+        self.sequence_number
+    }
+
+    #[getter]
+    fn clock(&self) -> PythonClockDomainDescriptor {
+        clock_domain_descriptor(pocketstation::ClockDomainId::new(self.clock_id))
     }
 }
 
@@ -130,15 +186,19 @@ pub(crate) struct OwnedAudioFrame {
     pub(crate) source_id: u64,
     pub(crate) stem_id: u64,
     pub(crate) clock_id: u32,
-    pub(crate) sequence_num: u64,
+    pub(crate) sequence_number: u64,
     pub(crate) timestamp_start_ns: u64,
     pub(crate) duration_ns: u64,
     pub(crate) source_generation: u32,
     pub(crate) discontinuity_epoch: u64,
     pub(crate) permission_epoch: u64,
     pub(crate) endpoint_id: u64,
-    pub(crate) connector_id: u64,
+    pub(crate) connector_id: Option<u64>,
     pub(crate) route_id: u64,
+    pub(crate) route_enqueued_at_ns: u64,
+    pub(crate) route_received_at_ns: u64,
+    pub(crate) endpoint_enqueued_at_ns: Option<u64>,
+    pub(crate) polled_at_ns: Option<u64>,
 }
 
 pub(crate) fn request_audio_batch(
@@ -176,6 +236,12 @@ pub(crate) fn copy_audio_batch(
         Err(PolledAudioPollError::Empty) => return Ok(None),
         Err(error) => return Err(error.to_string()),
     };
+    copy_polled_audio_batch(batch).map(Some)
+}
+
+fn copy_polled_audio_batch(
+    batch: pocketstation::PolledAudioBatchLease,
+) -> Result<Vec<OwnedAudioFrame>, String> {
     let mut frames = Vec::with_capacity(batch.len());
     for index in 0..batch.len() {
         let frame = batch
@@ -192,31 +258,34 @@ pub(crate) fn copy_audio_batch(
             source_id: lineage.source_id().get(),
             stem_id: lineage.stem_id().get(),
             clock_id: lineage.clock_id().get(),
-            sequence_num: lineage.sequence_number(),
+            sequence_number: lineage.sequence_number(),
             timestamp_start_ns: lineage.timestamp_start_ns(),
             duration_ns: lineage.duration_ns(),
             source_generation: lineage.source_generation(),
             discontinuity_epoch: lineage.discontinuity_epoch(),
             permission_epoch: lineage.permission_epoch(),
             endpoint_id: frame.endpoint_id().get(),
-            connector_id: frame.connector_id().get(),
+            connector_id: Some(frame.connector_id().get()),
             route_id: frame.route_id().get(),
+            route_enqueued_at_ns: frame.route_enqueued_at_ns(),
+            route_received_at_ns: frame.route_received_at_ns(),
+            endpoint_enqueued_at_ns: Some(frame.endpoint_enqueued_at_ns()),
+            polled_at_ns: Some(frame.polled_at_ns()),
         });
     }
-    Ok(Some(frames))
+    Ok(frames)
 }
 
 pub(crate) fn copy_audio_batch_until(
     running: &pocketstation::RunningSession,
     timeout: Duration,
 ) -> Result<Option<Vec<OwnedAudioFrame>>, String> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        match copy_audio_batch(running)? {
-            Some(batch) => return Ok(Some(batch)),
-            None if Instant::now() < deadline => thread::sleep(Duration::from_millis(1)),
-            None => return Ok(None),
-        }
+    match running
+        .wait_audio(timeout)
+        .map_err(|error| error.to_string())?
+    {
+        Some(batch) => copy_polled_audio_batch(batch).map(Some),
+        None => Ok(None),
     }
 }
 
@@ -241,9 +310,7 @@ pub(crate) fn owned_endpoint_audio_frame(
     owned_endpoint_audio_frame_for_route(
         frame,
         input.endpoint_id().get(),
-        input
-            .connector_id()
-            .map_or(0, pocketstation::ConnectorId::get),
+        input.connector_id().map(pocketstation::ConnectorId::get),
         input.route_id().get(),
     )
 }
@@ -251,9 +318,11 @@ pub(crate) fn owned_endpoint_audio_frame(
 pub(crate) fn owned_endpoint_audio_frame_for_route(
     frame: pocketstation::EndpointAudioFrame,
     endpoint_id: u64,
-    connector_id: u64,
+    connector_id: Option<u64>,
     route_id: u64,
 ) -> OwnedAudioFrame {
+    let route_enqueued_at_ns = frame.route_enqueued_at_ns();
+    let route_received_at_ns = frame.route_received_at_ns();
     let lineage = frame.lineage();
     OwnedAudioFrame {
         samples_f32le: f32_samples_to_le_bytes(frame.samples()),
@@ -265,7 +334,7 @@ pub(crate) fn owned_endpoint_audio_frame_for_route(
         source_id: lineage.source_id().get(),
         stem_id: lineage.stem_id().get(),
         clock_id: lineage.clock_id().get(),
-        sequence_num: lineage.sequence_number(),
+        sequence_number: lineage.sequence_number(),
         timestamp_start_ns: lineage.timestamp_start_ns(),
         duration_ns: lineage.duration_ns(),
         source_generation: lineage.source_generation(),
@@ -274,6 +343,10 @@ pub(crate) fn owned_endpoint_audio_frame_for_route(
         endpoint_id,
         connector_id,
         route_id,
+        route_enqueued_at_ns,
+        route_received_at_ns,
+        endpoint_enqueued_at_ns: None,
+        polled_at_ns: None,
     }
 }
 
@@ -288,7 +361,7 @@ pub(crate) fn python_audio_frame(py: Python<'_>, frame: OwnedAudioFrame) -> Pyth
         source_id: frame.source_id,
         stem_id: frame.stem_id,
         clock_id: frame.clock_id,
-        sequence_num: frame.sequence_num,
+        sequence_number: frame.sequence_number,
         timestamp_start_ns: frame.timestamp_start_ns,
         duration_ns: frame.duration_ns,
         source_generation: frame.source_generation,
@@ -297,6 +370,10 @@ pub(crate) fn python_audio_frame(py: Python<'_>, frame: OwnedAudioFrame) -> Pyth
         endpoint_id: frame.endpoint_id,
         connector_id: frame.connector_id,
         route_id: frame.route_id,
+        route_enqueued_at_ns: frame.route_enqueued_at_ns,
+        route_received_at_ns: frame.route_received_at_ns,
+        endpoint_enqueued_at_ns: frame.endpoint_enqueued_at_ns,
+        polled_at_ns: frame.polled_at_ns,
     }
 }
 
@@ -309,6 +386,7 @@ fn f32_samples_to_le_bytes(samples: &[f32]) -> Vec<u8> {
 }
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<PythonClockDomainDescriptor>()?;
     module.add_class::<PythonAudioFrame>()?;
     module.add_class::<PythonAudioBatch>()?;
     Ok(())

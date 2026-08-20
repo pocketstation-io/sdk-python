@@ -23,6 +23,7 @@ use super::driver::{
 use super::values::{
     configuration_values, PythonConnectorConfigurationValue, PythonConnectorManifest,
 };
+use crate::errors::coded_reason;
 use crate::graph::{PythonEdgeContract, PythonMediaCaps, PythonSignalSpec};
 use crate::signals::{copy_envelope, python_envelope};
 use crate::streams::{owned_endpoint_audio_frame_for_route, python_audio_frame, PythonAudioFrame};
@@ -285,7 +286,7 @@ impl PythonConnectorWorker {
                 let frame = owned_endpoint_audio_frame_for_route(
                     frame,
                     input.endpoint_id,
-                    input.connector_id,
+                    Some(input.connector_id),
                     input.route_id,
                 );
                 let audio: Py<PythonAudioFrame> = Py::new(py, python_audio_frame(py, frame))?;
@@ -548,8 +549,9 @@ pub(crate) fn register_worker_connector(
     maximum_batch_items: usize,
 ) -> PyResult<PythonRegisteredConnector> {
     if !(1..=MAXIMUM_BATCH_ITEMS).contains(&maximum_batch_items) {
-        return Err(PyValueError::new_err(format!(
-            "maximum_batch_items must be between 1 and {MAXIMUM_BATCH_ITEMS}"
+        return Err(PyValueError::new_err(coded_reason(
+            "connector.invalid_contract",
+            format!("maximum_batch_items must be between 1 and {MAXIMUM_BATCH_ITEMS}"),
         )));
     }
     let connector = Connector::new(
@@ -560,9 +562,19 @@ pub(crate) fn register_worker_connector(
             maximum_batch_items,
         }),
     )
-    .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    .map_err(|error| {
+        PyValueError::new_err(coded_reason(
+            "connector.invalid_contract",
+            error.to_string(),
+        ))
+    })?;
     session
         .register_connector(connector)
         .map(|registered| PythonRegisteredConnector { registered })
-        .map_err(|error| PyRuntimeError::new_err(error.to_string()))
+        .map_err(|error| {
+            PyRuntimeError::new_err(coded_reason(
+                "connector.registration_failed",
+                error.to_string(),
+            ))
+        })
 }

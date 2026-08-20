@@ -114,6 +114,14 @@ class RecordingFactory:
         return self.driver
 
 
+class FactoryWithoutValidator:
+    def __init__(self, driver: RecordingDriver) -> None:
+        self.driver = driver
+
+    def create(self, _configuration) -> RecordingDriver:
+        return self.driver
+
+
 def test_driver_source_preparation_validation_and_exact_close() -> None:
     signal = SignalSpec.text()
     driver = RecordingDriver(signal)
@@ -135,6 +143,26 @@ def test_driver_source_preparation_validation_and_exact_close() -> None:
     assert driver.prepared.session_id == session_id
     assert driver.prepared.source_id == instance.source_id
     assert driver.prepared.outputs[0].output_port == "events"
+    assert driver.closed.wait(1.0)
+
+
+def test_source_factory_does_not_require_a_noop_validator() -> None:
+    signal = SignalSpec.text()
+    driver = RecordingDriver(signal)
+    session = Session()
+    instance = session.register_source(
+        SourceProvider.with_driver(
+            text_manifest("io.pocketstation.source.no-validator-test.v1"),
+            FactoryWithoutValidator(driver),
+        )
+    ).declare()
+    subscription = session.subscribe(instance.output("events"), signal=signal)
+
+    with session.start() as running:
+        assert isinstance(
+            running.signals(subscription).read(timeout_s=1.0), SignalEnvelope
+        )
+
     assert driver.closed.wait(1.0)
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TypeVar
 
 _Result = TypeVar("_Result")
@@ -16,6 +17,69 @@ class PocketStationError(Exception):
     def __init__(self, message: str, code: str = "error") -> None:
         super().__init__(message)
         self.code = code
+
+
+class SessionError(PocketStationError):
+    """Base failure from Session declaration, startup, or runtime ownership."""
+
+
+class SessionDeclarationError(SessionError, ValueError):
+    """The Session draft, selector, route, or declaration is invalid."""
+
+
+@dataclass(frozen=True, slots=True)
+class SessionCompileDiagnostic:
+    """Machine-readable location and contract facts for a compile failure."""
+
+    code: str
+    node_index: int | None = None
+    edge_index: int | None = None
+    operator_id: str | None = None
+    operator_instance_id: int | None = None
+    node_type_id: str | None = None
+    source_type_id: str | None = None
+    port_name: str | None = None
+    direction: str | None = None
+    expected: str | None = None
+    actual: str | None = None
+
+
+class SessionStartError(SessionError):
+    """Transactional Session startup failed before delivery became active."""
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "error",
+        *,
+        diagnostic: SessionCompileDiagnostic | None = None,
+    ) -> None:
+        super().__init__(message, code)
+        self.diagnostic = diagnostic
+
+
+class SessionRuntimeError(SessionError):
+    """The running Session or its native owner became unavailable."""
+
+
+class CaptureError(SessionStartError):
+    """Capture authorization, availability, or backend startup failed."""
+
+
+class GraphError(PocketStationError, ValueError):
+    """A graph, signal, port, edge, or media contract is invalid."""
+
+
+class SourceError(PocketStationError):
+    """An externally authored Source contract or lifecycle failed."""
+
+
+class OperatorError(PocketStationError):
+    """An externally authored Operator contract or lifecycle failed."""
+
+
+class ConnectorRuntimeError(PocketStationError):
+    """Connector registration, declaration, or runtime ownership failed."""
 
 
 class StreamError(PocketStationError):
@@ -129,7 +193,100 @@ def _normalize_native_error(error: Exception) -> PocketStationError:
         return AudioInputBufferError(detail, code)
     if code.startswith("audio_input."):
         return AudioInputError(detail, code)
+    if code.startswith("capture."):
+        return CaptureError(detail, code)
+    if code.startswith("graph."):
+        return GraphError(detail, code)
+    if code.startswith("source."):
+        return SourceError(detail, code)
+    if code.startswith("operator."):
+        return OperatorError(detail, code)
+    if code.startswith("connector."):
+        return ConnectorRuntimeError(detail, code)
+    if code.startswith("session.start_") or code in {
+        "session.host_setup_failed",
+        "session.unsupported_platform",
+        "session.declaration_invalid",
+        "session.compile_failed",
+        "session.runtime_prepare_failed",
+        "session.invalid_start_options",
+        "session.unsupported_source_topology",
+        "session.missing_endpoint_declaration",
+        "session.endpoint_prepare_failed",
+        "session.endpoint_start_failed",
+        "session.runtime_start_failed",
+        "session.missing_audio_receipt",
+        "session.missing_recording_configuration",
+        "session.missing_event_receiver",
+        "session.trace_recorder_setup_failed",
+    }:
+        return SessionStartError(
+            detail,
+            code,
+            diagnostic=_native_compile_diagnostic(error),
+        )
+    if code.startswith("session."):
+        declaration_codes = {
+            "session.no_sources",
+            "session.no_routes",
+            "session.no_source_outputs",
+            "session.invalid_selector",
+            "session.invalid_endpoint",
+            "session.invalid_operator",
+            "session.invalid_route",
+            "session.foreign_endpoint",
+            "session.draft_frozen",
+            "session.id_exhausted",
+            "session.unsupported_version",
+            "session.unknown_endpoint",
+            "session.unknown_stem",
+            "session.unknown_source",
+            "session.unknown_operator_instance",
+            "session.operator_has_no_destination",
+        }
+        if code in declaration_codes:
+            return SessionDeclarationError(detail, code)
+        return SessionRuntimeError(detail, code)
     return PocketStationError(detail, code)
+
+
+def _native_optional_string(error: Exception, name: str) -> str | None:
+    value = getattr(error, name, None)
+    return value if isinstance(value, str) else None
+
+
+def _native_optional_integer(error: Exception, name: str) -> int | None:
+    value = getattr(error, name, None)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _native_compile_diagnostic(
+    error: Exception,
+) -> SessionCompileDiagnostic | None:
+    code = _native_optional_string(error, "_pocketstation_compile_code")
+    if code is None:
+        return None
+    return SessionCompileDiagnostic(
+        code=code,
+        node_index=_native_optional_integer(error, "_pocketstation_compile_node_index"),
+        edge_index=_native_optional_integer(error, "_pocketstation_compile_edge_index"),
+        operator_id=_native_optional_string(
+            error, "_pocketstation_compile_operator_id"
+        ),
+        operator_instance_id=_native_optional_integer(
+            error, "_pocketstation_compile_operator_instance_id"
+        ),
+        node_type_id=_native_optional_string(
+            error, "_pocketstation_compile_node_type_id"
+        ),
+        source_type_id=_native_optional_string(
+            error, "_pocketstation_compile_source_type_id"
+        ),
+        port_name=_native_optional_string(error, "_pocketstation_compile_port_name"),
+        direction=_native_optional_string(error, "_pocketstation_compile_direction"),
+        expected=_native_optional_string(error, "_pocketstation_compile_expected"),
+        actual=_native_optional_string(error, "_pocketstation_compile_actual"),
+    )
 
 
 __all__ = [
@@ -138,12 +295,22 @@ __all__ = [
     "AudioInputClosedError",
     "AudioInputError",
     "AudioInputFullError",
+    "CaptureError",
+    "ConnectorRuntimeError",
     "ExtensionError",
+    "GraphError",
+    "OperatorError",
     "PocketStationError",
+    "SessionCompileDiagnostic",
+    "SessionDeclarationError",
+    "SessionError",
+    "SessionRuntimeError",
+    "SessionStartError",
     "SidecarBackpressureError",
     "SidecarError",
     "SidecarProtocolError",
     "SidecarTimeoutError",
+    "SourceError",
     "StreamError",
     "StreamInUseError",
     "StreamModeError",

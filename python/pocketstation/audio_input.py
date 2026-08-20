@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import monotonic, sleep
 
 from ._native import _AudioInput as _NativeAudioInput
 from ._native import _AudioInputObservations as _NativeAudioInputObservations
-from .errors import _native_call
+from .errors import AudioInputFullError, _native_call
 from .graph import SourceOutput
+from .identity import SourceId, StreamId
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,12 +70,12 @@ class PcmSource:
         return self._config
 
     @property
-    def source_id(self) -> int:
-        return self._native.source_id
+    def source_id(self) -> SourceId:
+        return SourceId(self._native.source_id)
 
     @property
-    def stream_id(self) -> int:
-        return self._native.stream_id
+    def stream_id(self) -> StreamId:
+        return StreamId(self._native.stream_id)
 
     @property
     def output(self) -> SourceOutput:
@@ -98,9 +100,49 @@ class PcmSource:
 class AudioInput(PcmSource):
     """Intent-first input for audio already owned by the embedding application."""
 
-    def write(self, samples: object, *, discontinuity: bool = False) -> None:
-        """Submit one complete frame without blocking or growing the queue."""
-        self.try_write(samples, discontinuity=discontinuity)
+    def write(
+        self,
+        samples: object,
+        *,
+        discontinuity: bool = False,
+        timeout_s: float = 1.0,
+    ) -> None:
+        """Wait finitely for one preallocated native buffer.
+
+        This convenience method never grows a Python queue. Advanced callers
+        that need an immediate ``Full`` outcome should use :meth:`try_write`.
+        """
+        _write_with_timeout(
+            self,
+            samples,
+            discontinuity=discontinuity,
+            timeout_s=timeout_s,
+        )
+
+
+def _write_with_timeout(
+    source: PcmSource,
+    samples: object,
+    *,
+    discontinuity: bool,
+    timeout_s: float,
+) -> None:
+    if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)):
+        raise TypeError("timeout_s must be a number")
+    if not 0 <= timeout_s <= 60:
+        raise ValueError("timeout_s must be between 0 and 60")
+    deadline = monotonic() + float(timeout_s)
+    wait_s = 0.000_25
+    while True:
+        try:
+            source.try_write(samples, discontinuity=discontinuity)
+            return
+        except AudioInputFullError:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise
+            sleep(min(wait_s, remaining))
+            wait_s = min(wait_s * 2, 0.005)
 
 
 __all__ = [

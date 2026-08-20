@@ -60,6 +60,9 @@ pub(crate) enum SessionCommand {
         timeout: Duration,
         response: SyncSender<Result<Option<Vec<OwnedAudioFrame>>, String>>,
     },
+    LifecycleState {
+        response: SyncSender<&'static str>,
+    },
     PollEvent {
         response: SyncSender<Result<Option<OwnedSessionEvent>, String>>,
     },
@@ -648,6 +651,7 @@ pub(crate) struct PythonRunningSession {
     worker: Mutex<Option<SessionWorker>>,
     signal_receipts: SignalReceipts,
     session_id: u64,
+    terminal_state: Mutex<Option<&'static str>>,
 }
 
 #[pymethods]
@@ -655,6 +659,46 @@ impl PythonRunningSession {
     #[getter]
     const fn session_id(&self) -> u64 {
         self.session_id
+    }
+
+    #[getter]
+    fn lifecycle_state(&self, py: Python<'_>) -> PyResult<&'static str> {
+        let guard = self
+            .worker
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("running Session state is unavailable"))?;
+        let (response, receiver) = sync_channel(1);
+        let has_worker = guard.is_some();
+        let requested = match guard.as_ref() {
+            Some(worker) => worker
+                .commands
+                .try_send(SessionCommand::LifecycleState { response })
+                .map_err(|error| {
+                    PyRuntimeError::new_err(coded_reason(
+                        "session.lifecycle_unavailable",
+                        format!("native Session lifecycle query is unavailable: {error}"),
+                    ))
+                })
+                .map(|()| true)?,
+            None => false,
+        };
+        drop(guard);
+        if requested {
+            return py
+                .detach(move || receiver.recv_timeout(Duration::from_millis(100)))
+                .map_err(|error| {
+                    PyRuntimeError::new_err(coded_reason(
+                        "session.lifecycle_unavailable",
+                        format!("native Session did not return lifecycle state: {error}"),
+                    ))
+                });
+        }
+        debug_assert!(!has_worker);
+        Ok(self
+            .terminal_state
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("terminal Session state is unavailable"))?
+            .unwrap_or("stopping"))
     }
 
     fn poll_audio(&self, py: Python<'_>) -> PyResult<Option<PythonAudioBatch>> {
@@ -828,7 +872,14 @@ impl PythonRunningSession {
             .map_err(|_| PyRuntimeError::new_err("running Session state is unavailable"))?
             .take()
             .ok_or_else(|| PyRuntimeError::new_err("Session has stopped"))?;
-        let owned = py.detach(|| stop_worker(worker))?;
+        let owned = match py.detach(|| stop_worker(worker)) {
+            Ok(owned) => owned,
+            Err(error) => {
+                self.cache_terminal_state("failed")?;
+                return Err(error);
+            }
+        };
+        self.cache_terminal_state(owned.lifecycle_state)?;
         let recording = owned
             .recording
             .map(|recording| python_recording_outcome(py, recording))
@@ -886,7 +937,14 @@ impl PythonRunningSession {
             .map_err(|_| PyRuntimeError::new_err("running Session state is unavailable"))?
             .take()
             .ok_or_else(|| PyRuntimeError::new_err("Session has stopped"))?;
-        let owned = py.detach(|| cancel_worker(worker))?;
+        let owned = match py.detach(|| cancel_worker(worker)) {
+            Ok(owned) => owned,
+            Err(error) => {
+                self.cache_terminal_state("failed")?;
+                return Err(error);
+            }
+        };
+        self.cache_terminal_state(owned.lifecycle_state)?;
         let recording = owned
             .recording
             .map(|recording| python_recording_outcome(py, recording))
@@ -939,6 +997,15 @@ impl PythonRunningSession {
 }
 
 impl PythonRunningSession {
+    fn cache_terminal_state(&self, state: &'static str) -> PyResult<()> {
+        *self
+            .terminal_state
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("terminal Session state is unavailable"))? =
+            Some(state);
+        Ok(())
+    }
+
     fn request_sidecar_read(
         &self,
         py: Python<'_>,
@@ -1000,6 +1067,7 @@ impl PythonRunningSession {
             })),
             signal_receipts,
             session_id,
+            terminal_state: Mutex::new(None),
         })
     }
 }
@@ -1032,6 +1100,9 @@ fn session_worker(
             }
             SessionCommand::WaitAudio { timeout, response } => {
                 let _ = response.send(copy_audio_batch_until(&running, timeout));
+            }
+            SessionCommand::LifecycleState { response } => {
+                let _ = response.send(core_lifecycle_state_name(running.state()));
             }
             SessionCommand::PollEvent { response } => {
                 let _ = response.send(copy_event(&running));
@@ -1083,6 +1154,7 @@ fn session_worker(
                     pocketstation::SessionStopDisposition::AlreadyStopped
                 );
                 let _ = response.send(OwnedStopResult {
+                    lifecycle_state: core_lifecycle_state_name(running.state()),
                     success: stop.is_success(),
                     already_stopped,
                     disposition: if already_stopped {
@@ -1124,6 +1196,7 @@ fn session_worker(
                     pocketstation::SessionCancelDisposition::AlreadyStopped
                 );
                 let _ = response.send(OwnedStopResult {
+                    lifecycle_state: core_lifecycle_state_name(running.state()),
                     success: cancel.is_success(),
                     already_stopped,
                     disposition: if already_stopped {
@@ -1164,6 +1237,16 @@ fn session_worker(
         }
     }
     let _ = running.stop();
+}
+
+const fn core_lifecycle_state_name(state: pocketstation::SessionLifecycleState) -> &'static str {
+    match state {
+        pocketstation::SessionLifecycleState::Starting => "starting",
+        pocketstation::SessionLifecycleState::Running => "running",
+        pocketstation::SessionLifecycleState::Stopping => "stopping",
+        pocketstation::SessionLifecycleState::Stopped => "stopped",
+        pocketstation::SessionLifecycleState::Failed => "failed",
+    }
 }
 
 pub(crate) fn stop_worker(mut worker: SessionWorker) -> PyResult<OwnedStopResult> {

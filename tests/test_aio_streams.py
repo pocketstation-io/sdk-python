@@ -7,8 +7,7 @@ import threading
 from time import monotonic
 
 import pytest
-
-from pocketstation import StreamInUseError, StreamModeError, _native
+from pocketstation import STREAM_EOF, StreamInUseError, StreamModeError, _native
 from pocketstation.aio import AudioStream, RunningSession
 from pocketstation.aio.session import _native_async
 
@@ -66,6 +65,7 @@ async def test_async_running_session_exposes_the_same_exclusive_stream() -> None
     class NativeRunning:
         def __init__(self) -> None:
             self.batches = [["a"]]
+            self.lifecycle_state = "running"
 
         def poll_audio(self):
             return None
@@ -177,6 +177,29 @@ async def test_async_iteration_rejects_a_busy_poll_timeout() -> None:
     stream, _ = _stream_from_batches([])
     with pytest.raises(ValueError, match=r"at least 0\.001"):
         await anext(stream.frames(wait_timeout_s=0.0))
+
+
+@pytest.mark.asyncio
+async def test_async_audio_batch_result_distinguishes_states() -> None:
+    state = {"closed": False}
+
+    async def empty() -> None:
+        return None
+
+    async def wait_empty(_timeout_ms: int) -> None:
+        return None
+
+    stream = AudioStream(
+        poll_batch=empty,
+        wait_batch=wait_empty,
+        is_closed=lambda: state["closed"],
+    )
+
+    assert await stream.poll() is None
+    assert await stream.read_result(timeout_s=0.001) is None
+    state["closed"] = True
+    assert await stream.poll() is STREAM_EOF
+    assert await stream.read_result(timeout_s=0.001) is STREAM_EOF
 
 
 @pytest.mark.asyncio

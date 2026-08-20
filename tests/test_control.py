@@ -240,9 +240,7 @@ async def test_async_per_request_none_inherits_the_finite_client_timeout() -> No
         observed.append(request.extensions["timeout"]["read"])
         return httpx.Response(201, json=CREATE_RESPONSE)
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(handler)
-    ) as http_client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
         client = AsyncControlClient(
             "https://control.example",
             timeout_seconds=7.0,

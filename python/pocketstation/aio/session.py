@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from .._native import (
     AudioBatch,
@@ -18,19 +18,24 @@ from .._native import (
 from .._native import (
     Session as _NativeSession,
 )
+from .._native import _RegisteredConnector as _NativeRegisteredConnector
 from ..audio_input import AudioInputConfig
 from ..audio_input import PcmSource as SyncPcmSource
 from ..connector import Connector as SyncConnector
+from ..connector import ConnectorConfigurationInput
 from ..connector import RegisteredConnector as SyncRegisteredConnector
 from ..errors import PocketStationError, _native_call, _normalize_native_error
 from ..extensions import NativeExtensionLibrary
 from ..graph import (
+    EdgeContract,
     Endpoint,
     Stem,
     _GraphSessionDeclarations,
 )
+from ..identity import RuntimeSessionId
 from ..observations import (
     SessionEvent,
+    SessionLifecycleState,
     SessionMetrics,
     SessionTraceConfiguration,
     StopResult,
@@ -65,6 +70,7 @@ if TYPE_CHECKING:
     from .relay import RelaySession
 
 _Result = TypeVar("_Result")
+_PayloadT = TypeVar("_PayloadT")
 _BACKGROUND_TASKS: set[asyncio.Task[None]] = set()
 
 
@@ -85,16 +91,24 @@ class RunningSession:
             wait_event=self._wait_event_native,
             is_closed=lambda: self.is_stopped,
         )
-        self._signals: dict[int, SignalStream] = {}
+        self._signals: dict[int, SignalStream[object]] = {}
         self._sidecars: dict[int, SidecarConnection] = {}
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     @property
     def is_stopped(self) -> bool:
-        return self._stop_result is not None
+        return self.state in {
+            SessionLifecycleState.STOPPED,
+            SessionLifecycleState.FAILED,
+        }
+
+    @property
+    def state(self) -> SessionLifecycleState:
+        """Return the native binding owner's authoritative lifecycle state."""
+        return SessionLifecycleState(self._native.lifecycle_state)
 
     @property
     def stop_result(self) -> StopResult | None:
@@ -110,7 +124,9 @@ class RunningSession:
         """The exclusive async lifecycle and failure event stream."""
         return self._events
 
-    def signals(self, subscription: BusSubscription) -> SignalStream:
+    def signals(
+        self, subscription: BusSubscription[_PayloadT]
+    ) -> SignalStream[_PayloadT]:
         """Return the one exclusive asyncio stream for a subscription."""
         stream = self._signals.get(subscription.id)
         if stream is None:
@@ -130,7 +146,7 @@ class RunningSession:
                 ),
             )
             self._signals[subscription.id] = stream
-        return stream
+        return cast(SignalStream[_PayloadT], stream)
 
     def sidecar(self, handle: SidecarHandle) -> SidecarConnection:
         """Return the Session-owned asyncio connection for one child."""
@@ -274,6 +290,14 @@ class Session(_GraphSessionDeclarations):
         )
         self._sample_rate_hz = sample_rate_hz
         self._channels = channels
+        self._connector_registrations: dict[
+            int,
+            tuple[
+                Connector | SyncConnector,
+                SyncConnector,
+                _NativeRegisteredConnector,
+            ],
+        ] = {}
 
     @classmethod
     def _from_native(cls, native: _NativeSession) -> Session:
@@ -282,11 +306,12 @@ class Session(_GraphSessionDeclarations):
         session._native = native
         session._sample_rate_hz = 48_000
         session._channels = 1
+        session._connector_registrations = {}
         return session
 
     @property
-    def id(self) -> int:
-        return self._native.id
+    def id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.id)
 
     def capture(self, source: Source) -> Stem:
         """Declare one independent source-aware stem."""
@@ -339,6 +364,12 @@ class Session(_GraphSessionDeclarations):
         self, connector: Connector | SyncConnector
     ) -> RegisteredConnector:
         """Register an asyncio or synchronous in-process Connector."""
+        identity = id(connector)
+        cached = self._connector_registrations.get(identity)
+        if cached is not None and cached[0] is connector:
+            return RegisteredConnector(
+                SyncRegisteredConnector(self, cached[1], cached[2])
+            )
         bound = (
             connector._bind(asyncio.get_running_loop())
             if isinstance(connector, Connector)
@@ -359,7 +390,18 @@ class Session(_GraphSessionDeclarations):
                     maximum_batch_items,
                 )
             )
+        self._connector_registrations[identity] = (connector, bound, native)
         return RegisteredConnector(SyncRegisteredConnector(self, bound, native))
+
+    def destination(
+        self,
+        connector: Connector | SyncConnector,
+        configuration: ConnectorConfigurationInput = (),
+        *,
+        edge: EdgeContract | None = None,
+    ) -> Endpoint:
+        """Declare one Connector destination using an idempotent registration."""
+        return self.register_connector(connector).declare(configuration, edge=edge)
 
     def register_source(
         self, source: SourceProvider | SyncSourceProvider
@@ -465,4 +507,9 @@ async def _native_async(operation: Callable[[], _Result]) -> _Result:
         raise _normalize_native_error(error) from error
 
 
-__all__ = ["Connector", "RegisteredConnector", "RunningSession", "Session"]
+__all__ = [
+    "Connector",
+    "RegisteredConnector",
+    "RunningSession",
+    "Session",
+]

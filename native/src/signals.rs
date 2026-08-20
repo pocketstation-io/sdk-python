@@ -566,6 +566,14 @@ pub(crate) struct PythonSignalLineage {
     policy_epoch: u64,
 }
 
+#[pymethods]
+impl PythonSignalLineage {
+    #[getter]
+    fn clock(&self) -> crate::streams::PythonClockDomainDescriptor {
+        crate::streams::clock_domain_descriptor(pocketstation::ClockDomainId::new(self.clock_id))
+    }
+}
+
 #[pyclass(name = "_SignalDerivation", frozen)]
 pub(crate) struct PythonSignalDerivation {
     upstream_lineage: Py<PythonSignalLineage>,

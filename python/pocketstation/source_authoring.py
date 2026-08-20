@@ -15,6 +15,7 @@ from ._native import _SourceOutputIdentity as _NativeSourceOutputIdentity
 from ._native import _SourcePrepareContext as _NativeSourcePrepareContext
 from .errors import _native_call
 from .graph import PortSpec, SignalSpec, SourceConfiguration, SourceInstance
+from .identity import RuntimeSessionId, SourceId, StreamId
 
 
 class _SessionOwner(Protocol):
@@ -52,11 +53,11 @@ class SourceOutputIdentity:
     """Session-owned identity assigned to one prepared Source output."""
 
     output_port: str
-    stream_id: int
+    stream_id: StreamId
 
     @classmethod
     def _from_native(cls, value: _NativeSourceOutputIdentity) -> SourceOutputIdentity:
-        return cls(value.output_port, value.stream_id)
+        return cls(value.output_port, StreamId(value.stream_id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,16 +65,18 @@ class SourcePrepareContext:
     """Immutable Session identity supplied before the Source starts."""
 
     source_type_id: str
-    session_id: int | None
-    source_id: int | None
+    session_id: RuntimeSessionId | None
+    source_id: SourceId | None
     outputs: tuple[SourceOutputIdentity, ...]
 
     @classmethod
     def _from_native(cls, value: _NativeSourcePrepareContext) -> SourcePrepareContext:
         return cls(
             source_type_id=value.source_type_id,
-            session_id=value.session_id,
-            source_id=value.source_id,
+            session_id=(
+                None if value.session_id is None else RuntimeSessionId(value.session_id)
+            ),
+            source_id=None if value.source_id is None else SourceId(value.source_id),
             outputs=tuple(
                 SourceOutputIdentity._from_native(item) for item in value.outputs
             ),
@@ -107,7 +110,7 @@ class SourceEmission:
         output_port: str,
         payload: str,
         *,
-        signal: SignalSpec,
+        signal: SignalSpec[str],
         source_timestamp_ns: int | None = None,
         observed_timestamp_ns: int | None = None,
         duration_ns: int | None = None,
@@ -141,7 +144,7 @@ class SourceEmission:
         output_port: str,
         payload: bytes,
         *,
-        signal: SignalSpec,
+        signal: SignalSpec[bytes],
         source_timestamp_ns: int | None = None,
         observed_timestamp_ns: int | None = None,
         duration_ns: int | None = None,
@@ -186,8 +189,6 @@ class SourceDriver:
 @runtime_checkable
 class SourceFactory(Protocol):
     """Reusable factory retained by one canonical Session."""
-
-    def validate_config(self, configuration: Mapping[str, str]) -> None: ...
 
     def create(self, configuration: Mapping[str, str]) -> SourceDriver: ...
 
@@ -279,7 +280,9 @@ class _NativeFactoryAdapter:
         self._factory = factory
 
     def validate_config(self, configuration: Mapping[str, str]) -> None:
-        self._factory.validate_config(configuration)
+        validator = getattr(self._factory, "validate_config", None)
+        if validator is not None:
+            validator(configuration)
 
     def create(self, configuration: Mapping[str, str]) -> _NativeDriverAdapter:
         driver = self._factory.create(configuration)

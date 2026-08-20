@@ -101,6 +101,7 @@ def test_python_connector_receives_application_owned_pcm_with_lineage() -> None:
     assert item.audio is not None
     assert item.audio.source_id == audio.source_id
     assert item.audio.stream_id == audio.stream_id
+    assert item.audio.connector_id == endpoint.connector_id
     assert item.audio.sequence_number == 0
     assert item.audio.discontinuity_epoch == 1
     assert list(item.audio.samples.cast("f")) == pytest.approx([0.25, -0.25, 0.5, -0.5])
@@ -156,6 +157,31 @@ def test_configuration_is_typed_validated_and_secret_safe() -> None:
         schema.configuration({"token": "not-explicitly-secret"})
     assert mismatch.value.code == "connector.configuration.type_mismatch"
 
+    with pytest.raises(ConnectorError) as duplicate_value:
+        schema.configuration(
+            [
+                ("token", ConnectorConfigurationValue.secret("first")),
+                ("token", ConnectorConfigurationValue.secret("second")),
+            ]
+        )
+    assert duplicate_value.value.code == "connector.configuration.duplicate_value"
+
+    with pytest.raises(ConnectorError) as duplicate_field:
+        ConnectorConfigurationSchema(fields=(schema.fields[0], schema.fields[0]))
+    assert duplicate_field.value.code == "connector.configuration.duplicate_field"
+
+
+def test_connector_error_keeps_typed_stage_and_retryability() -> None:
+    error = ConnectorError(
+        "retry later",
+        code="provider.unavailable",
+        stage=ConnectorErrorStage.DELIVERY,
+        retryability=ConnectorRetryability.RETRYABLE,
+    )
+
+    assert error.stage is ConnectorErrorStage.DELIVERY
+    assert error.retryability is ConnectorRetryability.RETRYABLE
+
 
 def test_connector_decorator_builds_an_in_process_provider() -> None:
     delivered = Event()
@@ -173,11 +199,55 @@ def test_connector_decorator_builds_an_in_process_provider() -> None:
     assert isinstance(provider, Connector)
     session = Session()
     audio = session.audio_input("generated", frame_samples_per_channel=4)
-    audio.output.send(session.register_connector(provider).declare())
+    audio.output.send(session.destination(provider))
     running = session.start()
     audio.write(array("f", [0.0, 0.0, 0.0, 0.0]))
     assert delivered.wait(1.0)
     assert running.cancel().success
+
+
+def test_session_destination_reuses_one_connector_registration() -> None:
+    manifest = ConnectorManifest.audio(
+        "io.pocketstation.test.destination.v1",
+        package_version="1.0.0",
+    )
+    provider = Connector.from_handler(
+        manifest,
+        lambda _item, _context: ConnectorDeliveryOutcome.DELIVERED,
+    )
+    session = Session()
+
+    first = session.destination(provider)
+    registration = session.register_connector(provider)
+    second = registration.declare()
+
+    assert first.session_id == session.id
+    assert second.session_id == session.id
+    assert session.register_connector(provider).session_id == session.id
+
+
+def test_session_destination_does_not_merge_different_connector_implementations() -> (
+    None
+):
+    manifest = ConnectorManifest.audio(
+        "io.pocketstation.test.destination-collision.v1",
+        package_version="1.0.0",
+    )
+    first = Connector.from_handler(
+        manifest,
+        lambda _item, _context: ConnectorDeliveryOutcome.DELIVERED,
+    )
+    second = Connector.from_handler(
+        manifest,
+        lambda _item, _context: ConnectorDeliveryOutcome.DROPPED,
+    )
+    session = Session()
+    session.destination(first)
+
+    with pytest.raises(PocketStationError) as failure:
+        session.destination(second)
+
+    assert failure.value.code == "connector.registration_failed"
 
 
 def test_connector_manifest_rejects_output_ports() -> None:
@@ -259,6 +329,10 @@ def test_audio_connector_convenience_keeps_native_lineage_and_lifecycle() -> Non
     assert connector.manifest.inputs[0].signal.is_audio
     assert received[0].source_id == audio.source_id
     assert received[0].stream_id == audio.stream_id
+    assert received[0].route_enqueued_at_ns > 0
+    assert received[0].route_received_at_ns >= received[0].route_enqueued_at_ns
+    assert received[0].endpoint_enqueued_at_ns is None
+    assert received[0].polled_at_ns is None
 
 
 def test_connector_observations_preserve_service_state_and_delivery_counters() -> None:

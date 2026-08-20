@@ -16,6 +16,7 @@ from ._native import RouteMetrics as _NativeRouteMetrics
 from ._native import SessionEvent as _NativeSessionEvent
 from ._native import SessionMetrics as _NativeSessionMetrics
 from ._native import SessionTrace as _NativeSessionTrace
+from ._native import SessionTraceRecord as _NativeSessionTraceRecord
 from ._native import SessionTraceRecorderOutcome as _NativeTraceRecorderOutcome
 from ._native import StopResult as _NativeStopResult
 from ._native import _AudioReentryMetrics as _NativeAudioReentryMetrics
@@ -30,6 +31,13 @@ from ._native import _SessionSourceMetrics as _NativeSessionSourceMetrics
 from ._native import _SessionTraceValidation as _NativeTraceValidation
 from ._native import _TypedEdgeMetrics as _NativeTypedEdgeMetrics
 from .errors import PocketStationError, _native_call
+from .identity import (
+    EndpointId,
+    OperatorInstanceId,
+    RouteId,
+    SidecarId,
+    StemId,
+)
 from .sidecar import SidecarSnapshot
 from .sources import SourceRuntimeEvent
 from .streams import (
@@ -69,6 +77,14 @@ class SessionFailureKind(StrEnum):
     ENDPOINT = "endpoint"
     ROLLBACK = "rollback"
     FINALIZATION = "finalization"
+
+
+class SessionComponentKind(StrEnum):
+    SOURCE = "source"
+    ENDPOINT = "endpoint"
+    OPERATOR = "operator"
+    SIDECAR = "sidecar"
+    RUNTIME = "runtime"
 
 
 class EndpointFailureStage(StrEnum):
@@ -142,6 +158,18 @@ class RouteLatencyUnit(StrEnum):
 FailureStage = EndpointFailureStage | SessionRollbackStage | SessionFinalizationStage
 
 
+@dataclass(frozen=True, slots=True)
+class SessionComponent:
+    """Stable typed owner of a Session rollback or finalization failure."""
+
+    kind: SessionComponentKind
+    stem_id: StemId | None = None
+    route_id: RouteId | None = None
+    endpoint_id: EndpointId | None = None
+    operator_instance_id: OperatorInstanceId | None = None
+    sidecar_id: SidecarId | None = None
+
+
 def _failure_stage(kind: SessionFailureKind, value: str | None) -> FailureStage | None:
     if value is None:
         return None
@@ -164,19 +192,47 @@ class SessionFailure:
     error_class: str | None
     error_code: str | None
     retryability: EndpointFailureRetryability | None
-    component: str | None
+    component: SessionComponent | None
+    component_diagnostic: str | None
     message: str | None
-    stem_id: int | None
-    route_id: int | None
-    endpoint_id: int | None
-    operator_instance_id: int | None
-    sidecar_id: int | None
+    stem_id: StemId | None
+    route_id: RouteId | None
+    endpoint_id: EndpointId | None
+    operator_instance_id: OperatorInstanceId | None
+    sidecar_id: SidecarId | None
     source: SourceRuntimeEvent | None
 
     @classmethod
     def _from_native(cls, failure: _NativeSessionFailure) -> SessionFailure:
         kind = SessionFailureKind(failure.kind)
         retryability = getattr(failure, "retryability", None)
+        component_kind = getattr(failure, "component_kind", None)
+        component = (
+            None
+            if component_kind is None
+            else SessionComponent(
+                kind=SessionComponentKind(component_kind),
+                stem_id=None if failure.stem_id is None else StemId(failure.stem_id),
+                route_id=(
+                    None if failure.route_id is None else RouteId(failure.route_id)
+                ),
+                endpoint_id=(
+                    None
+                    if failure.endpoint_id is None
+                    else EndpointId(failure.endpoint_id)
+                ),
+                operator_instance_id=(
+                    None
+                    if failure.operator_instance_id is None
+                    else OperatorInstanceId(failure.operator_instance_id)
+                ),
+                sidecar_id=(
+                    None
+                    if failure.sidecar_id is None
+                    else SidecarId(failure.sidecar_id)
+                ),
+            )
+        )
         return cls(
             kind=kind,
             stage=_failure_stage(kind, failure.stage),
@@ -188,13 +244,22 @@ class SessionFailure:
                 if retryability is None
                 else EndpointFailureRetryability(retryability)
             ),
-            component=failure.component,
+            component=component,
+            component_diagnostic=failure.component,
             message=failure.message,
-            stem_id=failure.stem_id,
-            route_id=failure.route_id,
-            endpoint_id=failure.endpoint_id,
-            operator_instance_id=failure.operator_instance_id,
-            sidecar_id=failure.sidecar_id,
+            stem_id=None if failure.stem_id is None else StemId(failure.stem_id),
+            route_id=None if failure.route_id is None else RouteId(failure.route_id),
+            endpoint_id=(
+                None if failure.endpoint_id is None else EndpointId(failure.endpoint_id)
+            ),
+            operator_instance_id=(
+                None
+                if failure.operator_instance_id is None
+                else OperatorInstanceId(failure.operator_instance_id)
+            ),
+            sidecar_id=(
+                None if failure.sidecar_id is None else SidecarId(failure.sidecar_id)
+            ),
             source=SourceRuntimeEvent._from_native(cast(_NativeSessionEvent, failure)),
         )
 
@@ -796,10 +861,14 @@ class RecordingStemOutcome:
 
 @dataclass(frozen=True, slots=True)
 class RecordingOutcome:
+    session_id: int
+    group_id: str
     state: RecordingState
     completed_stems: int
     failed_stems: int
     session_directory: Path
+    manifest_path: Path
+    manifest_schema_version: int
     error_code: str | None
     stems: tuple[RecordingStemOutcome, ...]
 
@@ -810,10 +879,14 @@ class RecordingOutcome:
     @classmethod
     def _from_native(cls, value: _NativeRecordingOutcome) -> RecordingOutcome:
         result = cls(
+            session_id=value.session_id,
+            group_id=value.group_id,
             state=RecordingState(value.state),
             completed_stems=value.completed_stems,
             failed_stems=value.failed_stems,
             session_directory=Path(value.session_directory),
+            manifest_path=Path(value.manifest_path),
+            manifest_schema_version=value.manifest_schema_version,
             error_code=value.error_code,
             stems=tuple(
                 RecordingStemOutcome._from_native(stem) for stem in value.stems()
@@ -913,6 +986,80 @@ class SessionTraceValidation:
         )
 
 
+class SessionTraceRecordType(StrEnum):
+    LIFECYCLE = "lifecycle"
+    SOURCE_FAILURE = "source-failure"
+    ENDPOINT_FAILURE = "endpoint-failure"
+    ROLLBACK_FAILURE = "rollback-failure"
+    FINALIZATION_FAILURE = "finalization-failure"
+    TERMINAL = "terminal"
+
+
+@dataclass(frozen=True, slots=True)
+class SessionTraceRecord:
+    """One typed record from a finite native Session trace."""
+
+    sequence_index: int
+    observed_at_ns: int
+    session_id: int
+    kind: SessionTraceRecordType
+    lifecycle_state: SessionLifecycleState | None
+    terminal_state: SessionTerminalState | None
+    stem_id: StemId | None
+    route_id: RouteId | None
+    endpoint_id: EndpointId | None
+    endpoint_stage: EndpointFailureStage | None
+    rollback_stage: SessionRollbackStage | None
+    finalization_stage: SessionFinalizationStage | None
+    source_failures_total: int | None
+    endpoint_failures_total: int | None
+    rollback_failures_total: int | None
+    finalization_failures_total: int | None
+
+    @classmethod
+    def _from_native(cls, value: _NativeSessionTraceRecord) -> SessionTraceRecord:
+        return cls(
+            sequence_index=value.sequence_index,
+            observed_at_ns=value.observed_at_ns,
+            session_id=value.session_id,
+            kind=SessionTraceRecordType(value.kind),
+            lifecycle_state=(
+                None
+                if value.lifecycle_state is None
+                else SessionLifecycleState(value.lifecycle_state)
+            ),
+            terminal_state=(
+                None
+                if value.terminal_state is None
+                else SessionTerminalState(value.terminal_state)
+            ),
+            stem_id=None if value.stem_id is None else StemId(value.stem_id),
+            route_id=None if value.route_id is None else RouteId(value.route_id),
+            endpoint_id=(
+                None if value.endpoint_id is None else EndpointId(value.endpoint_id)
+            ),
+            endpoint_stage=(
+                None
+                if value.endpoint_stage is None
+                else EndpointFailureStage(value.endpoint_stage)
+            ),
+            rollback_stage=(
+                None
+                if value.rollback_stage is None
+                else SessionRollbackStage(value.rollback_stage)
+            ),
+            finalization_stage=(
+                None
+                if value.finalization_stage is None
+                else SessionFinalizationStage(value.finalization_stage)
+            ),
+            source_failures_total=value.source_failures_total,
+            endpoint_failures_total=value.endpoint_failures_total,
+            rollback_failures_total=value.rollback_failures_total,
+            finalization_failures_total=value.finalization_failures_total,
+        )
+
+
 class SessionTrace:
     """Validated reader for one finite native Session trace artifact."""
 
@@ -934,6 +1081,12 @@ class SessionTrace:
     @property
     def outcome(self) -> SessionTraceRecorderOutcome:
         return SessionTraceRecorderOutcome._from_native(self._native.outcome)
+
+    @property
+    def records(self) -> tuple[SessionTraceRecord, ...]:
+        return tuple(
+            SessionTraceRecord._from_native(record) for record in self._native.records()
+        )
 
     def validate(self) -> SessionTraceValidation:
         return SessionTraceValidation._from_native(_native_call(self._native.validate))
@@ -1091,6 +1244,8 @@ __all__ = [
     "RouteLatencyUnit",
     "RouteMetrics",
     "RouteObservationInterval",
+    "SessionComponent",
+    "SessionComponentKind",
     "SessionEvent",
     "SessionEventType",
     "SessionFailure",
@@ -1102,6 +1257,8 @@ __all__ = [
     "SessionTerminalState",
     "SessionTrace",
     "SessionTraceConfiguration",
+    "SessionTraceRecord",
+    "SessionTraceRecordType",
     "SessionTraceRecorderOutcome",
     "SessionTraceValidation",
     "SourceMetrics",

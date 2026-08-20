@@ -73,7 +73,7 @@ class OperatorPortContext:
     port_name: str
     direction: PortDirection
     capacity_signals: int
-    signal: SignalSpec
+    signal: SignalSpec[object]
     media: MediaCaps
     edge: EdgeContract
 
@@ -120,13 +120,13 @@ class OperatorEmission:
         self._native = native
 
     @classmethod
-    def text(cls, payload: str, *, signal: SignalSpec) -> OperatorEmission:
+    def text(cls, payload: str, *, signal: SignalSpec[str]) -> OperatorEmission:
         return cls(
             _native_call(lambda: _NativeOperatorEmission.text(payload, signal._native))
         )
 
     @classmethod
-    def bytes(cls, payload: bytes, *, signal: SignalSpec) -> OperatorEmission:
+    def bytes(cls, payload: bytes, *, signal: SignalSpec[bytes]) -> OperatorEmission:
         return cls(
             _native_call(lambda: _NativeOperatorEmission.bytes(payload, signal._native))
         )
@@ -139,7 +139,7 @@ class OperatorNode:
         """Observe compiled port and edge contracts before processing."""
 
     def process(
-        self, input_port: str, envelope: SignalEnvelope
+        self, input_port: str, envelope: SignalEnvelope[object]
     ) -> Sequence[OperatorEmission]:
         raise NotImplementedError
 
@@ -155,12 +155,12 @@ class OperatorNode:
 
 @runtime_checkable
 class OperatorFactory(Protocol):
-    def validate_config(self, configuration: Mapping[str, str]) -> None: ...
-
     def create(self, configuration: Mapping[str, str]) -> OperatorNode: ...
 
 
-OperatorHandler: TypeAlias = Callable[[str, SignalEnvelope], Sequence[OperatorEmission]]
+OperatorHandler: TypeAlias = Callable[
+    [str, SignalEnvelope[object]], Sequence[OperatorEmission]
+]
 OperatorConfigValidator: TypeAlias = Callable[[Mapping[str, str]], None]
 
 
@@ -171,7 +171,7 @@ class _HandlerNode(OperatorNode):
         self._handler = handler
 
     def process(
-        self, input_port: str, envelope: SignalEnvelope
+        self, input_port: str, envelope: SignalEnvelope[object]
     ) -> Sequence[OperatorEmission]:
         return self._handler(input_port, envelope)
 
@@ -253,7 +253,9 @@ class _NativeFactoryAdapter:
         self._factory = factory
 
     def validate_config(self, configuration: Mapping[str, str]) -> None:
-        self._factory.validate_config(configuration)
+        validator = getattr(self._factory, "validate_config", None)
+        if validator is not None:
+            validator(configuration)
 
     def create(self, configuration: Mapping[str, str]) -> _NativeNodeAdapter:
         node = self._factory.create(configuration)

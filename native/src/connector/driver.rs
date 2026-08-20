@@ -374,7 +374,12 @@ impl PythonRegisteredConnector {
     ) -> PyResult<Vec<Py<super::observations::PythonConnectorRuntimeObservations>>> {
         self.registered
             .observations()
-            .map_err(|error| PyRuntimeError::new_err(error.to_string()))?
+            .map_err(|error| {
+                PyRuntimeError::new_err(coded_reason(
+                    "connector.observations_unavailable",
+                    error.to_string(),
+                ))
+            })?
             .into_iter()
             .map(|value| python_runtime_observations(py, value))
             .collect()
@@ -387,11 +392,21 @@ impl PythonRegisteredConnector {
     ) -> PyResult<Option<Py<super::observations::PythonConnectorObservations>>> {
         self.registered
             .observation(endpoint.handle)
-            .map_err(|error| PyValueError::new_err(error.to_string()))?
+            .map_err(|error| {
+                PyValueError::new_err(coded_reason(
+                    "connector.observation_lookup_failed",
+                    error.to_string(),
+                ))
+            })?
             .map(|handle| {
                 handle
                     .snapshot()
-                    .map_err(|error| PyRuntimeError::new_err(error.to_string()))
+                    .map_err(|error| {
+                        PyRuntimeError::new_err(coded_reason(
+                            "connector.observation_unavailable",
+                            error.to_string(),
+                        ))
+                    })
                     .and_then(|value| python_connector_observations(py, value))
             })
             .transpose()
@@ -407,11 +422,21 @@ pub(crate) fn register_connector(
         manifest.value.clone(),
         Arc::new(PythonDriverFactory { factory }),
     )
-    .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    .map_err(|error| {
+        PyValueError::new_err(coded_reason(
+            "connector.invalid_contract",
+            error.to_string(),
+        ))
+    })?;
     session
         .register_connector(connector)
         .map(|registered| PythonRegisteredConnector { registered })
-        .map_err(|error| PyValueError::new_err(error.to_string()))
+        .map_err(|error| {
+            PyValueError::new_err(coded_reason(
+                "connector.registration_failed",
+                error.to_string(),
+            ))
+        })
 }
 
 pub(crate) fn declare_connector(
@@ -424,7 +449,12 @@ pub(crate) fn declare_connector(
         .registered
         .declare(session, configuration.value.clone(), edge.value)
         .map(|handle| PythonEndpoint { handle })
-        .map_err(|error| PyValueError::new_err(error.to_string()))
+        .map_err(|error| {
+            PyValueError::new_err(coded_reason(
+                "connector.declaration_failed",
+                error.to_string(),
+            ))
+        })
 }
 
 fn python_input_descriptor(
