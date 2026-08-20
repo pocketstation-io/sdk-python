@@ -18,11 +18,17 @@ TESTS = (
     REPOSITORY / "tests" / "test_source_authoring.py",
     REPOSITORY / "tests" / "test_operator_authoring.py",
     REPOSITORY / "tests" / "test_aio_session.py",
+    REPOSITORY / "tests" / "test_transcription_example.py",
 )
 
 
-def _run(arguments: list[str], *, cwd: Path) -> None:
-    subprocess.run(arguments, cwd=cwd, check=True)
+def _run(
+    arguments: list[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str] | None = None,
+) -> None:
+    subprocess.run(arguments, cwd=cwd, check=True, env=environment)
 
 
 def main() -> int:
@@ -37,7 +43,10 @@ def main() -> int:
         root = Path(temporary)
         wheelhouse = root / "wheelhouse"
         environment = root / "environment"
+        process_environment = os.environ.copy()
+        process_environment["UV_CACHE_DIR"] = os.fspath(root / "uv-cache")
         wheelhouse.mkdir()
+        shutil.copytree(REPOSITORY / "examples", root / "examples")
 
         _run(
             [
@@ -58,6 +67,7 @@ def main() -> int:
         _run(
             [uv, "venv", os.fspath(environment), "--python", sys.executable],
             cwd=root,
+            environment=process_environment,
         )
         interpreter = (
             environment / "Scripts" / "python.exe"
@@ -76,6 +86,7 @@ def main() -> int:
                 "pytest-asyncio",
             ],
             cwd=root,
+            environment=process_environment,
         )
         _run(
             [
@@ -93,7 +104,9 @@ def main() -> int:
                     "iterable_source_runs_in_core or "
                     "async_iterable_source_runs_on_the_owning_event_loop or "
                     "python_operator_processes_source_signal_with_derivation or "
-                    "async_operator_runs_on_owning_loop"
+                    "async_operator_runs_on_owning_loop or "
+                    "whisper_example_declares_a_bounded_source_aware_operator or "
+                    "real_whisper_process_preserves_source_identity"
                 ),
                 "-rs",
             ],

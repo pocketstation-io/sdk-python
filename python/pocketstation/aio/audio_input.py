@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from time import monotonic
 
 from ..audio_input import (
     AudioInputConfig,
@@ -11,6 +12,7 @@ from ..audio_input import (
 from ..audio_input import (
     PcmSource as SyncPcmSource,
 )
+from ..errors import AudioInputFullError
 from ..graph import SourceOutput
 
 
@@ -63,8 +65,21 @@ class AudioInput(PcmSource):
         samples: object,
         *,
         discontinuity: bool = False,
+        timeout_s: float = 1.0,
     ) -> None:
-        await self.try_write(samples, discontinuity=discontinuity)
+        """Wait finitely for one native buffer without growing a Python queue."""
+        if not 0 <= timeout_s <= 60:
+            raise ValueError("timeout_s must be between 0 and 60")
+        deadline = monotonic() + timeout_s
+        while True:
+            try:
+                await self.try_write(samples, discontinuity=discontinuity)
+                return
+            except AudioInputFullError:
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise
+                await asyncio.sleep(min(0.001, remaining))
 
 
 __all__ = ["AudioInput", "PcmSource"]

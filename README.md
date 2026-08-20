@@ -480,6 +480,27 @@ not require Rust on the user's machine. The sdist contains only this SDK's Rust
 and Python sources and rebuilds against those immutable registry releases; it
 does not depend on a sibling checkout.
 
+## Real source-aware transcription example
+
+The example-owned whisper.cpp Operator consumes finite PCM windows outside the
+realtime partition and emits JSON transcript signals carrying source, stream,
+sequence, and discontinuity identity. It uses the same public `aio` Operator
+API available to SDK users; no provider implementation is embedded in Core.
+
+```bash
+python -m examples.transcription.run \
+  --whisper-cli "$(command -v whisper-cli)" \
+  --model /path/to/ggml-tiny.en.bin \
+  --wav /path/to/speech.wav \
+  --record-to recordings
+```
+
+The executable notebook at
+`examples/notebooks/source_aware_transcription.ipynb` calls the same function
+and stores no fabricated output. The async PCM `write()` operation waits only
+within its explicit finite timeout and uses the native preallocated buffer;
+`try_write()` remains the immediate nonblocking mode.
+
 ## Development gates
 
 From this repository:
@@ -488,9 +509,9 @@ From this repository:
 cargo fmt --manifest-path native/Cargo.toml -- --check
 cargo test --manifest-path native/Cargo.toml --all-features --locked
 cargo clippy --manifest-path native/Cargo.toml --all-targets --all-features --locked -- -D warnings
-ruff check python tests
-ruff format --check python tests
-mypy python
+ruff check python tests examples
+ruff format --check python tests examples
+mypy python examples
 python -m pytest -q
 uv build
 ```

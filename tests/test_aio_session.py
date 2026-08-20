@@ -17,6 +17,7 @@ from pocketstation.aio import (
     ConnectorWorker,
     Session,
 )
+from pocketstation.errors import AudioInputFullError
 
 
 @pytest.mark.asyncio
@@ -63,6 +64,26 @@ async def test_application_owned_pcm_has_an_async_writer() -> None:
     assert frame.source_id == audio.source_id
     assert frame.stream_id == audio.stream_id
     assert list(frame.samples.cast("f")) == pytest.approx([0.1, 0.2, 0.3, 0.4])
+
+
+@pytest.mark.asyncio
+async def test_async_audio_write_wait_is_finite_and_adds_no_python_queue() -> None:
+    session = Session()
+    audio = session.audio_input(
+        "playback",
+        capacity_frames=1,
+        frame_samples_per_channel=4,
+    )
+    samples = array("f", [0.1, 0.2, 0.3, 0.4])
+    await audio.try_write(samples)
+
+    with pytest.raises(AudioInputFullError):
+        await audio.write(samples, timeout_s=0.01)
+
+    observations = await audio.observations()
+    assert observations.capacity_frames == 1
+    assert observations.accepted_total == 1
+    assert observations.full_total > 0
 
 
 @pytest.mark.asyncio
