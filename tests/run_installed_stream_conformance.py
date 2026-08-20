@@ -112,6 +112,22 @@ def main() -> int:
             ],
             cwd=root,
         )
+        runtime_report = root / "runtime-qualification.json"
+        _run(
+            [
+                os.fspath(interpreter),
+                os.fspath(
+                    REPOSITORY / "tests" / "qualification" / "runtime_resources.py"
+                ),
+                "--frames",
+                "100",
+                "--output",
+                os.fspath(runtime_report),
+            ],
+            cwd=root,
+        )
+        if not runtime_report.is_file():
+            raise SystemExit("installed runtime qualification produced no report")
         package_path = subprocess.run(
             [
                 os.fspath(interpreter),

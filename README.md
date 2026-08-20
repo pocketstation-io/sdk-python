@@ -6,8 +6,9 @@
 > typed source lifecycle, Rust-backed graph declarations, bounded typed signal
 > streams, process sidecars, compiled native extensions, complete observations,
 > application-owned PCM ingress, and independently installable wheel/sdist
-> artifacts. Real relay/browser composition, notebook proof, platform
-> qualification, and OSS readiness remain gated.
+> artifacts. The real Relay/browser path, source-aware transcription notebook,
+> and physical macOS application-plus-microphone path are proven. Linux and
+> Windows artifact qualification and final OSS readiness remain gated.
 
 Capture one application and one microphone as independent, source-aware live
 audio stems. Consume both from a bounded Python endpoint while the native Rust
@@ -93,6 +94,14 @@ canonical-Session evidence is not release evidence:
   queue/write/drop counters, and typed gap detail;
 - synchronous and `asyncio` ownership models;
 - typed Session lifecycle client for the current control-plane HTTP API.
+- shared native Relay publication of independent application and microphone
+  buses, opaque receiver invitation after publication readiness, real browser
+  receipt, and complete two-stem recording;
+- real source-aware whisper.cpp inference and an output-free executable
+  notebook over the public async Operator API;
+- current-host sync/async boundary and slow-consumer qualification with exact
+  units, bounded queue peaks, explicit drops, and post-shutdown descriptor,
+  thread, native-buffer, and Python-allocation observations.
 
 The SDK is not complete:
 
@@ -104,11 +113,10 @@ The SDK is not complete:
 - capture authorization snapshots and permission-transition ownership are not
   attached to the canonical running Session; the SDK preserves discovery and
   the authoritative seven-state platform observation without inventing either;
-- real relay/browser composition and notebook proof remain later gates;
 - isolated macOS wheel and independently rebuilt sdist consumers exist; Linux,
-  Windows, and real-device matrices remain release gates;
-- the control client creates remote Session credentials but does not publish
-  media or invent a browser join URL.
+  Windows, and broader real-device matrices remain release gates;
+- the real browser proof is same-host. It does not establish WAN, TURN, or
+  multi-region operation.
 
 The ordinary API is frame iteration over the native bounded endpoint; explicit
 reads and native batch iteration remain advanced modes. The accepted stream
@@ -500,6 +508,24 @@ The executable notebook at
 and stores no fabricated output. The async PCM `write()` operation waits only
 within its explicit finite timeout and uses the native preallocated buffer;
 `try_write()` remains the immediate nonblocking mode.
+
+## Runtime qualification
+
+The qualification runner executes the installed public Session API. It measures
+sync and asyncio write-to-read boundaries with nanosecond units, verifies exact
+source/stream/sequence identity, checks that every native input buffer returns
+after shutdown, and deliberately saturates a slow consumer to prove queue peaks
+remain within capacity and drops remain observable.
+
+```bash
+python -m tests.qualification.runtime_resources \
+  --frames 500 \
+  --output runtime-qualification.json
+```
+
+The output is a machine-readable measurement artifact, not a cross-machine
+performance claim. The installed-wheel conformance runner executes the same
+qualification outside the repository package path.
 
 ## Development gates
 
