@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import httpx
 import pytest
-
 from pocketstation import Source
 from pocketstation.aio import ControlClient, RelaySession, Session
 
@@ -16,6 +15,16 @@ CREATE_RESPONSE = {
     "whep_url": "https://relay.example/v1/sessions/session_123/whep",
     "ice_servers": [],
 }
+
+
+@pytest.mark.asyncio
+async def test_async_relay_session_rejects_unbounded_request_timeout() -> None:
+    with pytest.raises((TypeError, ValueError)):
+        await RelaySession.create(
+            control_plane_url="https://control.example",
+            relay_url="https://relay.example",
+            request_timeout_seconds=None,
+        )
 
 
 @pytest.mark.asyncio

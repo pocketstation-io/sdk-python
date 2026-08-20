@@ -6,7 +6,6 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
-
 from pocketstation import (
     ControlClient,
     RelayError,
@@ -24,6 +23,15 @@ CREATE_RESPONSE = {
     "whep_url": "https://relay.example/v1/sessions/session_123/whep",
     "ice_servers": [],
 }
+
+
+def test_relay_session_rejects_unbounded_request_timeout() -> None:
+    with pytest.raises((TypeError, ValueError)):
+        RelaySession.create(
+            control_plane_url="https://control.example",
+            relay_url="https://relay.example",
+            request_timeout_seconds=None,
+        )
 
 
 def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:

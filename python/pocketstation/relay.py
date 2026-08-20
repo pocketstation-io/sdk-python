@@ -21,6 +21,7 @@ from .control import (
     SessionSnapshot,
 )
 from .errors import PocketStationError, _native_call
+from .identity import RouteId
 
 if TYPE_CHECKING:
     from .session import Session
@@ -41,7 +42,7 @@ class RelayRoute:
     """One native Session route publishing a named AudioBus."""
 
     bus_id: str
-    route_id: int
+    route_id: RouteId
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +106,7 @@ class RelaySession:
         relay_http: httpx.Client,
         owns_control: bool,
         owns_relay_http: bool,
-        request_timeout_seconds: float | None,
+        request_timeout_seconds: float,
     ) -> None:
         self.relay_url = _normalize_relay_url(relay_url)
         self.credentials = credentials
@@ -125,11 +126,11 @@ class RelaySession:
         *,
         control_plane_url: str,
         relay_url: str,
-        request_timeout_seconds: float | None = 10.0,
+        request_timeout_seconds: float = 10.0,
         control_client: ControlClient | None = None,
         relay_http_client: httpx.Client | None = None,
     ) -> RelaySession:
-        _validate_optional_timeout(request_timeout_seconds, "request_timeout_seconds")
+        request_timeout_seconds = _validate_request_timeout(request_timeout_seconds)
         normalized_relay_url = _normalize_relay_url(relay_url)
         owns_control = control_client is None
         owns_relay_http = relay_http_client is None
@@ -341,14 +342,21 @@ def _normalize_relay_url(value: str) -> str:
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("relay_url must be an absolute http or https origin")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("relay_url must not contain credentials")
     if parsed.path not in {"", "/"}:
         raise ValueError("relay_url must not include a path")
     return value.split("?", 1)[0].split("#", 1)[0].rstrip("/")
 
 
-def _validate_optional_timeout(value: float | None, name: str) -> None:
-    if value is not None and (isinstance(value, bool) or value <= 0):
-        raise ValueError(f"{name} must be positive or None")
+def _validate_request_timeout(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("request_timeout_seconds must be a number")
+    if not 0 < value <= 300:
+        raise ValueError(
+            "request_timeout_seconds must be greater than 0 and at most 300"
+        )
+    return float(value)
 
 
 def _validate_wait(timeout_seconds: float, poll_interval_seconds: float) -> None:
@@ -362,10 +370,8 @@ def _validate_wait(timeout_seconds: float, poll_interval_seconds: float) -> None
 
 def _bounded_request_timeout(
     remaining_seconds: float,
-    configured_seconds: float | None,
+    configured_seconds: float,
 ) -> float:
-    if configured_seconds is None:
-        return remaining_seconds
     return min(remaining_seconds, configured_seconds)
 
 
@@ -377,7 +383,7 @@ def _relay_json_request(
     path: str,
     expected_status: int,
     authorization: SecretToken,
-    timeout_seconds: float | None,
+    timeout_seconds: float,
 ) -> dict[str, Any]:
     exposed = authorization.expose_secret()
     try:

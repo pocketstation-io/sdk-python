@@ -25,7 +25,7 @@ from ..relay import (
     _bounded_request_timeout,
     _normalize_relay_url,
     _receiver_invitation,
-    _validate_optional_timeout,
+    _validate_request_timeout,
     _validate_wait,
 )
 from .control import ControlClient
@@ -46,7 +46,7 @@ class RelaySession:
         relay_http: httpx.AsyncClient,
         owns_control: bool,
         owns_relay_http: bool,
-        request_timeout_seconds: float | None,
+        request_timeout_seconds: float,
     ) -> None:
         self.relay_url = _normalize_relay_url(relay_url)
         self.credentials = credentials
@@ -66,11 +66,11 @@ class RelaySession:
         *,
         control_plane_url: str,
         relay_url: str,
-        request_timeout_seconds: float | None = 10.0,
+        request_timeout_seconds: float = 10.0,
         control_client: ControlClient | None = None,
         relay_http_client: httpx.AsyncClient | None = None,
     ) -> RelaySession:
-        _validate_optional_timeout(request_timeout_seconds, "request_timeout_seconds")
+        request_timeout_seconds = _validate_request_timeout(request_timeout_seconds)
         normalized_relay_url = _normalize_relay_url(relay_url)
         owns_control = control_client is None
         owns_relay_http = relay_http_client is None
@@ -284,7 +284,7 @@ async def _relay_json_request(
     path: str,
     expected_status: int,
     authorization: SecretToken,
-    timeout_seconds: float | None,
+    timeout_seconds: float,
 ) -> dict[str, Any]:
     exposed = authorization.expose_secret()
     try:
