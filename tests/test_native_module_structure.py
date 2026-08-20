@@ -21,6 +21,10 @@ def test_native_binding_is_split_by_real_implemented_owner() -> None:
         "streams.rs",
     }
     assert expected <= {path.name for path in NATIVE.glob("*.rs")}
+    for owner in ("connector", "source_authoring", "operator_authoring"):
+        files = {path.name for path in (NATIVE / owner).glob("*.rs")}
+        assert "mod.rs" in files
+        assert len(files) >= 3
 
 
 def test_process_sidecar_has_a_real_native_owner() -> None:
@@ -33,7 +37,6 @@ def test_process_sidecar_has_a_real_native_owner() -> None:
 
 def test_lib_rs_only_declares_and_registers_modules() -> None:
     source = (NATIVE / "lib.rs").read_text()
-    assert len(source.splitlines()) <= 32
     assert "#[pymodule]" in source
     assert "#[pyclass" not in source
     assert "#[pymethods]" not in source

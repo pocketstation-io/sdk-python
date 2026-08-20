@@ -36,8 +36,16 @@ from .observations import (
     SessionTraceConfiguration,
     StopResult,
 )
+from .operator_authoring import (
+    OperatorProvider,
+    RegisteredOperator,
+)
+from .operator_authoring import (
+    _NativeFactoryAdapter as _NativeOperatorFactoryAdapter,
+)
 from .sidecar import SidecarConnection, SidecarHandle, SidecarProcessSpec
 from .signal import BusSubscription
+from .source_authoring import RegisteredSource, SourceProvider, _NativeFactoryAdapter
 from .sources import Source
 from .streams import AudioStream, SignalStream
 
@@ -326,6 +334,26 @@ class Session(_GraphSessionDeclarations):
             )
         return RegisteredConnector(self, connector, native)
 
+    def register_source(self, source: SourceProvider) -> RegisteredSource:
+        """Register one Python-authored typed Source implementation."""
+        native = _native_call(
+            lambda: self._native.register_source_provider(
+                source.manifest._native,
+                _NativeFactoryAdapter(source.factory),
+            )
+        )
+        return RegisteredSource(self, source, native)
+
+    def register_operator(self, operator: OperatorProvider) -> RegisteredOperator:
+        """Register one Python-authored off-realtime Operator."""
+        _native_call(
+            lambda: self._native.register_operator_provider(
+                operator.manifest._native,
+                _NativeOperatorFactoryAdapter(operator.factory),
+            )
+        )
+        return RegisteredOperator(self, operator)
+
     def register_sidecar(self, spec: SidecarProcessSpec) -> SidecarHandle:
         """Register a bounded PKSS child to spawn during transactional start."""
         sidecar_id = _native_call(
@@ -365,9 +393,12 @@ __all__ = [
     "AudioInputConfig",
     "Connector",
     "Endpoint",
+    "OperatorProvider",
     "RecordingOutcome",
     "RecordingStemOutcome",
     "RegisteredConnector",
+    "RegisteredOperator",
+    "RegisteredSource",
     "RouteMetrics",
     "RunningSession",
     "Session",
@@ -378,6 +409,7 @@ __all__ = [
     "SidecarProcessSpec",
     "SignalStream",
     "Source",
+    "SourceProvider",
     "Stem",
     "StopResult",
 ]

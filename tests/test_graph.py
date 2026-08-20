@@ -137,6 +137,23 @@ def test_media_caps_and_port_specs_are_rust_validated() -> None:
     assert failure.value.code == "graph.invalid_contract"
 
 
+def test_port_helpers_infer_media_without_hiding_explicit_contracts() -> None:
+    text = SignalSpec.text(role="request")
+    input_port = PortSpec.input("input", text)
+    output_port = PortSpec.output(
+        "output",
+        text,
+        media=MediaCaps.text(),
+        multiplicity=Multiplicity.MANY,
+    )
+
+    assert input_port.direction is PortDirection.INPUT
+    assert input_port.media.kind.value == "text"
+    assert output_port.direction is PortDirection.OUTPUT
+    assert output_port.media.kind.value == "text"
+    assert output_port.multiplicity is Multiplicity.MANY
+
+
 def test_edge_presets_and_modifiers_preserve_bounded_contracts() -> None:
     realtime = EdgeContract.realtime_audio()
     assert realtime.clock is ClockDomain.CAPTURE

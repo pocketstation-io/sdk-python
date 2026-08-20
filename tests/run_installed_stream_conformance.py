@@ -15,6 +15,8 @@ TESTS = (
     REPOSITORY / "tests" / "test_streams.py",
     REPOSITORY / "tests" / "test_aio_streams.py",
     REPOSITORY / "tests" / "test_connector.py",
+    REPOSITORY / "tests" / "test_source_authoring.py",
+    REPOSITORY / "tests" / "test_operator_authoring.py",
     REPOSITORY / "tests" / "test_aio_session.py",
 )
 
@@ -27,6 +29,9 @@ def main() -> int:
     uv = shutil.which("uv")
     if uv is None:
         raise SystemExit("uv is required for installed-wheel conformance")
+    maturin = shutil.which("maturin")
+    if maturin is None:
+        raise SystemExit("maturin is required for installed-wheel conformance")
 
     with tempfile.TemporaryDirectory(prefix="pks-w21-stream-") as temporary:
         root = Path(temporary)
@@ -36,9 +41,7 @@ def main() -> int:
 
         _run(
             [
-                uv,
-                "run",
-                "maturin",
+                maturin,
                 "build",
                 "--release",
                 "--features",
@@ -86,7 +89,11 @@ def main() -> int:
                 (
                     "canonical_native_session or "
                     "connector_worker_receives_finite_native_owned_batches or "
-                    "async_connector_worker_receives_finite_native_batches"
+                    "async_connector_worker_receives_finite_native_batches or "
+                    "iterable_source_runs_in_core or "
+                    "async_iterable_source_runs_on_the_owning_event_loop or "
+                    "python_operator_processes_source_signal_with_derivation or "
+                    "async_operator_runs_on_owning_loop"
                 ),
                 "-rs",
             ],

@@ -298,6 +298,30 @@ class MediaCaps:
     def any(cls) -> MediaCaps:
         return cls(MediaKind.ANY)
 
+    @classmethod
+    def for_signal(cls, signal: SignalSpec) -> MediaCaps:
+        """Select the canonical wildcard media contract for a signal."""
+        if signal.kind is SignalKind.PCM_AUDIO:
+            return cls.audio()
+        if signal.kind is SignalKind.ENCODED_AUDIO:
+            if not isinstance(signal.format, Codec):
+                raise ValueError("encoded-audio SignalSpec requires a Codec")
+            return cls.encoded_audio(signal.format)
+        if signal.kind is SignalKind.TEXT:
+            return cls.text()
+        if signal.kind is SignalKind.EVENT:
+            return cls.event()
+        if signal.kind is SignalKind.METRICS:
+            return cls.metrics()
+        if signal.kind is SignalKind.CONTROL:
+            return cls.control()
+        if signal.kind is SignalKind.BINARY:
+            format = signal.format
+            return cls.binary(
+                format if isinstance(format, BinaryFormat) else BinaryFormat.RAW
+            )
+        return cls.any()
+
     def is_compatible_with(self, other: MediaCaps) -> bool:
         return self._native.is_compatible_with(other._native)
 
@@ -339,6 +363,46 @@ class PortSpec:
             )
         )
         object.__setattr__(self, "_native", native)
+
+    @classmethod
+    def input(
+        cls,
+        name: str,
+        signal: SignalSpec,
+        *,
+        media: MediaCaps | None = None,
+        multiplicity: Multiplicity = Multiplicity.ONE,
+        required: bool = True,
+    ) -> PortSpec:
+        """Declare an input port, inferring the normal media contract."""
+        return cls(
+            name,
+            PortDirection.INPUT,
+            signal,
+            media or MediaCaps.for_signal(signal),
+            multiplicity,
+            required,
+        )
+
+    @classmethod
+    def output(
+        cls,
+        name: str,
+        signal: SignalSpec,
+        *,
+        media: MediaCaps | None = None,
+        multiplicity: Multiplicity = Multiplicity.ONE,
+        required: bool = True,
+    ) -> PortSpec:
+        """Declare an output port, inferring the normal media contract."""
+        return cls(
+            name,
+            PortDirection.OUTPUT,
+            signal,
+            media or MediaCaps.for_signal(signal),
+            multiplicity,
+            required,
+        )
 
 
 class ClockDomain(StrEnum):

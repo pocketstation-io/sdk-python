@@ -29,6 +29,7 @@ use crate::observations::{
     OwnedSessionMetrics, OwnedStopResult, PythonSessionEvent, PythonSessionMetrics,
     PythonStopResult,
 };
+use crate::operator_authoring::{register_operator, PythonOperatorManifest};
 use crate::relay::{
     owned_relay_outcomes, python_relay_outcome, PythonRelayPublisher, RelayRouteRegistration,
     RelayRuntime,
@@ -44,6 +45,7 @@ use crate::signals::{
     OwnedSignalSubscriptionMetrics, PythonBusSubscription, PythonSignalRead,
     PythonSignalSubscriptionMetrics, SignalReceipts,
 };
+use crate::source_authoring::{register_source, PythonRegisteredSource, PythonSourceManifest};
 use crate::sources::PythonSource;
 use crate::streams::{
     copy_audio_batch, copy_audio_batch_until, python_audio_batch, request_audio_batch,
@@ -374,6 +376,22 @@ impl PythonSession {
         self.with_session(|session| {
             register_worker_connector(session, manifest, factory, maximum_batch_items)
         })
+    }
+
+    fn register_source_provider(
+        &self,
+        manifest: &PythonSourceManifest,
+        factory: Py<PyAny>,
+    ) -> PyResult<PythonRegisteredSource> {
+        self.with_session(|session| register_source(session, manifest, factory))
+    }
+
+    fn register_operator_provider(
+        &self,
+        manifest: &PythonOperatorManifest,
+        factory: Py<PyAny>,
+    ) -> PyResult<()> {
+        self.with_session(|session| register_operator(session, manifest, factory))
     }
 
     fn declare_connector(

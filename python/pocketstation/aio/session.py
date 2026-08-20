@@ -35,13 +35,29 @@ from ..observations import (
     SessionTraceConfiguration,
     StopResult,
 )
+from ..operator_authoring import OperatorProvider as SyncOperatorProvider
+from ..operator_authoring import (
+    RegisteredOperator,
+)
+from ..operator_authoring import (
+    _NativeFactoryAdapter as _NativeOperatorFactoryAdapter,
+)
 from ..sidecar import SidecarHandle, SidecarProcessSpec
 from ..signal import BusSubscription
+from ..source_authoring import (
+    RegisteredSource,
+)
+from ..source_authoring import SourceProvider as SyncSourceProvider
+from ..source_authoring import (
+    _NativeFactoryAdapter as _NativeSourceFactoryAdapter,
+)
 from ..sources import Source
 from .audio_input import AudioInput, PcmSource
 from .connector import Connector, RegisteredConnector
 from .observations import EventStream
+from .operator_authoring import OperatorProvider
 from .sidecar import SidecarConnection
+from .source_authoring import SourceProvider
 from .streams import AudioStream, SignalStream
 
 if TYPE_CHECKING:
@@ -344,6 +360,40 @@ class Session(_GraphSessionDeclarations):
                 )
             )
         return RegisteredConnector(SyncRegisteredConnector(self, bound, native))
+
+    def register_source(
+        self, source: SourceProvider | SyncSourceProvider
+    ) -> RegisteredSource:
+        """Register an asyncio or synchronous typed Source implementation."""
+        bound = (
+            source._bind(asyncio.get_running_loop())
+            if isinstance(source, SourceProvider)
+            else source
+        )
+        native = _native_call(
+            lambda: self._native.register_source_provider(
+                bound.manifest._native,
+                _NativeSourceFactoryAdapter(bound.factory),
+            )
+        )
+        return RegisteredSource(self, bound, native)
+
+    def register_operator(
+        self, operator: OperatorProvider | SyncOperatorProvider
+    ) -> RegisteredOperator:
+        """Register an asyncio or synchronous off-realtime Operator."""
+        bound = (
+            operator._bind(asyncio.get_running_loop())
+            if isinstance(operator, OperatorProvider)
+            else operator
+        )
+        _native_call(
+            lambda: self._native.register_operator_provider(
+                bound.manifest._native,
+                _NativeOperatorFactoryAdapter(bound.factory),
+            )
+        )
+        return RegisteredOperator(self, bound)
 
     def register_sidecar(self, spec: SidecarProcessSpec) -> SidecarHandle:
         """Register a bounded PKSS child to spawn during transactional start."""

@@ -962,6 +962,102 @@ class _AudioInput:
     def close(self) -> None: ...
     def observations(self) -> _AudioInputObservations: ...
 
+class _SourceManifest:
+    def __init__(
+        self,
+        source_type_id: str,
+        outputs: list[_PortSpec],
+        revision: int = 1,
+        implementation_generation: int = 1,
+    ) -> None: ...
+    source_type_id: str
+    revision: int
+    implementation_generation: int
+
+class _SourceEmission:
+    @staticmethod
+    def text(
+        output_port: str,
+        payload: str,
+        signal: _SignalSpec,
+        source_timestamp_ns: int | None = None,
+        observed_timestamp_ns: int | None = None,
+        duration_ns: int | None = None,
+        source_generation: int = 1,
+        discontinuity_epoch: int = 0,
+        policy_epoch: int = 0,
+        clock_domain_id: int = 1,
+        terminal: bool = False,
+    ) -> _SourceEmission: ...
+    @staticmethod
+    def bytes(
+        output_port: str,
+        payload: bytes,
+        signal: _SignalSpec,
+        source_timestamp_ns: int | None = None,
+        observed_timestamp_ns: int | None = None,
+        duration_ns: int | None = None,
+        source_generation: int = 1,
+        discontinuity_epoch: int = 0,
+        policy_epoch: int = 0,
+        clock_domain_id: int = 1,
+        terminal: bool = False,
+    ) -> _SourceEmission: ...
+
+class _SourceOutputIdentity:
+    output_port: str
+    stream_id: int
+
+class _SourcePrepareContext:
+    source_type_id: str
+    session_id: int | None
+    source_id: int | None
+    outputs: list[_SourceOutputIdentity]
+
+class _SourceCancellation:
+    cancelled: bool
+
+class _RegisteredSource:
+    source_type_id: str
+
+class _OperatorManifest:
+    def __init__(
+        self,
+        operator_id: str,
+        inputs: list[_PortSpec],
+        outputs: list[_PortSpec],
+        revision: int = 1,
+        implementation_generation: int = 1,
+        queue_capacity_signals: int = 8,
+        process_timeout_ms: int = 30_000,
+        network_allowed: bool = False,
+        filesystem_allowed: bool = False,
+        drain_queued: bool = False,
+        continue_on_failure: bool = False,
+        terminal_roles: list[str] = [],
+    ) -> None: ...
+    operator_id: str
+
+class _OperatorEmission:
+    @staticmethod
+    def text(payload: str, signal: _SignalSpec) -> _OperatorEmission: ...
+    @staticmethod
+    def bytes(payload: bytes, signal: _SignalSpec) -> _OperatorEmission: ...
+
+class _OperatorPortContext:
+    edge_id: int | None
+    port_name: str
+    direction: str
+    capacity_signals: int
+    signal: _SignalSpec
+    media: _MediaCaps
+    edge: _EdgeContract
+
+class _OperatorPrepareContext:
+    execution_partition: str
+    inputs: list[_OperatorPortContext]
+    outputs: list[_OperatorPortContext]
+
 class Session:
     def __init__(
         self,
@@ -1023,6 +1119,16 @@ class Session:
         factory: object,
         maximum_batch_items: int,
     ) -> _RegisteredConnector: ...
+    def register_source_provider(
+        self,
+        manifest: _SourceManifest,
+        factory: object,
+    ) -> _RegisteredSource: ...
+    def register_operator_provider(
+        self,
+        manifest: _OperatorManifest,
+        factory: object,
+    ) -> None: ...
     def declare_connector(
         self,
         registered: _RegisteredConnector,

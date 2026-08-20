@@ -72,6 +72,12 @@ canonical-Session evidence is not release evidence:
   Connector worker, with typed configuration, redacted secrets, full input
   contracts, structured failures, readiness/health/recovery control, and
   drain/abort shutdown;
+- sync and asyncio Source authoring over Core's blocking Source worker, with
+  typed output contracts, Session-owned lineage, finite async deadlines,
+  cancellation, and exact provider cleanup;
+- sync and asyncio Operator authoring over Core's bounded async Operator
+  runtime, with compiled port/edge preparation, typed derived outputs,
+  finite async deadlines, cancellation, and derivation metadata;
 - native blocking waits release the interpreter, and executable tests prove
   Python remains responsive while a hung child is terminated and reaped;
 - immutable Session snapshots covering event and audio queues, source ingress,
@@ -141,6 +147,50 @@ Python in foreign callbacks or admit PCM callbacks onto realtime partitions.
 Process sidecars remain available when crash isolation or a separately managed
 process is wanted. They are not required for ordinary Python Connector
 authoring.
+
+## Python Sources and Operators
+
+Python can define typed non-PCM Sources and Operators without implementing a
+second Session runtime. These providers execute only on Core-owned blocking or
+async worker partitions; application-owned PCM continues to use the dedicated
+bounded `Session.audio_input()` path.
+
+```python
+import pocketstation
+
+text = pocketstation.SignalSpec.text(role="request")
+source_manifest = pocketstation.SourceManifest(
+    "io.example.source.requests.v1",
+    outputs=(pocketstation.PortSpec.output("events", text),),
+)
+
+@pocketstation.source(source_manifest)
+def requests(configuration):
+    yield pocketstation.SourceEmission.text(
+        "events", configuration["text"], signal=text
+    )
+```
+
+Operators receive immutable envelopes and emit values whose lineage and
+derivation are attached by Core:
+
+```python
+result = pocketstation.SignalSpec.text(role="result.final")
+operator_manifest = pocketstation.OperatorManifest(
+    "io.example.operator.uppercase.v1",
+    inputs=(pocketstation.PortSpec.input("input", text),),
+    outputs=(pocketstation.PortSpec.output("output", result),),
+)
+
+@pocketstation.operator(operator_manifest)
+def uppercase(_port, envelope):
+    return (pocketstation.OperatorEmission.text(envelope.payload.upper(), signal=result),)
+```
+
+`pocketstation.aio.source` and `pocketstation.aio.operator` accept async
+iterables and coroutine handlers with explicit finite deadlines. The same
+native Session remains authoritative for registration, compilation,
+backpressure, cancellation, and terminal outcomes.
 
 ## Python Connectors
 
@@ -393,6 +443,9 @@ pocketstation/
   __init__.py       synchronous public surface
   audio_input.py    bounded application-owned PCM input
   capture.py        concise app + mic recipe
+  connector.py      provider-facing outbound Connector authoring
+  source_authoring.py typed non-PCM Source authoring on Core workers
+  operator_authoring.py typed Operator authoring on Core workers
   session.py        explicit Session lifecycle and declarations
   sources.py        source selectors, discovery, permission, failure identity
   graph.py          Stem / Endpoint / SignalSpec and route declarations
@@ -408,6 +461,9 @@ pocketstation/
   py.typed          PEP 561 marker
 native/src/
   lib.rs            module registration only
+  connector/        Connector values, worker adapter, and observations
+  source_authoring/ Source manifest and SourceFactory/SourceDriver adapter
+  operator_authoring/ Operator manifest and AsyncOperator adapter
   audio_input.rs    Core AudioInput projection and buffer crossing
   graph.rs          exact graph values, handles, routes, and reentry projection
   extensions.rs     ABI validation and immutable library-registration receipts
