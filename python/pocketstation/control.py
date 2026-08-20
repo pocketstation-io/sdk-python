@@ -14,6 +14,10 @@ from .errors import PocketStationError
 
 _MAX_ERROR_BODY_BYTES = 4_096
 _MAX_JSON_BODY_BYTES = 65_536
+_MAX_SESSION_ID_BYTES = 128
+_MAX_SECRET_BYTES = 4_096
+_MAX_ICE_SERVERS = 32
+_MAX_ICE_URLS = 16
 
 
 class ControlPlaneError(PocketStationError):
@@ -34,9 +38,13 @@ class SessionId(str):
     """Validated Session identifier safe for one URL path segment."""
 
     def __new__(cls, value: str) -> SessionId:
-        if not value or not all(
-            character.isascii() and (character.isalnum() or character in "-_")
-            for character in value
+        if (
+            not value
+            or len(value.encode("utf-8")) > _MAX_SESSION_ID_BYTES
+            or not all(
+                character.isascii() and (character.isalnum() or character in "-_")
+                for character in value
+            )
         ):
             raise ValueError(
                 "Session ID must contain only ASCII letters, digits, '-' or '_'"
@@ -52,6 +60,10 @@ class SecretToken:
     def __init__(self, value: str) -> None:
         if not value:
             raise ValueError("credential token must not be empty")
+        if len(value.encode("utf-8")) > _MAX_SECRET_BYTES:
+            raise ValueError(
+                f"credential token must not exceed {_MAX_SECRET_BYTES} bytes"
+            )
         self._value = value
 
     def expose_secret(self) -> str:
@@ -65,7 +77,7 @@ class SecretToken:
 class IceServer:
     urls: tuple[str, ...]
     username: str | None = None
-    credential: str | None = None
+    credential: SecretToken | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,11 +111,11 @@ class ControlClient:
         self,
         control_plane_url: str,
         *,
-        timeout_seconds: float | None = 10.0,
+        timeout_seconds: float = 10.0,
         http_client: httpx.Client | None = None,
     ) -> None:
         self.control_plane_url = _normalize_base_url(control_plane_url)
-        self._timeout_seconds = timeout_seconds
+        self._timeout_seconds = _validate_timeout(timeout_seconds)
         self._owns_http_client = http_client is None
         self._http_client = http_client or httpx.Client(timeout=timeout_seconds)
         self._closed = False
@@ -223,7 +235,7 @@ class ControlClient:
             exposed = authorization.expose_secret()
             headers["Authorization"] = f"Bearer {exposed}"
             redacted_values = (exposed,)
-        timeout = self._timeout_seconds if timeout_seconds is None else timeout_seconds
+        timeout = _resolve_timeout(self._timeout_seconds, timeout_seconds)
         try:
             with self._http_client.stream(
                 method,
@@ -270,7 +282,23 @@ def _normalize_base_url(value: str) -> str:
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("control_plane_url must be an absolute http or https URL")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("control_plane_url must not contain credentials")
     return value.split("?", 1)[0].split("#", 1)[0].rstrip("/") + "/"
+
+
+def _validate_timeout(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("timeout_seconds must be a number")
+    if not 0 < value <= 300:
+        raise ValueError("timeout_seconds must be greater than 0 and at most 300")
+    return float(value)
+
+
+def _resolve_timeout(default: float, override: float | None) -> float:
+    """Resolve a per-request override without permitting unbounded I/O."""
+
+    return default if override is None else _validate_timeout(override)
 
 
 def _read_bounded(chunks: Any, limit_bytes: int) -> bytes:
@@ -290,7 +318,10 @@ def _read_bounded(chunks: Any, limit_bytes: int) -> bytes:
 
 def _required(payload: dict[str, Any], key: str, expected_type: type[Any]) -> Any:
     value = payload.get(key)
-    if not isinstance(value, expected_type):
+    valid = isinstance(value, expected_type)
+    if expected_type is int and isinstance(value, bool):
+        valid = False
+    if not valid:
         raise ControlPlaneError(
             f"control-plane response field {key!r} has the wrong type",
             "control.response_decode",
@@ -305,6 +336,11 @@ def _ice_servers(payload: dict[str, Any]) -> tuple[IceServer, ...]:
             "control-plane response field 'ice_servers' has the wrong type",
             "control.response_decode",
         )
+    if len(raw_servers) > _MAX_ICE_SERVERS:
+        raise ControlPlaneError(
+            f"control-plane returned more than {_MAX_ICE_SERVERS} ICE servers",
+            "control.response_too_large",
+        )
     servers: list[IceServer] = []
     for raw_server in raw_servers:
         if not isinstance(raw_server, dict):
@@ -318,6 +354,11 @@ def _ice_servers(payload: dict[str, Any]) -> tuple[IceServer, ...]:
                 "control-plane ICE server URLs must be strings",
                 "control.response_decode",
             )
+        if len(urls) > _MAX_ICE_URLS:
+            raise ControlPlaneError(
+                f"ICE server returned more than {_MAX_ICE_URLS} URLs",
+                "control.response_too_large",
+            )
         username = raw_server.get("username")
         credential = raw_server.get("credential")
         if username is not None and not isinstance(username, str):
@@ -328,7 +369,13 @@ def _ice_servers(payload: dict[str, Any]) -> tuple[IceServer, ...]:
             raise ControlPlaneError(
                 "ICE credential must be a string", "control.response_decode"
             )
-        servers.append(IceServer(tuple(urls), username, credential))
+        servers.append(
+            IceServer(
+                tuple(urls),
+                username,
+                None if credential is None else SecretToken(credential),
+            )
+        )
     return tuple(servers)
 
 
@@ -344,10 +391,16 @@ def _session_credentials(payload: dict[str, Any]) -> SessionCredentials:
 
 
 def _session_snapshot(payload: dict[str, Any]) -> SessionSnapshot:
+    subscription_count = _required(payload, "subscription_count", int)
+    if subscription_count < 0:
+        raise ControlPlaneError(
+            "control-plane subscription_count must not be negative",
+            "control.response_decode",
+        )
     return SessionSnapshot(
         session_id=SessionId(_required(payload, "session_id", str)),
         source_active=_required(payload, "source_active", bool),
-        subscription_count=_required(payload, "subscription_count", int),
+        subscription_count=subscription_count,
         codec=_required(payload, "codec", str),
     )
 

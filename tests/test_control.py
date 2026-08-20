@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import httpx
 import pytest
-
 from pocketstation import (
     ControlClient,
     ControlPlaneError,
@@ -72,6 +71,9 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
     assert credentials.source_token.expose_secret() == "source-secret"
     assert "source-secret" not in repr(credentials.source_token)
     assert credentials.ice_servers[0].urls == ("turn:turn.example:3478",)
+    assert credentials.ice_servers[0].credential is not None
+    assert credentials.ice_servers[0].credential.expose_secret() == "turn-secret"
+    assert "turn-secret" not in repr(credentials)
     assert snapshot.source_active is True
     assert snapshot.subscription_count == 2
     assert subscriber.subscriber_token.expose_secret() == "next-subscriber-secret"
@@ -168,3 +170,84 @@ def test_control_client_redacts_authorization_from_http_error() -> None:
 def test_session_id_rejects_unsafe_path_values(value: str) -> None:
     with pytest.raises(ValueError):
         SessionId(value)
+
+
+def test_control_decoder_rejects_boolean_or_negative_subscription_counts() -> None:
+    for invalid in (True, -1):
+        transport = httpx.MockTransport(
+            lambda _request, value=invalid: httpx.Response(
+                200,
+                json={
+                    "session_id": "session_123",
+                    "source_active": True,
+                    "subscription_count": value,
+                    "codec": "opus",
+                },
+            )
+        )
+        with httpx.Client(transport=transport) as http_client:
+            client = ControlClient("https://control.example", http_client=http_client)
+            with pytest.raises(ControlPlaneError) as raised:
+                client.session("session_123")
+        assert raised.value.code == "control.response_decode"
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://user:password@control.example", "ftp://control.example"],
+)
+def test_control_origin_rejects_embedded_credentials_and_non_http(url: str) -> None:
+    with pytest.raises(ValueError):
+        ControlClient(url)
+
+
+@pytest.mark.parametrize("timeout", [None, True, 0, -1, 301])
+def test_control_client_rejects_invalid_timeouts(timeout) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        ControlClient("https://control.example", timeout_seconds=timeout)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timeout", [None, True, 0, -1, 301])
+async def test_async_control_client_rejects_invalid_timeouts(timeout) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        AsyncControlClient("https://control.example", timeout_seconds=timeout)
+
+
+def test_per_request_none_inherits_the_finite_client_timeout() -> None:
+    observed: list[float | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        observed.append(request.extensions["timeout"]["read"])
+        return httpx.Response(201, json=CREATE_RESPONSE)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = ControlClient(
+            "https://control.example",
+            timeout_seconds=7.0,
+            http_client=http_client,
+        )
+        client.create_session(timeout_seconds=None)
+
+    assert observed == [7.0]
+
+
+@pytest.mark.asyncio
+async def test_async_per_request_none_inherits_the_finite_client_timeout() -> None:
+    observed: list[float | None] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed.append(request.extensions["timeout"]["read"])
+        return httpx.Response(201, json=CREATE_RESPONSE)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        client = AsyncControlClient(
+            "https://control.example",
+            timeout_seconds=7.0,
+            http_client=http_client,
+        )
+        await client.create_session(timeout_seconds=None)
+
+    assert observed == [7.0]

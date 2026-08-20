@@ -19,9 +19,11 @@ from ..control import (
     SessionSnapshot,
     SubscriberCredentials,
     _normalize_base_url,
+    _resolve_timeout,
     _session_credentials,
     _session_snapshot,
     _subscriber_credentials,
+    _validate_timeout,
 )
 
 
@@ -32,11 +34,11 @@ class ControlClient:
         self,
         control_plane_url: str,
         *,
-        timeout_seconds: float | None = 10.0,
+        timeout_seconds: float = 10.0,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.control_plane_url = _normalize_base_url(control_plane_url)
-        self._timeout_seconds = timeout_seconds
+        self._timeout_seconds = _validate_timeout(timeout_seconds)
         self._owns_http_client = http_client is None
         self._http_client = http_client or httpx.AsyncClient(timeout=timeout_seconds)
         self._closed = False
@@ -156,7 +158,7 @@ class ControlClient:
             exposed = authorization.expose_secret()
             headers["Authorization"] = f"Bearer {exposed}"
             redacted_values = (exposed,)
-        timeout = self._timeout_seconds if timeout_seconds is None else timeout_seconds
+        timeout = _resolve_timeout(self._timeout_seconds, timeout_seconds)
         try:
             async with self._http_client.stream(
                 method,
