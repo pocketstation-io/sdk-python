@@ -1,4 +1,4 @@
-"""Run real source-aware whisper.cpp transcription from an installed SDK."""
+"""Run source-aware faster-whisper transcription from an installed SDK."""
 
 from __future__ import annotations
 
@@ -10,18 +10,19 @@ from pathlib import Path
 import pocketstation
 import pocketstation.aio as pks_aio
 
-from examples.transcription.transcript import TRANSCRIPT_SIGNAL
-from examples.transcription.wav_input import feed_live, read_pcm16_wav
-from examples.transcription.whisper_cpp import (
-    WhisperCpp,
-    WhisperCppConfiguration,
+from examples.transcription.faster_whisper import (
+    FasterWhisper,
+    FasterWhisperConfiguration,
 )
+from examples.transcription.wav_input import feed_live, read_pcm16_wav
 
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--whisper-cli", type=Path, required=True)
-    parser.add_argument("--model", type=Path, required=True)
+    parser.add_argument("--model", default="base")
+    parser.add_argument("--device", default="auto")
+    parser.add_argument("--compute-type", default="default")
+    parser.add_argument("--language")
     parser.add_argument("--wav", type=Path, required=True)
     parser.add_argument("--record-to", type=Path, required=True)
     return parser.parse_args()
@@ -30,8 +31,10 @@ def _arguments() -> argparse.Namespace:
 async def main() -> None:
     arguments = _arguments()
     result = await transcribe_wav(
-        whisper_cli=arguments.whisper_cli,
         model=arguments.model,
+        device=arguments.device,
+        compute_type=arguments.compute_type,
+        language=arguments.language,
         wav=arguments.wav,
         record_to=arguments.record_to,
     )
@@ -40,14 +43,15 @@ async def main() -> None:
 
 async def transcribe_wav(
     *,
-    whisper_cli: Path,
-    model: Path,
+    model: str,
+    device: str,
+    compute_type: str,
+    language: str | None,
     wav: Path,
     record_to: Path,
 ) -> dict[str, object]:
-    """Transcribe one real WAV through Session audio input and recording."""
+    """Transcribe one WAV through the public Session and Python model API."""
     source = read_pcm16_wav(wav)
-
     session = pks_aio.Session(
         recording_root=record_to,
         sample_rate_hz=source.sample_rate_hz,
@@ -58,30 +62,28 @@ async def transcribe_wav(
         capacity_frames=32,
         frame_samples_per_channel=source.frame_samples_per_channel,
     )
-    whisper = WhisperCpp(
-        WhisperCppConfiguration(
-            executable=whisper_cli,
+    transcriber = FasterWhisper(
+        FasterWhisperConfiguration(
             model=model,
+            device=device,
+            compute_type=compute_type,
+            language=language,
             window_seconds=min(30, max(0.1, source.duration_s)),
         )
     )
-    operator = session.register_operator(whisper.provider()).declare()
-    audio.output.connect(operator.input("audio"))
+    transcripts = transcriber.attach(session, audio.output)
     audio.output.record("application-owned-speech")
-    subscription = session.subscribe(
-        operator.output("transcript"), signal=TRANSCRIPT_SIGNAL
-    )
 
     running = await session.start()
     try:
         await feed_live(audio, source)
-        result = await asyncio.wait_for(
-            anext(running.signals(subscription).__aiter__()),
-            timeout=whisper.configuration.process_timeout_s,
+        envelope = await asyncio.wait_for(
+            anext(running.signals(transcripts).__aiter__()),
+            timeout=transcriber.configuration.inference_timeout_s,
         )
-        if not isinstance(result, pocketstation.SignalEnvelope):
+        if not isinstance(envelope, pocketstation.SignalEnvelope):
             raise RuntimeError("transcription ended without a transcript")
-        transcript = json.loads(str(result.payload))
+        transcript = json.loads(str(envelope.payload))
     finally:
         outcome = await running.stop()
     if not outcome.success:

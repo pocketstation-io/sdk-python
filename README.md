@@ -97,8 +97,9 @@ canonical-Session evidence is not release evidence:
 - shared native Relay publication of independent application and microphone
   buses, opaque receiver invitation after publication readiness, real browser
   receipt, and complete two-stem recording;
-- real source-aware whisper.cpp inference and an output-free executable
-  notebook over the public async Operator API;
+- source-aware faster-whisper integration over the normal Python model API,
+  plus a real hard-isolated whisper.cpp proof and output-free executable
+  notebook over the same public async Operator contract;
 - current-host sync/async boundary and slow-consumer qualification with exact
   units, bounded queue peaks, explicit drops, and post-shutdown descriptor,
   thread, native-buffer, and Python-allocation observations.
@@ -202,7 +203,7 @@ backpressure, cancellation, and terminal outcomes.
 
 ## Python Connectors
 
-The concise path declares an audio contract and handles items directly. Core
+The concise path declares an audio contract and handles frames directly. Core
 still owns bounded receiver polling, route accounting, readiness, failure
 containment, and shutdown; Python executes only on the Connector's
 off-realtime worker.
@@ -210,18 +211,19 @@ off-realtime worker.
 ```python
 import pocketstation
 
-manifest = pocketstation.ConnectorManifest.audio(
+publisher = pocketstation.Connector.from_audio_handler(
     "io.example.connector.stdout.v1",
+    lambda frame, context: print(frame.sequence_number),
     package_version="1.0.0",
 )
-
-@pocketstation.connector(manifest)
-def stdout(item, context):
-    print(item.input.port_name, item.audio.sequence_number)
-
 session = pocketstation.Session()
-endpoint = session.register_connector(stdout).declare()
+endpoint = session.register_connector(publisher).declare()
 ```
+
+`pocketstation.aio.Connector.from_audio_handler(...)` accepts a coroutine and
+enforces finite delivery deadlines. The complete manifest, typed
+configuration, driver, grouped worker, and observation APIs remain available
+for reusable provider packages.
 
 Stateful providers implement `ConnectorDriver` and register with
 `Connector.with_driver(...)`. Their factory receives every resolved input
@@ -490,18 +492,22 @@ does not depend on a sibling checkout.
 
 ## Real source-aware transcription example
 
-The example-owned whisper.cpp Operator consumes finite PCM windows outside the
-realtime partition and emits JSON transcript signals carrying source, stream,
-sequence, and discontinuity identity. It uses the same public `aio` Operator
-API available to SDK users; no provider implementation is embedded in Core.
+The primary Python example uses faster-whisper, the backend used by Pipecat's
+standard local Whisper service. It consumes finite per-source PCM windows
+outside the realtime partition and emits JSON transcript signals carrying
+source, stream, sequence, and discontinuity identity.
 
 ```bash
-python -m examples.transcription.run \
-  --whisper-cli "$(command -v whisper-cli)" \
-  --model /path/to/ggml-tiny.en.bin \
+pip install 'pocketstation[transcription]'
+python -m examples.transcription.run_faster_whisper \
+  --model base \
   --wav /path/to/speech.wav \
   --record-to recordings
 ```
+
+The existing whisper.cpp subprocess proof remains available when hard process
+termination and reaping are required. It is no longer presented as the normal
+Python integration.
 
 The executable notebook at
 `examples/notebooks/source_aware_transcription.ipynb` calls the same function

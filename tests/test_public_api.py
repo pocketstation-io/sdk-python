@@ -14,6 +14,7 @@ def test_root_exports_are_an_intentional_stable_snapshot() -> None:
     assert set(pocketstation.__all__) == {
         "AudioBatch",
         "AudioCaps",
+        "AudioConnectorHandler",
         "AudioFrame",
         "AudioInput",
         "AudioInputBufferError",

@@ -6,6 +6,7 @@ from . import aio as aio
 from .audio_input import AudioInput, AudioInputConfig, AudioInputObservations, PcmSource
 from .capture import Capture, capture
 from .connector import (
+    AudioConnectorHandler,
     Connector,
     ConnectorBatchOutcome,
     ConnectorCapability,
@@ -256,6 +257,7 @@ __all__ = [
     "STREAM_EOF",
     "AudioBatch",
     "AudioCaps",
+    "AudioConnectorHandler",
     "AudioFrame",
     "AudioInput",
     "AudioInputBufferError",

@@ -8,18 +8,19 @@ import sys
 import wave
 from array import array
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pocketstation
 import pocketstation.aio as pks_aio
 
-TRANSCRIPT_SIGNAL = pocketstation.SignalSpec.text(
-    pocketstation.TextFormat.JSON,
-    role="transcript.final",
-    schema="io.pocketstation.transcript.batch.v1",
+from examples.transcription.audio_windows import (
+    AudioWindow,
+    AudioWindowBuffer,
+    mono_16khz,
 )
+from examples.transcription.transcript import TRANSCRIPT_SIGNAL
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,22 +65,13 @@ class WhisperCppConfiguration:
             raise ValueError("maximum_error_bytes must be between 1024 and 1048576")
 
 
-@dataclass(slots=True)
-class _AudioWindow:
-    sample_rate_hz: int
-    channel_count: int
-    source_id: int
-    stream_id: int
-    sequence_start: int
-    sequence_end: int
-    discontinuity_epoch: int
-    samples: array[float] = field(default_factory=lambda: array("f"))
-
-
 class _WhisperNode(pks_aio.OperatorNode):
     def __init__(self, configuration: WhisperCppConfiguration) -> None:
         self._configuration = configuration
-        self._windows: dict[tuple[int, int], _AudioWindow] = {}
+        self._windows = AudioWindowBuffer(
+            window_seconds=configuration.window_seconds,
+            maximum_sources=configuration.maximum_sources,
+        )
         self._children: set[asyncio.subprocess.Process] = set()
         self._cancelled = False
 
@@ -90,79 +82,19 @@ class _WhisperNode(pks_aio.OperatorNode):
     ) -> tuple[pocketstation.OperatorEmission, ...]:
         if input_port != "audio":
             raise ValueError(f"unexpected input port: {input_port}")
-        payload = envelope.payload
-        if not isinstance(payload, pocketstation.SignalAudioPayload):
-            raise TypeError("WhisperCpp accepts only PCM audio signals")
-        lineage = envelope.lineage
-        if lineage is None:
-            raise ValueError("WhisperCpp requires source-aware audio lineage")
         if self._cancelled:
             raise asyncio.CancelledError
-
-        key = (payload.source_id, payload.stream_id)
-        window = self._windows.get(key)
-        incompatible = window is not None and (
-            window.sample_rate_hz != payload.sample_rate_hz
-            or window.channel_count != payload.channel_count
-            or window.discontinuity_epoch != lineage.discontinuity_epoch
+        return tuple(
+            [await self._transcribe(window) for window in self._windows.push(envelope)]
         )
-        emissions: list[pocketstation.OperatorEmission] = []
-        if incompatible and window is not None:
-            if window.samples:
-                emissions.append(await self._transcribe(window))
-            del self._windows[key]
-            window = None
-        if window is None:
-            if len(self._windows) >= self._configuration.maximum_sources:
-                raise RuntimeError("maximum concurrent transcription sources exceeded")
-            window = _AudioWindow(
-                sample_rate_hz=payload.sample_rate_hz,
-                channel_count=payload.channel_count,
-                source_id=payload.source_id,
-                stream_id=payload.stream_id,
-                sequence_start=payload.sequence_number,
-                sequence_end=payload.sequence_number,
-                discontinuity_epoch=lineage.discontinuity_epoch,
-            )
-            self._windows[key] = window
-
-        samples = array("f")
-        samples.frombytes(payload.samples_f32le)
-        if sys.byteorder != "little":
-            samples.byteswap()
-        if len(samples) != payload.sample_count:
-            raise ValueError("audio payload size does not match sample_count")
-        window.samples.extend(samples)
-        window.sequence_end = payload.sequence_number
-
-        target_samples = int(
-            window.sample_rate_hz
-            * window.channel_count
-            * self._configuration.window_seconds
-        )
-        if len(window.samples) >= target_samples:
-            batch = _AudioWindow(
-                sample_rate_hz=window.sample_rate_hz,
-                channel_count=window.channel_count,
-                source_id=window.source_id,
-                stream_id=window.stream_id,
-                sequence_start=window.sequence_start,
-                sequence_end=window.sequence_end,
-                discontinuity_epoch=window.discontinuity_epoch,
-                samples=array("f", window.samples[:target_samples]),
-            )
-            del window.samples[:target_samples]
-            window.sequence_start = payload.sequence_number
-            emissions.append(await self._transcribe(batch))
-        return tuple(emissions)
 
     async def flush(self) -> tuple[pocketstation.OperatorEmission, ...]:
-        emissions: list[pocketstation.OperatorEmission] = []
-        for window in tuple(self._windows.values()):
-            if window.samples and not self._cancelled:
-                emissions.append(await self._transcribe(window))
-        self._windows.clear()
-        return tuple(emissions)
+        if self._cancelled:
+            self._windows.clear()
+            return ()
+        return tuple(
+            [await self._transcribe(window) for window in self._windows.flush()]
+        )
 
     async def cancel(self) -> None:
         self._cancelled = True
@@ -175,7 +107,7 @@ class _WhisperNode(pks_aio.OperatorNode):
     async def close(self) -> None:
         await self.cancel()
 
-    async def _transcribe(self, window: _AudioWindow) -> pocketstation.OperatorEmission:
+    async def _transcribe(self, window: AudioWindow) -> pocketstation.OperatorEmission:
         if self._cancelled:
             raise asyncio.CancelledError
         with TemporaryDirectory(prefix="pocketstation-whisper-") as directory:
@@ -317,9 +249,8 @@ class WhisperCpp:
         )
 
 
-def _write_whisper_wav(path: Path, window: _AudioWindow) -> None:
-    mono = _downmix(window.samples, window.channel_count)
-    resampled = _resample(mono, window.sample_rate_hz, 16_000)
+def _write_whisper_wav(path: Path, window: AudioWindow) -> None:
+    resampled = mono_16khz(window)
     pcm = array(
         "h", (round(max(-1.0, min(1.0, value)) * 32_767) for value in resampled)
     )
@@ -330,39 +261,6 @@ def _write_whisper_wav(path: Path, window: _AudioWindow) -> None:
         output.setsampwidth(2)
         output.setframerate(16_000)
         output.writeframes(pcm.tobytes())
-
-
-def _downmix(samples: array[float], channels: int) -> array[float]:
-    if channels == 1:
-        return array("f", samples)
-    return array(
-        "f",
-        (
-            sum(samples[index : index + channels]) / channels
-            for index in range(0, len(samples), channels)
-        ),
-    )
-
-
-def _resample(
-    samples: array[float], source_rate_hz: int, target_rate_hz: int
-) -> array[float]:
-    if source_rate_hz == target_rate_hz:
-        return samples
-    output_count = round(len(samples) * target_rate_hz / source_rate_hz)
-    if not samples or output_count == 0:
-        return array("f")
-    if len(samples) == 1:
-        return array("f", [samples[0]] * output_count)
-    scale = source_rate_hz / target_rate_hz
-    output = array("f")
-    for output_index in range(output_count):
-        position = min(output_index * scale, len(samples) - 1)
-        lower = int(position)
-        upper = min(lower + 1, len(samples) - 1)
-        fraction = position - lower
-        output.append(samples[lower] + (samples[upper] - samples[lower]) * fraction)
-    return output
 
 
 def _read_bounded(path: Path, maximum_bytes: int) -> bytes:

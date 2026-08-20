@@ -10,6 +10,7 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from typing import Any, Protocol, TypeAlias, TypeVar, runtime_checkable
 
+from .._native import AudioFrame
 from ..connector import (
     Connector as SyncConnector,
 )
@@ -97,6 +98,10 @@ ConnectorDriverBuilder: TypeAlias = Callable[
 ]
 ConnectorHandler: TypeAlias = Callable[
     [ConnectorItem, ConnectorContext],
+    Coroutine[Any, Any, ConnectorDeliveryOutcome | None],
+]
+AudioConnectorHandler: TypeAlias = Callable[
+    [AudioFrame, ConnectorContext],
     Coroutine[Any, Any, ConnectorDeliveryOutcome | None],
 ]
 _Result = TypeVar("_Result")
@@ -405,6 +410,40 @@ class Connector:
         return cls.with_driver(manifest, prepare, deadlines=deadlines)
 
     @classmethod
+    def from_audio_handler(
+        cls,
+        operator_id: str,
+        handler: AudioConnectorHandler,
+        *,
+        package_version: str,
+        port_name: str = "audio",
+        deadlines: ConnectorDeadlines | None = None,
+    ) -> Connector:
+        """Create the common async PCM Connector without a manual manifest."""
+
+        async def deliver(
+            item: ConnectorItem,
+            context: ConnectorContext,
+        ) -> ConnectorDeliveryOutcome | None:
+            if item.audio is None:
+                raise ConnectorError(
+                    "audio Connector received a non-audio item",
+                    code="connector.delivery.signal_mismatch",
+                    stage=ConnectorErrorStage.DELIVERY,
+                )
+            return await handler(item.audio, context)
+
+        return cls.from_handler(
+            ConnectorManifest.audio(
+                operator_id,
+                package_version=package_version,
+                port_name=port_name,
+            ),
+            deliver,
+            deadlines=deadlines,
+        )
+
+    @classmethod
     def with_worker(
         cls,
         manifest: ConnectorManifest,
@@ -520,6 +559,7 @@ def _wait_for_provider(
 
 
 __all__ = [
+    "AudioConnectorHandler",
     "Connector",
     "ConnectorDeadlines",
     "ConnectorDriver",

@@ -148,6 +148,36 @@ async def test_async_connector_runs_on_owning_loop_with_observations() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_audio_connector_convenience_runs_on_owning_loop() -> None:
+    delivered = asyncio.Event()
+    received = []
+    owning_thread = threading.get_ident()
+
+    async def publish(frame, context):
+        assert threading.get_ident() == owning_thread
+        received.append(frame)
+        delivered.set()
+        return ConnectorDeliveryOutcome.DELIVERED
+
+    connector = AsyncConnector.from_audio_handler(
+        "io.pocketstation.test.aio-audio-handler.v1",
+        publish,
+        package_version="1.0.0",
+    )
+    session = Session()
+    audio = session.audio_input("remote-call", frame_samples_per_channel=4)
+    audio.output.send(session.register_connector(connector).declare())
+
+    running = await session.start()
+    await audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+    await asyncio.wait_for(delivered.wait(), 1.0)
+    assert (await running.stop()).success
+    assert connector.manifest.inputs[0].signal.is_audio
+    assert received[0].source_id == audio.source_id
+    assert received[0].stream_id == audio.stream_id
+
+
+@pytest.mark.asyncio
 async def test_async_connector_delivery_deadline_is_finite_and_structured() -> None:
     started = asyncio.Event()
 

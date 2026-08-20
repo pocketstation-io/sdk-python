@@ -645,6 +645,9 @@ ConnectorDriverBuilder: TypeAlias = Callable[
 ConnectorHandler: TypeAlias = Callable[
     [ConnectorItem, ConnectorContext], ConnectorDeliveryOutcome | None
 ]
+AudioConnectorHandler: TypeAlias = Callable[
+    [AudioFrame, ConnectorContext], ConnectorDeliveryOutcome | None
+]
 ConnectorPreparationGroup: TypeAlias = Callable[
     [int, Mapping[str, ConnectorConfigurationValue]], str | None
 ]
@@ -920,6 +923,38 @@ class Connector:
         """Create the common stateless Connector directly from a handler."""
         return cls(manifest, lambda _inputs: _HandlerDriver(handler))
 
+    @classmethod
+    def from_audio_handler(
+        cls,
+        operator_id: str,
+        handler: AudioConnectorHandler,
+        *,
+        package_version: str,
+        port_name: str = "audio",
+    ) -> Connector:
+        """Create the common PCM Connector without hand-writing a manifest."""
+
+        def deliver(
+            item: ConnectorItem,
+            context: ConnectorContext,
+        ) -> ConnectorDeliveryOutcome | None:
+            if item.audio is None:
+                raise ConnectorError(
+                    "audio Connector received a non-audio item",
+                    code="connector.delivery.signal_mismatch",
+                    stage=ConnectorErrorStage.DELIVERY,
+                )
+            return handler(item.audio, context)
+
+        return cls.from_handler(
+            ConnectorManifest.audio(
+                operator_id,
+                package_version=package_version,
+                port_name=port_name,
+            ),
+            deliver,
+        )
+
 
 class RegisteredConnector:
     """One reusable Connector implementation bound to one Session draft."""
@@ -1021,6 +1056,7 @@ def _default_edge(manifest: ConnectorManifest) -> EdgeContract:
 
 
 __all__ = [
+    "AudioConnectorHandler",
     "Connector",
     "ConnectorBatchOutcome",
     "ConnectorCapability",

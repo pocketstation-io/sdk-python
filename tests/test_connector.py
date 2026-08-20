@@ -234,6 +234,33 @@ def test_connector_failure_preserves_code_and_retryability_in_session_outcome() 
     assert endpoint.message == "provider.timeout: provider request timed out"
 
 
+def test_audio_connector_convenience_keeps_native_lineage_and_lifecycle() -> None:
+    received = []
+    delivered = Event()
+
+    def publish(frame, context):
+        received.append(frame)
+        delivered.set()
+        return ConnectorDeliveryOutcome.DELIVERED
+
+    connector = Connector.from_audio_handler(
+        "io.pocketstation.test.audio-handler.v1",
+        publish,
+        package_version="1.0.0",
+    )
+    session = Session()
+    audio = session.audio_input("remote-call", frame_samples_per_channel=4)
+    audio.output.send(session.register_connector(connector).declare())
+
+    running = session.start()
+    audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+    assert delivered.wait(1.0)
+    assert running.stop().success
+    assert connector.manifest.inputs[0].signal.is_audio
+    assert received[0].source_id == audio.source_id
+    assert received[0].stream_id == audio.stream_id
+
+
 def test_connector_observations_preserve_service_state_and_delivery_counters() -> None:
     delivered = Event()
 

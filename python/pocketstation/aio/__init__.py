@@ -3,6 +3,7 @@
 from .audio_input import AudioInput, PcmSource
 from .capture import Capture, capture
 from .connector import (
+    AudioConnectorHandler,
     Connector,
     ConnectorDeadlines,
     ConnectorDriver,
@@ -60,6 +61,7 @@ from .sources import (
 from .streams import AudioStream, SignalStream
 
 __all__ = [
+    "AudioConnectorHandler",
     "AudioInput",
     "AudioStream",
     "Capture",
