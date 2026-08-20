@@ -18,6 +18,7 @@ from ._native import (
     Session as _NativeSession,
 )
 from .audio_input import AudioInput, AudioInputConfig, PcmSource
+from .connector import Connector, RegisteredConnector
 from .errors import PocketStationError, _native_call
 from .extensions import NativeExtensionLibrary
 from .graph import (
@@ -306,6 +307,25 @@ class Session(_GraphSessionDeclarations):
         """Declare the bounded managed-language polling endpoint."""
         return _native_call(lambda: Endpoint(self._native.polled_audio()))
 
+    def register_connector(self, connector: Connector) -> RegisteredConnector:
+        """Register one in-process Python Connector implementation."""
+        maximum_batch_items = connector.maximum_batch_items
+        if maximum_batch_items is None:
+            native = _native_call(
+                lambda: self._native.register_connector(
+                    connector.manifest._native, connector._native_factory
+                )
+            )
+        else:
+            native = _native_call(
+                lambda: self._native.register_connector_worker(
+                    connector.manifest._native,
+                    connector._native_factory,
+                    maximum_batch_items,
+                )
+            )
+        return RegisteredConnector(self, connector, native)
+
     def register_sidecar(self, spec: SidecarProcessSpec) -> SidecarHandle:
         """Register a bounded PKSS child to spawn during transactional start."""
         sidecar_id = _native_call(
@@ -343,9 +363,11 @@ __all__ = [
     "AudioFrame",
     "AudioInput",
     "AudioInputConfig",
+    "Connector",
     "Endpoint",
     "RecordingOutcome",
     "RecordingStemOutcome",
+    "RegisteredConnector",
     "RouteMetrics",
     "RunningSession",
     "Session",

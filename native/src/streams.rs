@@ -229,33 +229,75 @@ pub(crate) fn python_audio_batch(
     };
     let frames = owned
         .into_iter()
-        .map(|frame| {
-            Py::new(
-                py,
-                PythonAudioFrame {
-                    sample_count: frame.sample_count,
-                    samples_f32le: PyBytes::new(py, &frame.samples_f32le).unbind(),
-                    sample_rate_hz: frame.sample_rate_hz,
-                    channel_count: frame.channel_count,
-                    session_id: frame.session_id,
-                    stream_id: frame.stream_id,
-                    source_id: frame.source_id,
-                    stem_id: frame.stem_id,
-                    clock_id: frame.clock_id,
-                    sequence_num: frame.sequence_num,
-                    timestamp_start_ns: frame.timestamp_start_ns,
-                    duration_ns: frame.duration_ns,
-                    source_generation: frame.source_generation,
-                    discontinuity_epoch: frame.discontinuity_epoch,
-                    permission_epoch: frame.permission_epoch,
-                    endpoint_id: frame.endpoint_id,
-                    connector_id: frame.connector_id,
-                    route_id: frame.route_id,
-                },
-            )
-        })
+        .map(|frame| Py::new(py, python_audio_frame(py, frame)))
         .collect::<PyResult<Vec<_>>>()?;
     Ok(Some(PythonAudioBatch { frames }))
+}
+
+pub(crate) fn owned_endpoint_audio_frame(
+    frame: pocketstation::EndpointAudioFrame,
+    input: &pocketstation::connector::ConnectorInputDescriptor,
+) -> OwnedAudioFrame {
+    owned_endpoint_audio_frame_for_route(
+        frame,
+        input.endpoint_id().get(),
+        input
+            .connector_id()
+            .map_or(0, pocketstation::ConnectorId::get),
+        input.route_id().get(),
+    )
+}
+
+pub(crate) fn owned_endpoint_audio_frame_for_route(
+    frame: pocketstation::EndpointAudioFrame,
+    endpoint_id: u64,
+    connector_id: u64,
+    route_id: u64,
+) -> OwnedAudioFrame {
+    let lineage = frame.lineage();
+    OwnedAudioFrame {
+        samples_f32le: f32_samples_to_le_bytes(frame.samples()),
+        sample_count: frame.samples().len(),
+        sample_rate_hz: frame.sample_rate_hz(),
+        channel_count: frame.channels(),
+        session_id: lineage.session_id().get(),
+        stream_id: frame.stream_id().get(),
+        source_id: lineage.source_id().get(),
+        stem_id: lineage.stem_id().get(),
+        clock_id: lineage.clock_id().get(),
+        sequence_num: lineage.sequence_number(),
+        timestamp_start_ns: lineage.timestamp_start_ns(),
+        duration_ns: lineage.duration_ns(),
+        source_generation: lineage.source_generation(),
+        discontinuity_epoch: lineage.discontinuity_epoch(),
+        permission_epoch: lineage.permission_epoch(),
+        endpoint_id,
+        connector_id,
+        route_id,
+    }
+}
+
+pub(crate) fn python_audio_frame(py: Python<'_>, frame: OwnedAudioFrame) -> PythonAudioFrame {
+    PythonAudioFrame {
+        sample_count: frame.sample_count,
+        samples_f32le: PyBytes::new(py, &frame.samples_f32le).unbind(),
+        sample_rate_hz: frame.sample_rate_hz,
+        channel_count: frame.channel_count,
+        session_id: frame.session_id,
+        stream_id: frame.stream_id,
+        source_id: frame.source_id,
+        stem_id: frame.stem_id,
+        clock_id: frame.clock_id,
+        sequence_num: frame.sequence_num,
+        timestamp_start_ns: frame.timestamp_start_ns,
+        duration_ns: frame.duration_ns,
+        source_generation: frame.source_generation,
+        discontinuity_epoch: frame.discontinuity_epoch,
+        permission_epoch: frame.permission_epoch,
+        endpoint_id: frame.endpoint_id,
+        connector_id: frame.connector_id,
+        route_id: frame.route_id,
+    }
 }
 
 fn f32_samples_to_le_bytes(samples: &[f32]) -> Vec<u8> {

@@ -20,6 +20,8 @@ from .._native import (
 )
 from ..audio_input import AudioInputConfig
 from ..audio_input import PcmSource as SyncPcmSource
+from ..connector import Connector as SyncConnector
+from ..connector import RegisteredConnector as SyncRegisteredConnector
 from ..errors import PocketStationError, _native_call, _normalize_native_error
 from ..extensions import NativeExtensionLibrary
 from ..graph import (
@@ -37,6 +39,7 @@ from ..sidecar import SidecarHandle, SidecarProcessSpec
 from ..signal import BusSubscription
 from ..sources import Source
 from .audio_input import AudioInput, PcmSource
+from .connector import Connector, RegisteredConnector
 from .observations import EventStream
 from .sidecar import SidecarConnection
 from .streams import AudioStream, SignalStream
@@ -316,6 +319,32 @@ class Session(_GraphSessionDeclarations):
         """Declare the bounded managed-language polling endpoint."""
         return _native_call(lambda: Endpoint(self._native.polled_audio()))
 
+    def register_connector(
+        self, connector: Connector | SyncConnector
+    ) -> RegisteredConnector:
+        """Register an asyncio or synchronous in-process Connector."""
+        bound = (
+            connector._bind(asyncio.get_running_loop())
+            if isinstance(connector, Connector)
+            else connector
+        )
+        maximum_batch_items = bound.maximum_batch_items
+        if maximum_batch_items is None:
+            native = _native_call(
+                lambda: self._native.register_connector(
+                    bound.manifest._native, bound._native_factory
+                )
+            )
+        else:
+            native = _native_call(
+                lambda: self._native.register_connector_worker(
+                    bound.manifest._native,
+                    bound._native_factory,
+                    maximum_batch_items,
+                )
+            )
+        return RegisteredConnector(SyncRegisteredConnector(self, bound, native))
+
     def register_sidecar(self, spec: SidecarProcessSpec) -> SidecarHandle:
         """Register a bounded PKSS child to spawn during transactional start."""
         sidecar_id = _native_call(
@@ -386,4 +415,4 @@ async def _native_async(operation: Callable[[], _Result]) -> _Result:
         raise _normalize_native_error(error) from error
 
 
-__all__ = ["RunningSession", "Session"]
+__all__ = ["Connector", "RegisteredConnector", "RunningSession", "Session"]

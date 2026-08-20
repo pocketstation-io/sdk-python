@@ -263,6 +263,10 @@ class MediaCaps:
         object.__setattr__(self, "_native", native)
 
     @classmethod
+    def _from_native(cls, native: _NativeMediaCaps) -> MediaCaps:
+        return _media_from_native(native)
+
+    @classmethod
     def audio(cls, caps: AudioCaps | None = None) -> MediaCaps:
         return cls(MediaKind.AUDIO_PCM, audio_caps=caps or AudioCaps())
 

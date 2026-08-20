@@ -68,6 +68,10 @@ canonical-Session evidence is not release evidence:
 - typed process-sidecar specs, messages, sync/async streams, bounded queue
   saturation, deadlines, cancellation, graceful close, forced kill, wait, reap,
   and live/final observations, all owned by the same native `Session`;
+- in-process Python Connector authoring over Core's bounded off-realtime
+  Connector worker, with typed configuration, redacted secrets, full input
+  contracts, structured failures, readiness/health/recovery control, and
+  drain/abort shutdown;
 - native blocking waits release the interpreter, and executable tests prove
   Python remains responsive while a hung child is terminated and reaped;
 - immutable Session snapshots covering event and audio queues, source ingress,
@@ -134,7 +138,40 @@ The receipt exposes the canonical path and immutable source, operator, and
 endpoint registrations. Loading is a synchronous pre-start declaration in
 both `pocketstation.Session` and `pocketstation.aio.Session`; it does not run
 Python in foreign callbacks or admit PCM callbacks onto realtime partitions.
-Python-authored extensions use the Session-owned process-sidecar contract.
+Process sidecars remain available when crash isolation or a separately managed
+process is wanted. They are not required for ordinary Python Connector
+authoring.
+
+## Python Connectors
+
+The concise path declares an audio contract and handles items directly. Core
+still owns bounded receiver polling, route accounting, readiness, failure
+containment, and shutdown; Python executes only on the Connector's
+off-realtime worker.
+
+```python
+import pocketstation
+
+manifest = pocketstation.ConnectorManifest.audio(
+    "io.example.connector.stdout.v1",
+    package_version="1.0.0",
+)
+
+@pocketstation.connector(manifest)
+def stdout(item, context):
+    print(item.input.port_name, item.audio.sequence_number)
+
+session = pocketstation.Session()
+endpoint = session.register_connector(stdout).declare()
+```
+
+Stateful providers implement `ConnectorDriver` and register with
+`Connector.with_driver(...)`. Their factory receives every resolved input
+descriptor, including `SignalSpec`, `MediaCaps`, `EdgeContract`, route identity,
+and typed configuration. `ConnectorConfigurationValue.secret(...)` is redacted
+by default and requires explicit provider access. Provider exceptions can use
+`ConnectorError` to preserve a stable error code, stage, and retryability in the
+final Session outcome.
 
 The capability matrix distinguishes declaration-level `REAL` rows from
 component-only `PARTIAL` rows and completely `ABSENT` projections. A row marked

@@ -27,6 +27,7 @@ __pycache__/
 /PHASE*_PROGRESS.md
 /docs/PYTHON_CAPABILITY_MATRIX.md
 /docs/PYTHON_SDK_DESIGN.md
+/docs/PYTHON_SDK_CORE_PARITY_REFERENCE.md
 /docs/standards/FAKE_SCAFFOLD_INVENTORY.md
 /tests/test_capability_contract.py
 venv/

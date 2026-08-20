@@ -135,6 +135,10 @@ pub(crate) struct PythonSessionFailure {
     #[pyo3(get)]
     error_class: Option<String>,
     #[pyo3(get)]
+    error_code: Option<String>,
+    #[pyo3(get)]
+    retryability: Option<String>,
+    #[pyo3(get)]
     component: Option<String>,
     #[pyo3(get)]
     message: Option<String>,
@@ -887,6 +891,8 @@ struct OwnedSessionFailure {
     stage: Option<String>,
     operation: Option<String>,
     error_class: Option<String>,
+    error_code: Option<String>,
+    retryability: Option<String>,
     component: Option<String>,
     message: Option<String>,
     stem_id: Option<u64>,
@@ -1287,7 +1293,7 @@ fn owned_session_event(event: &pocketstation::SessionEvent) -> OwnedSessionEvent
                 failure.route_id().get(),
                 failure.endpoint_id().get(),
                 endpoint_failure_stage_name(failure.stage()).to_owned(),
-                failure.failure().message(),
+                failure.failure(),
             ));
         }
         pocketstation::SessionEventKind::Rollback(failure) => {
@@ -1330,7 +1336,7 @@ fn owned_session_event(event: &pocketstation::SessionEvent) -> OwnedSessionEvent
                         failure.route_id().get(),
                         failure.endpoint_id().get(),
                         endpoint_failure_stage_name(failure.stage()).to_owned(),
-                        failure.failure().message(),
+                        failure.failure(),
                     )
                 }));
             output
@@ -1409,13 +1415,25 @@ fn owned_endpoint_failure(
     route_id: u64,
     endpoint_id: u64,
     stage: String,
-    message: &str,
+    failure: &pocketstation::EndpointFailure,
 ) -> OwnedSessionFailure {
+    let retryability = failure.retryability().map(|value| {
+        match value {
+            pocketstation::EndpointFailureRetryability::Never => "never",
+            pocketstation::EndpointFailureRetryability::Retryable => "retryable",
+            pocketstation::EndpointFailureRetryability::ReconfigurationRequired => {
+                "retry-after-reconfiguration"
+            }
+        }
+        .to_owned()
+    });
     OwnedSessionFailure {
         kind: "endpoint".to_owned(),
         stage: Some(stage),
         error_class: Some("endpoint-failure".to_owned()),
-        message: Some(message.to_owned()),
+        error_code: failure.code().map(str::to_owned),
+        retryability,
+        message: Some(failure.message().to_owned()),
         route_id: Some(route_id),
         endpoint_id: Some(endpoint_id),
         ..OwnedSessionFailure::default()
@@ -1503,6 +1521,8 @@ pub(crate) fn python_session_event(
                     stage: failure.stage,
                     operation: failure.operation,
                     error_class: failure.error_class,
+                    error_code: failure.error_code,
+                    retryability: failure.retryability,
                     component: failure.component,
                     message: failure.message,
                     stem_id: failure.stem_id,

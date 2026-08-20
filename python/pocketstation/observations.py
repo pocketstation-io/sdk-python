@@ -79,6 +79,12 @@ class EndpointFailureStage(StrEnum):
     JOIN_FINALIZE = "join-finalize"
 
 
+class EndpointFailureRetryability(StrEnum):
+    NEVER = "never"
+    RETRYABLE = "retryable"
+    RECONFIGURATION_REQUIRED = "retry-after-reconfiguration"
+
+
 class SessionRollbackStage(StrEnum):
     CANCEL_OPERATOR = "cancel-operator"
     CANCEL_ENDPOINT_PREPARATION = "cancel-endpoint-preparation"
@@ -156,6 +162,8 @@ class SessionFailure:
     stage: FailureStage | None
     operation: str | None
     error_class: str | None
+    error_code: str | None
+    retryability: EndpointFailureRetryability | None
     component: str | None
     message: str | None
     stem_id: int | None
@@ -168,11 +176,18 @@ class SessionFailure:
     @classmethod
     def _from_native(cls, failure: _NativeSessionFailure) -> SessionFailure:
         kind = SessionFailureKind(failure.kind)
+        retryability = getattr(failure, "retryability", None)
         return cls(
             kind=kind,
             stage=_failure_stage(kind, failure.stage),
             operation=failure.operation,
             error_class=failure.error_class,
+            error_code=getattr(failure, "error_code", None),
+            retryability=(
+                None
+                if retryability is None
+                else EndpointFailureRetryability(retryability)
+            ),
             component=failure.component,
             message=failure.message,
             stem_id=failure.stem_id,
@@ -1054,6 +1069,7 @@ __all__ = [
     "AudioReentryMetrics",
     "DerivedRouteMetrics",
     "EdgeMetrics",
+    "EndpointFailureRetryability",
     "EndpointFailureStage",
     "EndpointMetrics",
     "EndpointObservationStage",

@@ -5,7 +5,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
 from pocketstation import (
     EndpointFailureStage,
     Session,
@@ -98,6 +97,8 @@ def test_terminal_event_keeps_fault_categories_and_owner_ids_separate() -> None:
             stage=stage,
             operation="finalize" if kind == "finalization" else None,
             error_class="fixture-failure",
+            error_code="fixture.endpoint" if kind == "endpoint" else None,
+            retryability="retryable" if kind == "endpoint" else None,
             component="Runtime" if kind == "finalization" else None,
             message="endpoint failed" if kind == "endpoint" else None,
             stem_id=identifiers.get("stem_id"),
@@ -142,4 +143,6 @@ def test_terminal_event_keeps_fault_categories_and_owner_ids_separate() -> None:
     assert event.failures[0].stage is EndpointFailureStage.JOIN_FINALIZE
     assert event.failures[0].route_id == 3
     assert event.failures[0].endpoint_id == 4
+    assert event.failures[0].error_code == "fixture.endpoint"
+    assert event.failures[0].retryability.value == "retryable"
     assert event.failures[1].kind is SessionFailureKind.FINALIZATION

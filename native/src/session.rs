@@ -10,6 +10,10 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
 use crate::audio_input::{configuration as audio_input_configuration, PythonAudioInput};
+use crate::connector::{
+    declare_connector, register_connector, register_worker_connector, PythonConnectorConfiguration,
+    PythonConnectorManifest, PythonRegisteredConnector,
+};
 use crate::errors::{
     coded_reason, native_extension_error, session_error, session_start_error, validate_nonempty,
 };
@@ -351,6 +355,34 @@ impl PythonSession {
                 .map(|handle| PythonEndpoint { handle })
                 .map_err(session_error)
         })
+    }
+
+    fn register_connector(
+        &self,
+        manifest: &PythonConnectorManifest,
+        factory: Py<PyAny>,
+    ) -> PyResult<PythonRegisteredConnector> {
+        self.with_session(|session| register_connector(session, manifest, factory))
+    }
+
+    fn register_connector_worker(
+        &self,
+        manifest: &PythonConnectorManifest,
+        factory: Py<PyAny>,
+        maximum_batch_items: usize,
+    ) -> PyResult<PythonRegisteredConnector> {
+        self.with_session(|session| {
+            register_worker_connector(session, manifest, factory, maximum_batch_items)
+        })
+    }
+
+    fn declare_connector(
+        &self,
+        registered: &PythonRegisteredConnector,
+        configuration: &PythonConnectorConfiguration,
+        edge: &PythonEdgeContract,
+    ) -> PyResult<PythonEndpoint> {
+        self.with_session(|session| declare_connector(registered, session, configuration, edge))
     }
 
     fn register_sidecar(&self, spec: &PythonSidecarProcessSpec) -> PyResult<u64> {

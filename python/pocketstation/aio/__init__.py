@@ -2,6 +2,19 @@
 
 from .audio_input import AudioInput, PcmSource
 from .capture import Capture, capture
+from .connector import (
+    Connector,
+    ConnectorDeadlines,
+    ConnectorDriver,
+    ConnectorDriverBuilder,
+    ConnectorDriverFactory,
+    ConnectorFactory,
+    ConnectorHandler,
+    ConnectorWorker,
+    ConnectorWorkerBuilder,
+    RegisteredConnector,
+    connector,
+)
 from .control import ControlClient
 from .extensions import (
     ExtensionAbiVersion,
@@ -27,6 +40,15 @@ __all__ = [
     "AudioInput",
     "AudioStream",
     "Capture",
+    "Connector",
+    "ConnectorDeadlines",
+    "ConnectorDriver",
+    "ConnectorDriverBuilder",
+    "ConnectorDriverFactory",
+    "ConnectorFactory",
+    "ConnectorHandler",
+    "ConnectorWorker",
+    "ConnectorWorkerBuilder",
     "ControlClient",
     "EventStream",
     "ExtensionAbiVersion",
@@ -37,6 +59,7 @@ __all__ = [
     "NativeExtensionLibrary",
     "NativeExtensionRegistration",
     "PcmSource",
+    "RegisteredConnector",
     "RelaySession",
     "RunningSession",
     "Session",
@@ -45,6 +68,7 @@ __all__ = [
     "SignalStream",
     "application_capture_available",
     "capture",
+    "connector",
     "discover_sources",
     "microphone_permission_observation",
 ]

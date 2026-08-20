@@ -1,8 +1,7 @@
-// The extension is a private cdylib: cross-owner items are crate-visible but
-// intentionally not an external Rust API.
 #![allow(clippy::redundant_pub_crate)]
 
 pub(crate) mod audio_input;
+pub(crate) mod connector;
 pub(crate) mod errors;
 pub(crate) mod extensions;
 pub(crate) mod graph;
@@ -19,6 +18,7 @@ use pyo3::prelude::*;
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     audio_input::register(module)?;
+    connector::register(module)?;
     extensions::register(module)?;
     sources::register(module)?;
     graph::register(module)?;

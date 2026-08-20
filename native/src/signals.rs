@@ -700,7 +700,7 @@ fn copy_lineage(value: pocketstation::SignalLineage) -> OwnedSignalLineage {
     }
 }
 
-fn copy_envelope(value: &SignalEnvelope) -> OwnedSignalEnvelope {
+pub(crate) fn copy_envelope(value: &SignalEnvelope) -> OwnedSignalEnvelope {
     let payload = match value.payload() {
         SignalPayload::Audio(frame) => OwnedSignalPayload::Audio(OwnedSignalAudio {
             samples_f32le: f32_samples_to_le_bytes(frame.samples()),
@@ -770,7 +770,10 @@ fn python_lineage(py: Python<'_>, value: OwnedSignalLineage) -> PyResult<Py<Pyth
     )
 }
 
-fn python_envelope(py: Python<'_>, value: OwnedSignalEnvelope) -> PyResult<PythonSignalEnvelope> {
+pub(crate) fn python_envelope(
+    py: Python<'_>,
+    value: OwnedSignalEnvelope,
+) -> PyResult<PythonSignalEnvelope> {
     let timing = python_timing(py, value.timing)?;
     let lineage = value
         .lineage

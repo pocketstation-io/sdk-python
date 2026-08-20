@@ -227,6 +227,158 @@ class _EndpointDescriptor:
         input_edge: _EdgeContract | None = None,
     ) -> None: ...
 
+class _ConnectorConfigurationValue:
+    @staticmethod
+    def text(value: str) -> _ConnectorConfigurationValue: ...
+    @staticmethod
+    def boolean(value: bool) -> _ConnectorConfigurationValue: ...
+    @staticmethod
+    def signed_integer(value: int) -> _ConnectorConfigurationValue: ...
+    @staticmethod
+    def unsigned_integer(value: int) -> _ConnectorConfigurationValue: ...
+    @staticmethod
+    def duration_milliseconds(value: int) -> _ConnectorConfigurationValue: ...
+    @staticmethod
+    def byte_count(value: int) -> _ConnectorConfigurationValue: ...
+    @staticmethod
+    def secret(value: str) -> _ConnectorConfigurationValue: ...
+    kind: str
+    def expose_secret(self) -> str: ...
+    def as_text(self) -> str | None: ...
+    def as_boolean(self) -> bool | None: ...
+    def as_signed_integer(self) -> int | None: ...
+    def as_unsigned_integer(self) -> int | None: ...
+
+class _ConnectorConfigurationConstraint:
+    @staticmethod
+    def non_empty() -> _ConnectorConfigurationConstraint: ...
+    @staticmethod
+    def text_length_bytes(
+        minimum: int,
+        maximum: int,
+    ) -> _ConnectorConfigurationConstraint: ...
+    @staticmethod
+    def signed_range(
+        minimum: int,
+        maximum: int,
+    ) -> _ConnectorConfigurationConstraint: ...
+    @staticmethod
+    def unsigned_range(
+        minimum: int,
+        maximum: int,
+    ) -> _ConnectorConfigurationConstraint: ...
+    @staticmethod
+    def one_of(values: list[str]) -> _ConnectorConfigurationConstraint: ...
+
+class _ConnectorConfigurationField:
+    def __init__(
+        self,
+        name: str,
+        kind: str,
+        requirement: str,
+        documentation: str,
+        default: _ConnectorConfigurationValue | None = None,
+        constraints: list[_ConnectorConfigurationConstraint] = [],
+        deprecation: str | None = None,
+    ) -> None: ...
+
+class _ConnectorConfigurationSchema:
+    def __init__(
+        self,
+        revision: int = 1,
+        fields: list[_ConnectorConfigurationField] = [],
+    ) -> None: ...
+
+class _ConnectorConfiguration:
+    def __init__(
+        self,
+        entries: list[tuple[str, _ConnectorConfigurationValue]] = [],
+    ) -> None: ...
+
+class _ConnectorManifest:
+    def __init__(
+        self,
+        operator_id: str,
+        node_type_id: str,
+        package_version: str,
+        inputs: list[_PortSpec],
+        configuration: _ConnectorConfigurationSchema,
+        manifest_revision: int = 1,
+        startup_timeout_ms: int = 5_000,
+        probe_interval_ms: int = 100,
+        success_threshold: int = 1,
+        failure_threshold: int = 1,
+        capabilities: list[tuple[str, str]] = [],
+        requirements: list[tuple[str, bool, str]] = [],
+    ) -> None: ...
+
+class ConnectorInputDescriptor:
+    endpoint_id: int
+    connector_id: int | None
+    route_id: int
+    port_name: str
+    signal_wire_id: str
+    signal: _SignalSpec
+    media: _MediaCaps
+    edge: _EdgeContract
+    configuration: dict[str, _ConnectorConfigurationValue]
+
+class ConnectorItem:
+    kind: str
+    input: ConnectorInputDescriptor
+    audio: AudioFrame | None
+    signal: _SignalEnvelope | None
+
+class ConnectorContext:
+    stop_requested: bool
+    shutdown_mode: str | None
+    def set_ready(self) -> bool: ...
+    def set_not_ready(self, reason_code: str | None = None) -> bool: ...
+    def set_degraded(self, reason_code: str) -> bool: ...
+    def set_healthy(self) -> bool: ...
+    def set_reconnecting(self, reason_code: str) -> bool: ...
+    def set_connected(self) -> bool: ...
+    def record_retry(self) -> None: ...
+
+class _ConnectorErrorSnapshot:
+    code: str
+    stage: str
+    retryability: str
+    message: str
+
+class _ConnectorServiceStatus:
+    delivery_readiness: str
+    health: str
+    recovery: str
+    readiness_reason_code: str | None
+    health_reason_code: str | None
+    recovery_reason_code: str | None
+    revision: int
+    last_transition_elapsed_ns: int
+    accepts_delivery: bool
+
+class _ConnectorObservations:
+    service_status: _ConnectorServiceStatus
+    status_transitions_total: int
+    retry_attempts_total: int
+    reconnects_total: int
+    failures_total: int
+    last_error: _ConnectorErrorSnapshot | None
+
+class _ConnectorRuntimeObservations:
+    endpoint_ids: list[int]
+    connector: _ConnectorObservations
+    frames_received_total: int
+    frames_delivered_total: int
+    frames_dropped_total: int
+    discontinuities_total: int
+    endpoint_failures_total: int
+
+class _RegisteredConnector:
+    session_id: int
+    def observations(self) -> list[_ConnectorRuntimeObservations]: ...
+    def observation(self, endpoint: Endpoint) -> _ConnectorObservations | None: ...
+
 class Endpoint:
     id: int
     session_id: int
@@ -425,6 +577,8 @@ class _SessionFailure:
     stage: str | None
     operation: str | None
     error_class: str | None
+    error_code: str | None
+    retryability: str | None
     component: str | None
     message: str | None
     stem_id: int | None
@@ -858,6 +1012,23 @@ class Session:
     ) -> Endpoint: ...
     def browser(self, receiver_uri: str) -> Endpoint: ...
     def polled_audio(self) -> Endpoint: ...
+    def register_connector(
+        self,
+        manifest: _ConnectorManifest,
+        factory: object,
+    ) -> _RegisteredConnector: ...
+    def register_connector_worker(
+        self,
+        manifest: _ConnectorManifest,
+        factory: object,
+        maximum_batch_items: int,
+    ) -> _RegisteredConnector: ...
+    def declare_connector(
+        self,
+        registered: _RegisteredConnector,
+        configuration: _ConnectorConfiguration,
+        edge: _EdgeContract,
+    ) -> Endpoint: ...
     def load_native_extension_library(
         self,
         path: Path,

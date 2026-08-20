@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and test the stream surface from an isolated conformance wheel."""
+"""Build and test streams and provider authoring from an isolated wheel."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 TESTS = (
     REPOSITORY / "tests" / "test_streams.py",
     REPOSITORY / "tests" / "test_aio_streams.py",
+    REPOSITORY / "tests" / "test_connector.py",
+    REPOSITORY / "tests" / "test_aio_session.py",
 )
 
 
@@ -81,7 +83,11 @@ def main() -> int:
                 "--import-mode=importlib",
                 *(os.fspath(test) for test in TESTS),
                 "-k",
-                "canonical_native_session",
+                (
+                    "canonical_native_session or "
+                    "connector_worker_receives_finite_native_owned_batches or "
+                    "async_connector_worker_receives_finite_native_batches"
+                ),
                 "-rs",
             ],
             cwd=root,
