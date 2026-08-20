@@ -24,13 +24,6 @@ jobs:
         with:
           path: sdk-python
 
-      - name: Check out frozen Rust core
-        uses: actions/checkout@v4
-        with:
-          repository: pocketstation-io/pocketstation
-          ref: pocketstation-v1.1.1
-          path: pocketstation
-
       - name: Install Rust 1.95
         uses: dtolnay/rust-toolchain@master
         with:
@@ -73,13 +66,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
         working-directory: sdk-python
         run: |
-          ruff check python tests
-          ruff format --check python tests
+          ruff check python tests examples
+          ruff format --check python tests examples
 
       - name: Python type contract
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
         working-directory: sdk-python
-        run: mypy python
+        run: mypy python examples tests/qualification
 
       - name: Python tests
         working-directory: sdk-python
@@ -89,9 +82,62 @@ jobs:
         working-directory: sdk-python
         run: maturin build --release --locked --out dist
 
+      - name: Test isolated release wheel
+        working-directory: sdk-python
+        run: >-
+          python tests/run_artifact_consumer.py
+          --artifact-kind wheel
+          --artifact-dir dist
+
       - name: Upload wheel for inspection
         uses: actions/upload-artifact@v4
         with:
           name: pocketstation-${{ matrix.os }}-py${{ matrix.python }}
           path: sdk-python/dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    name: source distribution / Python 3.11
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out Python SDK
+        uses: actions/checkout@v4
+        with:
+          path: sdk-python
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libpipewire-0.3-dev
+
+      - name: Build source distribution
+        working-directory: sdk-python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "maturin>=1.9.4,<2.0"
+          maturin sdist --manifest-path native/Cargo.toml --out dist
+
+      - name: Rebuild and test isolated source distribution
+        working-directory: sdk-python
+        run: >-
+          python tests/run_artifact_consumer.py
+          --artifact-kind sdist
+          --artifact-dir dist
+
+      - name: Upload source distribution for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketstation-sdist
+          path: sdk-python/dist/*.tar.gz
           if-no-files-found: error
