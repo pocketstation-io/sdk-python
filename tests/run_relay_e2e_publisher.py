@@ -22,10 +22,17 @@ def main() -> int:
     parser.add_argument("--relay-url", required=True)
     parser.add_argument("--recording-root", type=Path, required=True)
     parser.add_argument("--active-seconds", type=float, default=2.0)
+    application_selector = parser.add_mutually_exclusive_group()
+    application_selector.add_argument("--application-name")
+    application_selector.add_argument("--application-process-id", type=int)
     arguments = parser.parse_args()
     if arguments.active_seconds <= 0:
         parser.error("--active-seconds must be positive")
-    if not hasattr(pks._native.Session, "conformance"):
+    if (
+        arguments.application_name is None
+        and arguments.application_process_id is None
+        and not hasattr(pks._native.Session, "conformance")
+    ):
         emit("failure", code="relay.conformance_fixture_unavailable")
         return 2
 
@@ -36,12 +43,38 @@ def main() -> int:
             control_plane_url=arguments.control_plane_url,
             relay_url=arguments.relay_url,
         )
-        session = pks.Session._from_native(
-            pks._native.Session.conformance(arguments.recording_root)
-        )
-        application = session.capture(
-            pks.Source.application("PocketStation Python Fixture")
-        )
+        if (
+            arguments.application_name is None
+            and arguments.application_process_id is None
+        ):
+            session = pks.Session._from_native(
+                pks._native.Session.conformance(arguments.recording_root)
+            )
+            application_source = pks.Source.application("PocketStation Python Fixture")
+            source_mode = "conformance-fixture"
+        elif arguments.application_process_id is not None:
+            session = pks.Session(recording_root=arguments.recording_root)
+            application_source = pks.Source.application_process_id(
+                arguments.application_process_id
+            )
+            source_mode = "physical"
+        else:
+            assert arguments.application_name is not None
+            matches = tuple(
+                source
+                for source in pks.discover_sources()
+                if source.name == arguments.application_name
+                and source.stable_id.kind is pks.SourceKind.APPLICATION
+            )
+            if len(matches) != 1:
+                raise RuntimeError(
+                    "expected one application named "
+                    f"{arguments.application_name!r}, found {len(matches)}"
+                )
+            session = pks.Session(recording_root=arguments.recording_root)
+            application_source = pks.Source.from_discovered(matches[0])
+            source_mode = "physical"
+        application = session.capture(application_source)
         microphone = session.capture(pks.Source.microphone_default())
         publisher = session.relay(remote)
         routes = (
@@ -63,6 +96,7 @@ def main() -> int:
             join_url=invitation.join_url,
             buses=[route.bus_id for route in routes],
             route_ids=[route.route_id for route in routes],
+            source_mode=source_mode,
         )
 
         receiver = remote.wait_for_receiver(
