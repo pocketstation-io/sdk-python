@@ -20,6 +20,14 @@ from pocketstation.aio import (
 from pocketstation.aio import (
     ConnectorDeadlines,
     ConnectorWorker,
+    EndpointDriverObservations,
+    EndpointManifest,
+    EndpointPortInput,
+    EndpointProvider,
+    EndpointShutdownMode,
+    EndpointStartGate,
+    PreparedEndpointDriver,
+    RunningEndpointDriver,
     Session,
 )
 from pocketstation.errors import AudioInputFullError
@@ -96,6 +104,72 @@ async def test_async_audio_write_wait_is_finite_and_adds_no_python_queue() -> No
     assert observations.capacity_frames == 1
     assert observations.accepted_total == 1
     assert observations.full_total > 0
+
+
+@pytest.mark.asyncio
+async def test_async_endpoint_runs_on_owning_loop_over_core_receivers() -> None:
+    delivered = asyncio.Event()
+    owning_thread = threading.get_ident()
+
+    class Running(RunningEndpointDriver):
+        def __init__(self, input: EndpointPortInput, gate: EndpointStartGate) -> None:
+            self.input = input
+            self.gate = gate
+            self.stop = asyncio.Event()
+            self.received = 0
+            self.task = asyncio.create_task(self._run())
+
+        async def _run(self) -> None:
+            assert threading.get_ident() == owning_thread
+            while not self.gate.is_open and not self.stop.is_set():
+                await asyncio.sleep(0.001)
+            while not self.stop.is_set():
+                item = self.input.receiver.try_recv()
+                if item is None:
+                    await asyncio.sleep(0.001)
+                    continue
+                assert item.audio is not None
+                self.received += 1
+                delivered.set()
+
+        async def observations(self) -> EndpointDriverObservations:
+            return EndpointDriverObservations(
+                frames_received_total=self.received,
+                frames_delivered_total=self.received,
+            )
+
+        async def request_shutdown(self, mode: EndpointShutdownMode) -> None:
+            assert mode is EndpointShutdownMode.DRAIN
+            self.stop.set()
+
+        async def join_and_finalize(self) -> EndpointDriverObservations:
+            await self.task
+            return await self.observations()
+
+    class Prepared(PreparedEndpointDriver):
+        def __init__(self, input: EndpointPortInput) -> None:
+            self.input = input
+
+        async def start(self, gate: EndpointStartGate) -> RunningEndpointDriver:
+            return Running(self.input, gate)
+
+    async def prepare(inputs) -> PreparedEndpointDriver:
+        return Prepared(inputs[0])
+
+    session = Session()
+    audio = session.audio_input("playback", frame_samples_per_channel=4)
+    endpoint = session.register_endpoint(
+        EndpointProvider(
+            EndpointManifest.audio("io.pocketstation.test.aio-endpoint.v1"),
+            prepare,
+        )
+    ).declare()
+    audio.output.send(endpoint)
+
+    running = await session.start()
+    await audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+    await asyncio.wait_for(delivered.wait(), 1.0)
+    assert (await running.stop()).success
 
 
 @pytest.mark.asyncio

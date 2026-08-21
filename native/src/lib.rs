@@ -2,6 +2,7 @@
 
 pub(crate) mod audio_input;
 pub(crate) mod connector;
+pub(crate) mod endpoint_authoring;
 pub(crate) mod errors;
 pub(crate) mod extensions;
 pub(crate) mod graph;
@@ -21,6 +22,7 @@ use pyo3::prelude::*;
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     audio_input::register(module)?;
     connector::register(module)?;
+    endpoint_authoring::register(module)?;
     extensions::register(module)?;
     operator_authoring::register(module)?;
     source_authoring::register(module)?;

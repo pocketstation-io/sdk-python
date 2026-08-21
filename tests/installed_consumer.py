@@ -6,7 +6,8 @@ import json
 import sys
 from array import array
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
+from time import sleep
 
 import pocketstation
 
@@ -107,11 +108,64 @@ class InstalledConnectorFactory:
         return self._driver
 
 
+class InstalledEndpoint(pocketstation.RunningEndpointDriver):
+    def __init__(
+        self,
+        input: pocketstation.EndpointPortInput,
+        gate: pocketstation.EndpointStartGate,
+        delivered: Event,
+    ) -> None:
+        self._input = input
+        self._gate = gate
+        self._delivered = delivered
+        self._stop = Event()
+        self._thread = Thread(target=self._run, name="installed-endpoint")
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._gate.is_open and not self._stop.is_set():
+            sleep(0.001)
+        while not self._stop.is_set():
+            item = self._input.receiver.try_recv()
+            if item is not None and item.audio is not None:
+                self._delivered.set()
+            else:
+                sleep(0.001)
+
+    def request_shutdown(self, mode: pocketstation.EndpointShutdownMode) -> None:
+        self._stop.set()
+
+    def join_and_finalize(self) -> pocketstation.EndpointDriverObservations:
+        self._thread.join(1.0)
+        if self._thread.is_alive():
+            raise RuntimeError("installed Endpoint worker did not terminate")
+        return pocketstation.EndpointDriverObservations(
+            frames_received_total=int(self._delivered.is_set()),
+            frames_delivered_total=int(self._delivered.is_set()),
+        )
+
+
+class InstalledPreparedEndpoint(pocketstation.PreparedEndpointDriver):
+    def __init__(
+        self,
+        input: pocketstation.EndpointPortInput,
+        delivered: Event,
+    ) -> None:
+        self._input = input
+        self._delivered = delivered
+
+    def start(
+        self, gate: pocketstation.EndpointStartGate
+    ) -> pocketstation.RunningEndpointDriver:
+        return InstalledEndpoint(self._input, gate, self._delivered)
+
+
 def _exercise_complete_provider_path() -> dict[str, object]:
     delivered = Event()
     source_closed = Event()
     operator_closed = Event()
     connector_stopped = Event()
+    endpoint_delivered = Event()
     request_signal = pocketstation.SignalSpec.text(role="request")
     response_signal = pocketstation.SignalSpec.text(role="response.final")
 
@@ -155,6 +209,15 @@ def _exercise_complete_provider_path() -> dict[str, object]:
         )
     )
     audio.output.send(endpoint)
+    generic_endpoint = session.register_endpoint(
+        pocketstation.EndpointProvider(
+            pocketstation.EndpointManifest.audio(
+                "io.pocketstation.test.installed-endpoint.v1"
+            ),
+            lambda inputs: InstalledPreparedEndpoint(inputs[0], endpoint_delivered),
+        )
+    ).declare()
+    audio.output.send(generic_endpoint)
     audio.output.send(session.polled_audio())
 
     running = session.start()
@@ -165,6 +228,8 @@ def _exercise_complete_provider_path() -> dict[str, object]:
         raise RuntimeError("installed consumer timed out waiting for audio")
     if not delivered.wait(1.0):
         raise RuntimeError("installed Connector did not receive audio")
+    if not endpoint_delivered.wait(1.0):
+        raise RuntimeError("installed generic Endpoint did not receive audio")
     stop = running.stop()
     if not stop.success:
         raise RuntimeError("installed consumer Session did not stop successfully")

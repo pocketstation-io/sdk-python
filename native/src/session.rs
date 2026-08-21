@@ -14,6 +14,9 @@ use crate::connector::{
     declare_connector, register_connector, register_worker_connector, PythonConnectorConfiguration,
     PythonConnectorManifest, PythonRegisteredConnector,
 };
+use crate::endpoint_authoring::{
+    declare_endpoint, register_endpoint, PythonEndpointManifest, PythonRegisteredEndpoint,
+};
 use crate::errors::{
     coded_reason, native_extension_error, session_error, session_start_error, validate_nonempty,
 };
@@ -381,6 +384,14 @@ impl PythonSession {
         })
     }
 
+    fn register_endpoint_provider(
+        &self,
+        manifest: &PythonEndpointManifest,
+        factory: Py<PyAny>,
+    ) -> PyResult<PythonRegisteredEndpoint> {
+        self.with_session(|session| register_endpoint(session, manifest, factory))
+    }
+
     fn register_source_provider(
         &self,
         manifest: &PythonSourceManifest,
@@ -404,6 +415,15 @@ impl PythonSession {
         edge: &PythonEdgeContract,
     ) -> PyResult<PythonEndpoint> {
         self.with_session(|session| declare_connector(registered, session, configuration, edge))
+    }
+
+    fn declare_registered_endpoint(
+        &self,
+        registered: &PythonRegisteredEndpoint,
+        configuration: HashMap<String, String>,
+        edge: &PythonEdgeContract,
+    ) -> PyResult<PythonEndpoint> {
+        self.with_session(|session| declare_endpoint(session, registered, configuration, edge))
     }
 
     fn register_sidecar(&self, spec: &PythonSidecarProcessSpec) -> PyResult<u64> {

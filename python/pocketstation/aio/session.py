@@ -19,11 +19,14 @@ from .._native import (
     Session as _NativeSession,
 )
 from .._native import _RegisteredConnector as _NativeRegisteredConnector
+from .._native import _RegisteredEndpoint as _NativeRegisteredEndpoint
 from ..audio_input import AudioInputConfig
 from ..audio_input import PcmSource as SyncPcmSource
 from ..connector import Connector as SyncConnector
 from ..connector import ConnectorConfigurationInput
 from ..connector import RegisteredConnector as SyncRegisteredConnector
+from ..endpoint_authoring import EndpointProvider as SyncEndpointProvider
+from ..endpoint_authoring import RegisteredEndpoint as SyncRegisteredEndpoint
 from ..errors import PocketStationError, _native_call, _normalize_native_error
 from ..extensions import NativeExtensionLibrary
 from ..graph import (
@@ -59,6 +62,7 @@ from ..source_authoring import (
 from ..sources import Source
 from .audio_input import AudioInput, PcmSource
 from .connector import Connector, RegisteredConnector
+from .endpoint_authoring import EndpointProvider, RegisteredEndpoint
 from .observations import EventStream
 from .operator_authoring import OperatorProvider
 from .sidecar import SidecarConnection
@@ -298,6 +302,14 @@ class Session(_GraphSessionDeclarations):
                 _NativeRegisteredConnector,
             ],
         ] = {}
+        self._endpoint_registrations: dict[
+            int,
+            tuple[
+                EndpointProvider | SyncEndpointProvider,
+                SyncEndpointProvider,
+                _NativeRegisteredEndpoint,
+            ],
+        ] = {}
 
     @classmethod
     def _from_native(cls, native: _NativeSession) -> Session:
@@ -307,6 +319,7 @@ class Session(_GraphSessionDeclarations):
         session._sample_rate_hz = 48_000
         session._channels = 1
         session._connector_registrations = {}
+        session._endpoint_registrations = {}
         return session
 
     @property
@@ -402,6 +415,29 @@ class Session(_GraphSessionDeclarations):
     ) -> Endpoint:
         """Declare one Connector destination using an idempotent registration."""
         return self.register_connector(connector).declare(configuration, edge=edge)
+
+    def register_endpoint(
+        self, endpoint: EndpointProvider | SyncEndpointProvider
+    ) -> RegisteredEndpoint:
+        """Register one asyncio or synchronous advanced Endpoint."""
+        identity = id(endpoint)
+        cached = self._endpoint_registrations.get(identity)
+        if cached is not None and cached[0] is endpoint:
+            return RegisteredEndpoint(
+                SyncRegisteredEndpoint(self, cached[1], cached[2])
+            )
+        bound = (
+            endpoint._bind(asyncio.get_running_loop())
+            if isinstance(endpoint, EndpointProvider)
+            else endpoint
+        )
+        native = _native_call(
+            lambda: self._native.register_endpoint_provider(
+                bound.manifest._native, bound._native_factory
+            )
+        )
+        self._endpoint_registrations[identity] = (endpoint, bound, native)
+        return RegisteredEndpoint(SyncRegisteredEndpoint(self, bound, native))
 
     def register_source(
         self, source: SourceProvider | SyncSourceProvider

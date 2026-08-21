@@ -241,6 +241,25 @@ by default and requires explicit provider access. Provider exceptions can use
 `ConnectorError` to preserve a stable error code, stage, and retryability in the
 final Session outcome.
 
+### Generic Endpoints are an advanced escape hatch
+
+Use a `Connector` for an outbound provider integration. Use `EndpointProvider`
+only when an integration needs Core's lower-level Endpoint SPI without the
+Connector service model:
+
+```python
+provider = pocketstation.EndpointProvider(manifest, prepare)
+endpoint = session.register_endpoint(provider).declare(configuration)
+audio.output.send(endpoint)
+```
+
+Core still owns graph compilation, bounded input receivers, transactional
+prepare/start rollback, the closed start gate, drain versus abort, join, and
+terminal outcomes. The Python implementation owns only its off-realtime worker
+and provider resources. `pocketstation.aio.EndpointProvider` projects the same
+contract onto one owning event loop with finite prepare, start, and shutdown
+deadlines. Neither API creates a Python Session or media engine.
+
 The capability matrix distinguishes declaration-level `REAL` rows from
 component-only `PARTIAL` rows and completely `ABSENT` projections. A row marked
 `REAL` is evidence-scoped; it does not upgrade the SDK, a platform, or a

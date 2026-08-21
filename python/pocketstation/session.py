@@ -18,12 +18,14 @@ from ._native import (
     Session as _NativeSession,
 )
 from ._native import _RegisteredConnector as _NativeRegisteredConnector
+from ._native import _RegisteredEndpoint as _NativeRegisteredEndpoint
 from .audio_input import AudioInput, AudioInputConfig, PcmSource
 from .connector import (
     Connector,
     ConnectorConfigurationInput,
     RegisteredConnector,
 )
+from .endpoint_authoring import EndpointProvider, RegisteredEndpoint
 from .errors import PocketStationError, _native_call
 from .extensions import NativeExtensionLibrary
 from .graph import (
@@ -275,6 +277,9 @@ class Session(_GraphSessionDeclarations):
         self._connector_registrations: dict[
             int, tuple[Connector, _NativeRegisteredConnector]
         ] = {}
+        self._endpoint_registrations: dict[
+            int, tuple[EndpointProvider, _NativeRegisteredEndpoint]
+        ] = {}
 
     @classmethod
     def _from_native(cls, native: _NativeSession) -> Session:
@@ -284,6 +289,7 @@ class Session(_GraphSessionDeclarations):
         session._sample_rate_hz = 48_000
         session._channels = 1
         session._connector_registrations = {}
+        session._endpoint_registrations = {}
         return session
 
     @property
@@ -377,6 +383,25 @@ class Session(_GraphSessionDeclarations):
         must declare several independently configured Endpoints.
         """
         return self.register_connector(connector).declare(configuration, edge=edge)
+
+    def register_endpoint(self, endpoint: EndpointProvider) -> RegisteredEndpoint:
+        """Register one advanced Python implementation of Core's Endpoint SPI.
+
+        Most outbound integrations should use :meth:`destination` with a
+        :class:`Connector`. This lower-level API exists for Endpoint behavior
+        that is not a provider transport specialization.
+        """
+        identity = id(endpoint)
+        cached = self._endpoint_registrations.get(identity)
+        if cached is not None and cached[0] is endpoint:
+            return RegisteredEndpoint(self, endpoint, cached[1])
+        native = _native_call(
+            lambda: self._native.register_endpoint_provider(
+                endpoint.manifest._native, endpoint._native_factory
+            )
+        )
+        self._endpoint_registrations[identity] = (endpoint, native)
+        return RegisteredEndpoint(self, endpoint, native)
 
     def register_source(self, source: SourceProvider) -> RegisteredSource:
         """Register one Python-authored typed Source implementation."""

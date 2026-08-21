@@ -1128,6 +1128,55 @@ class _OperatorEmission:
     @staticmethod
     def bytes(payload: bytes, signal: _SignalSpec) -> _OperatorEmission: ...
 
+class _EndpointManifest:
+    def __init__(
+        self,
+        operator_id: str,
+        node_type_id: str,
+        inputs: list[_PortSpec],
+    ) -> None: ...
+    operator_id: str
+    node_type_id: str
+
+class EndpointStartGate:
+    is_open: bool
+
+class EndpointPrepareContext:
+    session_id: int
+    endpoint_id: int
+    connector_id: int | None
+    route_id: int
+    origin_kind: str
+    source_id: int | None
+    stream_id: int | None
+    stem_id: int | None
+    session_timeline_origin_ns: int
+    configuration: dict[str, str]
+
+class EndpointItem:
+    kind: str
+    audio: AudioFrame | None
+    signal: _SignalEnvelope | None
+
+class EndpointReceiver:
+    def try_recv(self) -> EndpointItem | None: ...
+    def is_abandoned(self) -> bool: ...
+    def mark_discontinuity(self) -> None: ...
+    def mark_worker_failure(self) -> None: ...
+
+class EndpointPortInput:
+    port_name: str
+    signal: _SignalSpec
+    media: _MediaCaps
+    edge: _EdgeContract
+    context: EndpointPrepareContext
+    receiver: EndpointReceiver
+
+class _RegisteredEndpoint:
+    session_id: int
+    operator_id: str
+    node_type_id: str
+
 class _OperatorPortContext:
     edge_id: int | None
     port_name: str
@@ -1203,6 +1252,11 @@ class Session:
         factory: object,
         maximum_batch_items: int,
     ) -> _RegisteredConnector: ...
+    def register_endpoint_provider(
+        self,
+        manifest: _EndpointManifest,
+        factory: object,
+    ) -> _RegisteredEndpoint: ...
     def register_source_provider(
         self,
         manifest: _SourceManifest,
@@ -1217,6 +1271,12 @@ class Session:
         self,
         registered: _RegisteredConnector,
         configuration: _ConnectorConfiguration,
+        edge: _EdgeContract,
+    ) -> Endpoint: ...
+    def declare_registered_endpoint(
+        self,
+        registered: _RegisteredEndpoint,
+        configuration: dict[str, str],
         edge: _EdgeContract,
     ) -> Endpoint: ...
     def load_native_extension_library(
