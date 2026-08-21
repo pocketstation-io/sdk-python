@@ -298,7 +298,12 @@ class Session(_GraphSessionDeclarations):
 
     def capture(self, source: Source) -> Stem:
         """Declare one independent source-aware stem."""
-        return _native_call(lambda: Stem(self._native.capture(source._native)))
+        return _native_call(
+            lambda: Stem(
+                self._native.capture(source._native),
+                self._destination_for_stream,
+            )
+        )
 
     def audio_input(
         self,
@@ -327,7 +332,7 @@ class Session(_GraphSessionDeclarations):
                 config.frame_samples_per_channel,
             )
         )
-        return AudioInput(native, config)
+        return AudioInput(native, config, self._destination_for_stream)
 
     def pcm_source(self, config: AudioInputConfig) -> PcmSource:
         """Open the advanced explicit source-output and writer ownership API."""
@@ -339,7 +344,7 @@ class Session(_GraphSessionDeclarations):
                 config.frame_samples_per_channel,
             )
         )
-        return PcmSource(native, config)
+        return PcmSource(native, config, self._destination_for_stream)
 
     def polled_audio(self) -> Endpoint:
         """Declare the bounded managed-language polling endpoint."""

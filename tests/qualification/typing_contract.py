@@ -8,6 +8,8 @@ import pocketstation
 def verify_signal_types(
     session: pocketstation.Session,
     source: pocketstation.SourceOutput,
+    connector: pocketstation.Connector,
+    async_connector: pocketstation.aio.Connector,
 ) -> None:
     audio_spec = pocketstation.SignalSpec.audio()
     text_spec = pocketstation.SignalSpec.text()
@@ -21,6 +23,8 @@ def verify_signal_types(
         pocketstation.BusSubscription[pocketstation.SignalAudioPayload],
     )
     assert_type(text_subscription, pocketstation.BusSubscription[str])
+    assert_type(source.send_to(connector), pocketstation.RouteId)
+    assert_type(source.send_to(async_connector), pocketstation.RouteId)
 
 
 def verify_runtime_identities(

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import monotonic, sleep
 
 from ._native import _AudioInput as _NativeAudioInput
 from ._native import _AudioInputObservations as _NativeAudioInputObservations
 from .errors import AudioInputFullError, _native_call
-from .graph import SourceOutput
+from .graph import Endpoint, SourceOutput
 from .identity import SourceId, StreamId
 
 
@@ -60,10 +61,15 @@ class AudioInputObservations:
 class PcmSource:
     """Advanced explicit ownership of one Session source output and PCM writer."""
 
-    def __init__(self, native: _NativeAudioInput, config: AudioInputConfig) -> None:
+    def __init__(
+        self,
+        native: _NativeAudioInput,
+        config: AudioInputConfig,
+        destination: Callable[[object], Endpoint],
+    ) -> None:
         self._native = native
         self._config = config
-        self._output = SourceOutput(native.output)
+        self._output = SourceOutput(native.output, destination)
 
     @property
     def config(self) -> AudioInputConfig:

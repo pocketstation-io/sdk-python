@@ -335,6 +335,26 @@ def test_audio_connector_convenience_keeps_native_lineage_and_lifecycle() -> Non
     assert received[0].polled_at_ns is None
 
 
+def test_stream_send_to_declares_the_connector_on_its_owning_session() -> None:
+    delivered = Event()
+
+    connector = Connector.from_audio_handler(
+        "io.pocketstation.test.stream-destination.v1",
+        lambda _frame, _context: delivered.set() or ConnectorDeliveryOutcome.DELIVERED,
+        package_version="1.0.0",
+    )
+    session = Session()
+    audio = session.audio_input("agent-output", frame_samples_per_channel=4)
+    route_id = audio.output.send_to(connector)
+
+    running = session.start()
+    audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+
+    assert delivered.wait(1.0)
+    assert int(route_id) > 0
+    assert running.stop().success
+
+
 def test_connector_observations_preserve_service_state_and_delivery_counters() -> None:
     delivered = Event()
 

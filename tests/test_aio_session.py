@@ -222,6 +222,33 @@ async def test_async_session_destination_reuses_one_connector_registration() -> 
 
 
 @pytest.mark.asyncio
+async def test_async_stream_send_to_uses_the_owning_session() -> None:
+    delivered = asyncio.Event()
+
+    async def receive(_item, _context):
+        delivered.set()
+        return ConnectorDeliveryOutcome.DELIVERED
+
+    connector = AsyncConnector.from_handler(
+        ConnectorManifest.audio(
+            "io.pocketstation.test.aio-stream-destination.v1",
+            package_version="1.0.0",
+        ),
+        receive,
+    )
+    session = Session()
+    audio = session.audio_input("agent-output", frame_samples_per_channel=4)
+    route_id = audio.output.send_to(connector)
+
+    running = await session.start()
+    await audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+
+    await asyncio.wait_for(delivered.wait(), 1.0)
+    assert int(route_id) > 0
+    assert (await running.stop()).success
+
+
+@pytest.mark.asyncio
 async def test_async_connector_runs_on_owning_loop_with_observations() -> None:
     delivered = asyncio.Event()
     owning_thread = threading.get_ident()

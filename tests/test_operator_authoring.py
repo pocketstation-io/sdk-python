@@ -304,7 +304,7 @@ def test_python_operator_emits_pcm_into_core_reentry_and_recording(tmp_path) -> 
     source.output.connect(operator.input("input"))
     generated = operator.output("output").reenter_audio()
     generated.send(session.polled_audio())
-    generated.send(session.destination(connector))
+    generated.send_to(connector)
     generated.record("generated")
 
     running = session.start()

@@ -5,8 +5,10 @@
 > the exhaustive capability matrix, Pythonic stream slice, package ownership,
 > typed source lifecycle, Rust-backed graph declarations, bounded typed signal
 > streams, process sidecars, compiled native extensions, complete observations,
-> application-owned PCM ingress, and independently installable wheel/sdist
-> artifacts. The real Relay/browser path, source-aware transcription notebook,
+> application-owned PCM ingress, and an independently installable macOS wheel.
+> The rebuildable sdist remains blocked on releasing the post-1.1.1 Core APIs
+> currently consumed through a local development patch. The real Relay/browser
+> path and source-aware transcription proof,
 > and physical macOS application-plus-microphone path are proven. Linux and
 > Windows artifact qualification and final OSS readiness remain gated.
 
@@ -114,8 +116,8 @@ The SDK is not complete:
 - capture authorization snapshots and permission-transition ownership are not
   attached to the canonical running Session; the SDK preserves discovery and
   the authoritative seven-state platform observation without inventing either;
-- isolated macOS wheel and independently rebuilt sdist consumers exist; Linux,
-  Windows, and broader real-device matrices remain release gates;
+- an isolated macOS wheel consumer exists; a rebuildable sdist, Linux and
+  Windows wheels, and broader real-device matrices remain release gates;
 - the real browser proof is same-host. It does not establish WAN, TURN, or
   multi-region operation.
 
@@ -239,7 +241,7 @@ publisher = pocketstation.Connector.from_audio_handler(
 )
 session = pocketstation.Session()
 audio = session.audio_input("agent-output")
-audio.output.send(session.destination(publisher))
+audio.output.send_to(publisher)
 ```
 
 `pocketstation.aio.Connector.from_audio_handler(...)` accepts a coroutine and

@@ -282,10 +282,9 @@ def _exercise_abort() -> None:
         "io.pocketstation.test.installed-abort.v1",
         package_version="1.0.0",
     )
-    endpoint = session.destination(
+    audio.output.send_to(
         pocketstation.Connector.with_driver(manifest, InstalledConnectorFactory(driver))
     )
-    audio.output.send(endpoint)
     running = session.start()
     result = running.cancel()
     if not result.success or not stopped.wait(1.0):

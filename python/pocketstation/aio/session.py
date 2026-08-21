@@ -328,7 +328,12 @@ class Session(_GraphSessionDeclarations):
 
     def capture(self, source: Source) -> Stem:
         """Declare one independent source-aware stem."""
-        return _native_call(lambda: Stem(self._native.capture(source._native)))
+        return _native_call(
+            lambda: Stem(
+                self._native.capture(source._native),
+                self._destination_for_stream,
+            )
+        )
 
     def audio_input(
         self,
@@ -356,7 +361,7 @@ class Session(_GraphSessionDeclarations):
                 config.frame_samples_per_channel,
             )
         )
-        return AudioInput(SyncPcmSource(native, config))
+        return AudioInput(SyncPcmSource(native, config, self._destination_for_stream))
 
     def pcm_source(self, config: AudioInputConfig) -> PcmSource:
         native = _native_call(
@@ -367,7 +372,7 @@ class Session(_GraphSessionDeclarations):
                 config.frame_samples_per_channel,
             )
         )
-        return PcmSource(SyncPcmSource(native, config))
+        return PcmSource(SyncPcmSource(native, config, self._destination_for_stream))
 
     def polled_audio(self) -> Endpoint:
         """Declare the bounded managed-language polling endpoint."""

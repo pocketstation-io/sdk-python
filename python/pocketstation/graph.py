@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast
 
 from ._native import DerivedStream as _NativeDerivedStream
 from ._native import Endpoint as _NativeEndpoint
@@ -34,8 +34,16 @@ from .identity import (
 )
 
 if TYPE_CHECKING:
+    from .aio.connector import Connector as AsyncConnector
+    from .connector import Connector as SyncConnector
     from .relay import RelayPublisher, RelayRoute
     from .signal import BusSubscription, SignalAudioPayload
+
+    _ConnectorTarget: TypeAlias = SyncConnector | AsyncConnector
+else:
+    _ConnectorTarget: TypeAlias = object
+
+_DestinationResolver: TypeAlias = Callable[[object], "Endpoint"]
 
 _PayloadT = TypeVar("_PayloadT")
 _PayloadT_co = TypeVar("_PayloadT_co", covariant=True)
@@ -697,10 +705,15 @@ class OperatorInput:
 class OperatorInstance:
     """Session-scoped operator instance with explicit named ports."""
 
-    __slots__ = ("_native",)
+    __slots__ = ("_destination", "_native")
 
-    def __init__(self, native: _NativeOperatorInstance) -> None:
+    def __init__(
+        self,
+        native: _NativeOperatorInstance,
+        destination: _DestinationResolver,
+    ) -> None:
         self._native = native
+        self._destination = destination
 
     @property
     def session_id(self) -> RuntimeSessionId:
@@ -714,19 +727,40 @@ class OperatorInstance:
         return _native_call(lambda: OperatorInput(self._native.input(port_name)))
 
     def output(self, port_name: str) -> DerivedStream:
-        return _native_call(lambda: DerivedStream(self._native.output(port_name)))
+        return _native_call(
+            lambda: DerivedStream(self._native.output(port_name), self._destination)
+        )
 
 
 class _RoutableStream:
-    __slots__ = ()
+    __slots__ = ("_destination",)
 
     _native: _NativeStem | _NativeDerivedStream | _NativeSourceOutput
+    _destination: _DestinationResolver
 
     def send(self, endpoint: Endpoint, *, input_port: str | None = None) -> RouteId:
         if input_port is None:
             return RouteId(_native_call(lambda: self._native.send(endpoint._native)))
         return RouteId(
             _native_call(lambda: self._native.send_to(endpoint._native, input_port))
+        )
+
+    def send_to(
+        self,
+        connector: _ConnectorTarget,
+        *,
+        input_port: str | None = None,
+    ) -> RouteId:
+        """Route to one Connector using this stream's owning Session.
+
+        This is the concise one-destination form. Use
+        ``Session.register_connector(...).declare(...)`` when one Connector
+        implementation needs multiple configurations or explicit edge
+        contracts.
+        """
+        return self.send(
+            self._destination(connector),
+            input_port=input_port,
         )
 
     def connect(self, input: OperatorInput) -> RouteId:
@@ -746,7 +780,8 @@ class _RoutableStream:
                     operator.configuration._as_dict(),
                     input_port,
                     output_port,
-                )
+                ),
+                self._destination,
             )
         )
 
@@ -757,8 +792,9 @@ class Stem(_RoutableStream):
     __slots__ = ("_native",)
     _native: _NativeStem
 
-    def __init__(self, native: _NativeStem) -> None:
+    def __init__(self, native: _NativeStem, destination: _DestinationResolver) -> None:
         self._native = native
+        self._destination = destination
 
     @property
     def id(self) -> StemId:
@@ -787,8 +823,13 @@ class DerivedStream(_RoutableStream):
     __slots__ = ("_native",)
     _native: _NativeDerivedStream
 
-    def __init__(self, native: _NativeDerivedStream) -> None:
+    def __init__(
+        self,
+        native: _NativeDerivedStream,
+        destination: _DestinationResolver,
+    ) -> None:
         self._native = native
+        self._destination = destination
 
     @property
     def session_id(self) -> RuntimeSessionId:
@@ -803,20 +844,29 @@ class DerivedStream(_RoutableStream):
         return self._native.output_port
 
     def output(self, port_name: str) -> DerivedStream:
-        return _native_call(lambda: type(self)(self._native.output(port_name)))
+        return _native_call(
+            lambda: type(self)(self._native.output(port_name), self._destination)
+        )
 
     def reenter_audio(self) -> Stem:
         """Declare canonical generated-PCM reentry; no Python callback runs."""
-        return _native_call(lambda: Stem(self._native.reenter_audio()))
+        return _native_call(
+            lambda: Stem(self._native.reenter_audio(), self._destination)
+        )
 
 
 class SourceInstance:
     """Open registered source declaration scoped to one Session."""
 
-    __slots__ = ("_native",)
+    __slots__ = ("_destination", "_native")
 
-    def __init__(self, native: _NativeSourceInstance) -> None:
+    def __init__(
+        self,
+        native: _NativeSourceInstance,
+        destination: _DestinationResolver,
+    ) -> None:
         self._native = native
+        self._destination = destination
 
     @property
     def session_id(self) -> RuntimeSessionId:
@@ -831,7 +881,9 @@ class SourceInstance:
         return SourceId(self._native.source_id)
 
     def output(self, port_name: str) -> SourceOutput:
-        return _native_call(lambda: SourceOutput(self._native.output(port_name)))
+        return _native_call(
+            lambda: SourceOutput(self._native.output(port_name), self._destination)
+        )
 
 
 class SourceOutput(_RoutableStream):
@@ -840,8 +892,13 @@ class SourceOutput(_RoutableStream):
     __slots__ = ("_native",)
     _native: _NativeSourceOutput
 
-    def __init__(self, native: _NativeSourceOutput) -> None:
+    def __init__(
+        self,
+        native: _NativeSourceOutput,
+        destination: _DestinationResolver,
+    ) -> None:
         self._native = native
+        self._destination = destination
 
     @property
     def session_id(self) -> RuntimeSessionId:
@@ -881,6 +938,10 @@ class _GraphSessionDeclarations:
 
     _native: _NativeSession
 
+    def _destination_for_stream(self, connector: object) -> Endpoint:
+        """Call the concrete sync or asyncio Session declaration method."""
+        return cast(Endpoint, cast(Any, self).destination(connector))
+
     @property
     def id(self) -> RuntimeSessionId:
         """Stable identity allocated by the canonical Rust Session."""
@@ -895,7 +956,8 @@ class _GraphSessionDeclarations:
         values = SourceConfiguration() if configuration is None else configuration
         return _native_call(
             lambda: SourceInstance(
-                self._native.source(source_type_id, values._as_dict())
+                self._native.source(source_type_id, values._as_dict()),
+                self._destination_for_stream,
             )
         )
 
@@ -906,7 +968,8 @@ class _GraphSessionDeclarations:
                 self._native.operator(
                     operator.operator_id,
                     operator.configuration._as_dict(),
-                )
+                ),
+                self._destination_for_stream,
             )
         )
 
