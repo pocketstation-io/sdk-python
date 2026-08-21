@@ -332,11 +332,64 @@ def _exercise_structured_failure() -> None:
         raise RuntimeError("installed Connector failure lost structured fields")
 
 
+def _exercise_operator_pcm_reentry() -> None:
+    signal = pocketstation.SignalSpec.audio(role="audio.generated")
+    media = pocketstation.MediaCaps.audio(
+        pocketstation.AudioCaps(
+            sample_rate_hz=48_000,
+            frame_samples=4,
+            channel_layout=pocketstation.ChannelLayout.MONO,
+        )
+    )
+    emitted = array("f", [0.25, -0.25, 0.5, -0.5])
+    closed = Event()
+
+    class InstalledPcmOperator(pocketstation.OperatorNode):
+        def process(
+            self,
+            _input_port: str,
+            _envelope: pocketstation.SignalEnvelope[object],
+        ) -> tuple[pocketstation.OperatorEmission, ...]:
+            return (pocketstation.OperatorEmission.audio(emitted, signal=signal),)
+
+        def close(self) -> None:
+            closed.set()
+
+    class InstalledPcmFactory:
+        def create(self, _configuration: object) -> InstalledPcmOperator:
+            return InstalledPcmOperator()
+
+    provider = pocketstation.OperatorProvider.with_node(
+        pocketstation.OperatorManifest(
+            "io.pocketstation.operator.installed-pcm.v1",
+            inputs=(pocketstation.PortSpec.input("input", signal, media=media),),
+            outputs=(pocketstation.PortSpec.output("output", signal, media=media),),
+            queue_capacity_signals=2,
+        ),
+        InstalledPcmFactory(),
+    )
+    session = pocketstation.Session()
+    source = session.audio_input("installed-pcm", frame_samples_per_channel=4)
+    operator = session.register_operator(provider).declare()
+    source.output.connect(operator.input("input"))
+    operator.output("output").reenter_audio().send(session.polled_audio())
+
+    running = session.start()
+    source.write(array("f", [0.0, 0.0, 0.0, 0.0]))
+    frame = running.audio.read(timeout_s=1.0)
+    result = running.stop()
+    if frame is None or list(frame.samples.cast("f")) != list(emitted):
+        raise RuntimeError("installed Python Operator PCM did not reenter Core")
+    if not result.success or not closed.wait(1.0):
+        raise RuntimeError("installed Python Operator PCM did not finalize")
+
+
 def main() -> None:
     provider = _exercise_complete_provider_path()
     _exercise_saturation()
     _exercise_abort()
     _exercise_structured_failure()
+    _exercise_operator_pcm_reentry()
     package_path = Path(pocketstation.__file__).resolve()
     environment_root = Path(sys.prefix).resolve()
     if not package_path.is_relative_to(environment_root):

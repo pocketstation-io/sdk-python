@@ -196,6 +196,27 @@ def uppercase(_port, envelope):
     return (pocketstation.OperatorEmission.text(envelope.payload.upper(), signal=result),)
 ```
 
+An Operator with an exact PCM output contract can emit one contiguous float32
+frame directly. Python runs on the bounded async-worker partition; the binding
+snapshots the frame and Core moves it through its preallocated generated-audio
+pool and normal Session routing:
+
+```python
+def synthesize(_port, envelope):
+    pcm = model.render(envelope.payload)
+    return (pocketstation.OperatorEmission.audio(pcm, signal=generated_audio),)
+
+speaker = operator.output("audio").reenter_audio()
+speaker.send(session.destination(publisher))
+speaker.record("agent-output")
+```
+
+The Operator manifest must declare an exact sample rate, frame size, and mono
+or stereo layout. A wrong frame size, exhausted native pool, or non-contiguous
+buffer fails explicitly. Streaming TTS or audio produced independently of an
+Operator input should continue to use `Session.audio_input()`; that Source path
+has its own finite writer and discontinuity contract.
+
 `pocketstation.aio.source` and `pocketstation.aio.operator` accept async
 iterables and coroutine handlers with explicit finite deadlines. The same
 native Session remains authoritative for registration, compilation,

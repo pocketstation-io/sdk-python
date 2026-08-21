@@ -21,12 +21,14 @@ TEST_CASES = (
     "tests/test_source_authoring.py::test_iterable_source_runs_in_core_and_receives_session_lineage",
     "tests/test_source_authoring.py::test_async_iterable_source_runs_on_the_owning_event_loop",
     "tests/test_operator_authoring.py::test_python_operator_processes_source_signal_with_derivation",
+    "tests/test_operator_authoring.py::test_python_operator_emits_pcm_into_core_reentry_and_recording",
+    "tests/test_operator_authoring.py::test_python_operator_rejects_wrong_pcm_frame_size",
     "tests/test_operator_authoring.py::test_async_operator_runs_on_owning_loop",
+    "tests/test_operator_authoring.py::test_async_operator_pcm_uses_the_same_core_reentry",
     "tests/test_connector.py::test_connector_worker_receives_finite_native_owned_batches",
     "tests/test_aio_session.py::test_async_connector_worker_receives_finite_native_batches",
-    "tests/test_audio_bridge.py::test_given_pcm_iterable_when_bridge_runs_then_core_drains_one_connector",
-    "tests/test_aio_audio_bridge.py::test_given_async_pcm_when_bridge_runs_then_core_drains_connector",
-    "tests/test_source_aware_transcription_example.py::test_two_source_lanes_keep_identity_through_one_model_operator",
+    "tests/test_audio_transport_example.py::test_call_audio_template_uses_core_source_and_connector",
+    "tests/test_transcription_example.py::test_faster_whisper_is_the_concise_source_aware_python_path",
 )
 
 

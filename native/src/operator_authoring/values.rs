@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use pocketstation::{
     AsyncOperatorManifest, BackpressurePolicy, CopyPolicy, EdgeContract, ExecutionPartition,
     MediaCaps, NodeDescriptor, NodeTypeId, OperatorCancellationPolicy, OperatorDeadlinePolicy,
     OperatorFailurePolicy, OperatorId, OperatorOutputRolePolicy, OperatorPermissionPolicy,
     PortDirection, SafetyContract, SemanticRole, SignalPayload, SignalSpec,
 };
+use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -152,15 +155,17 @@ fn common_media(ports: &[pocketstation::PortSpec], kind: &str) -> PyResult<Media
 
 #[derive(Clone)]
 pub(super) enum PythonOperatorPayload {
+    Audio(Arc<[f32]>),
     Text(String),
     Bytes(Vec<u8>),
 }
 
 impl PythonOperatorPayload {
-    pub(super) fn into_core(self) -> SignalPayload {
+    pub(super) fn into_non_audio_core(self) -> Option<SignalPayload> {
         match self {
-            Self::Text(value) => SignalPayload::Text(value),
-            Self::Bytes(value) => SignalPayload::Bytes(value),
+            Self::Audio(_) => None,
+            Self::Text(value) => Some(SignalPayload::Text(value)),
+            Self::Bytes(value) => Some(SignalPayload::Bytes(value)),
         }
     }
 }
@@ -175,6 +180,18 @@ pub(crate) struct PythonOperatorEmission {
 #[pymethods]
 impl PythonOperatorEmission {
     #[staticmethod]
+    fn audio(py: Python<'_>, samples: PyBuffer<f32>, signal: &PythonSignalSpec) -> PyResult<Self> {
+        let samples = samples.as_slice(py).ok_or_else(|| {
+            invalid_operator("audio samples must be a C-contiguous float32 buffer")
+        })?;
+        let owned = samples
+            .iter()
+            .map(|sample| sample.get())
+            .collect::<Vec<_>>();
+        Self::new(PythonOperatorPayload::Audio(Arc::from(owned)), signal)
+    }
+
+    #[staticmethod]
     fn text(payload: String, signal: &PythonSignalSpec) -> PyResult<Self> {
         Self::new(PythonOperatorPayload::Text(payload), signal)
     }
@@ -188,6 +205,10 @@ impl PythonOperatorEmission {
 impl PythonOperatorEmission {
     fn new(payload: PythonOperatorPayload, signal: &PythonSignalSpec) -> PyResult<Self> {
         let supported = match &payload {
+            PythonOperatorPayload::Audio(_) => matches!(
+                signal.value.class(),
+                pocketstation::SignalClass::Any | pocketstation::SignalClass::PcmAudio
+            ),
             PythonOperatorPayload::Text(_) => {
                 SignalPayload::Text(String::new()).supports(&signal.value)
             }

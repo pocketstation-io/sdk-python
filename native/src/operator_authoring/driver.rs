@@ -2,15 +2,16 @@ use std::sync::Arc;
 
 use pocketstation::graph::NodeConfig;
 use pocketstation::{
-    AsyncNode, AsyncNodeFuture, AsyncOperatorFactory, AsyncOperatorPrepareContext, ConfigError,
-    NodeError, OperatorId, PortDirection, PortPrepareContext, SignalDerivation, SignalEnvelope,
-    SignalLineage, SignalTiming,
+    AsyncNode, AsyncNodeFuture, AsyncOperatorFactory, AsyncOperatorPrepareContext, AudioBufferPool,
+    AudioFrame, ChannelLayout, ConfigError, MediaCaps, NodeError, OperatorId, PortDirection,
+    PortPrepareContext, SampleFormat, SampleSpec, SignalDerivation, SignalEnvelope, SignalLineage,
+    SignalPayload, SignalTiming,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use super::values::{PythonOperatorEmission, PythonOperatorManifest};
+use super::values::{PythonOperatorEmission, PythonOperatorManifest, PythonOperatorPayload};
 use crate::errors::coded_reason;
 use crate::graph::{PythonEdgeContract, PythonMediaCaps, PythonSignalSpec};
 use crate::signals::{copy_envelope, python_envelope};
@@ -20,10 +21,12 @@ pub(crate) fn register_operator(
     manifest: &PythonOperatorManifest,
     factory: Py<PyAny>,
 ) -> PyResult<()> {
+    let audio_output = audio_output_spec(&manifest.value)?;
     session
         .register_operator(Arc::new(PythonOperatorFactory {
             manifest: manifest.value.clone(),
             factory,
+            audio_output,
         }))
         .map_err(|error| {
             PyValueError::new_err(coded_reason(
@@ -96,6 +99,7 @@ impl PythonOperatorPrepareContext {
 struct PythonOperatorFactory {
     manifest: pocketstation::AsyncOperatorManifest,
     factory: Py<PyAny>,
+    audio_output: Option<OperatorAudioOutputSpec>,
 }
 
 impl AsyncOperatorFactory for PythonOperatorFactory {
@@ -130,6 +134,7 @@ impl AsyncOperatorFactory for PythonOperatorFactory {
                 revision: self.manifest.revision(),
                 generation: self.manifest.generation(),
                 last_input: None,
+                audio_output: self.audio_output.map(OperatorAudioOutput::new),
             }) as Box<dyn AsyncNode>)
         })
     }
@@ -141,6 +146,72 @@ struct PythonOperatorNode {
     revision: u32,
     generation: u32,
     last_input: Option<(SignalLineage, SignalTiming)>,
+    audio_output: Option<OperatorAudioOutput>,
+}
+
+// AudioBufferPool's public constructor uses a 64-bit ownership mask. Keep the
+// binding-side request finite even when a provider declares a larger signal
+// queue; Core remains the pool implementation and runtime authority.
+const AUDIO_OUTPUT_POOL_MAX_SLOTS: usize = u64::BITS as usize;
+
+#[derive(Clone, Copy)]
+struct OperatorAudioOutputSpec {
+    sample_spec: SampleSpec,
+    frame_samples_per_channel: usize,
+    pool_slots: usize,
+}
+
+struct OperatorAudioOutput {
+    pool: Arc<AudioBufferPool>,
+    sample_spec: SampleSpec,
+    samples_per_frame: usize,
+}
+
+impl OperatorAudioOutput {
+    fn new(spec: OperatorAudioOutputSpec) -> Self {
+        let samples_per_frame = spec
+            .frame_samples_per_channel
+            .saturating_mul(usize::from(spec.sample_spec.channels));
+        Self {
+            pool: AudioBufferPool::new(spec.pool_slots, samples_per_frame),
+            sample_spec: spec.sample_spec,
+            samples_per_frame,
+        }
+    }
+
+    fn frame(
+        &self,
+        samples: &[f32],
+        lineage: SignalLineage,
+        timing: SignalTiming,
+    ) -> Result<AudioFrame, NodeError> {
+        if samples.len() != self.samples_per_frame {
+            return Err(NodeError::Process(format!(
+                "operator audio emission has {} samples; expected {}",
+                samples.len(),
+                self.samples_per_frame
+            )));
+        }
+        let mut buffer = self.pool.acquire().ok_or_else(|| {
+            NodeError::Process("operator audio emission buffer pool is full".to_owned())
+        })?;
+        buffer
+            .try_copy_from_slice(samples)
+            .map_err(|error| NodeError::Process(error.to_string()))?;
+        let timestamp_ns = timing
+            .session_timestamp_ns()
+            .or(timing.source_timestamp_ns())
+            .unwrap_or(timing.observed_timestamp_ns());
+        AudioFrame::try_new(
+            lineage.stream_id(),
+            lineage.source_id(),
+            lineage.sequence_number(),
+            timestamp_ns,
+            self.sample_spec,
+            buffer,
+        )
+        .map_err(|error| NodeError::Process(error.to_string()))
+    }
 }
 
 impl AsyncNode for PythonOperatorNode {
@@ -252,8 +323,22 @@ impl PythonOperatorNode {
                     None,
                 )
                 .map_err(|error| NodeError::Process(error.to_string()))?;
+                let payload = match emission.payload {
+                    PythonOperatorPayload::Audio(samples) => {
+                        let audio_output = self.audio_output.as_ref().ok_or_else(|| {
+                            NodeError::Process(
+                                "operator audio emission requires one concrete PCM output"
+                                    .to_owned(),
+                            )
+                        })?;
+                        SignalPayload::Audio(audio_output.frame(&samples, lineage, timing)?)
+                    }
+                    payload => payload.into_non_audio_core().ok_or_else(|| {
+                        NodeError::Process("operator emitted an unsupported payload".to_owned())
+                    })?,
+                };
                 Ok(SignalEnvelope::untracked(
-                    emission.payload.into_core(),
+                    payload,
                     emission.signal,
                     timing.observed_timestamp_ns(),
                 )
@@ -262,6 +347,82 @@ impl PythonOperatorNode {
             })
             .collect()
     }
+}
+
+fn audio_output_spec(
+    manifest: &pocketstation::AsyncOperatorManifest,
+) -> PyResult<Option<OperatorAudioOutputSpec>> {
+    let Some(MediaCaps::Audio(caps)) = manifest.output_ports().next().map(|port| port.media())
+    else {
+        return Ok(None);
+    };
+    let sample_rate_hz = caps.sample_rate_hz.ok_or_else(|| {
+        PyValueError::new_err(coded_reason(
+            "operator.invalid_contract",
+            "Python Operator PCM output requires an exact sample rate",
+        ))
+    })?;
+    if sample_rate_hz == 0 {
+        return Err(PyValueError::new_err(coded_reason(
+            "operator.invalid_contract",
+            "Python Operator PCM output sample rate must be non-zero",
+        )));
+    }
+    let frame_samples_per_channel = caps.frame_samples.ok_or_else(|| {
+        PyValueError::new_err(coded_reason(
+            "operator.invalid_contract",
+            "Python Operator PCM output requires an exact frame sample count",
+        ))
+    })?;
+    if frame_samples_per_channel == 0 {
+        return Err(PyValueError::new_err(coded_reason(
+            "operator.invalid_contract",
+            "Python Operator PCM output frame sample count must be non-zero",
+        )));
+    }
+    let channels = match caps.channel_layout {
+        ChannelLayout::Mono => 1,
+        ChannelLayout::Stereo => 2,
+        ChannelLayout::Any => {
+            return Err(PyValueError::new_err(coded_reason(
+                "operator.invalid_contract",
+                "Python Operator PCM output requires a concrete channel layout",
+            )))
+        }
+    };
+    let samples_per_frame = frame_samples_per_channel
+        .checked_mul(usize::from(channels))
+        .ok_or_else(|| {
+            PyValueError::new_err(coded_reason(
+                "operator.invalid_contract",
+                "Python Operator PCM frame size exceeds the platform limit",
+            ))
+        })?;
+    let payload_bytes = samples_per_frame
+        .checked_mul(std::mem::size_of::<f32>())
+        .ok_or_else(|| {
+            PyValueError::new_err(coded_reason(
+                "operator.invalid_contract",
+                "Python Operator PCM payload size exceeds the platform limit",
+            ))
+        })?;
+    if manifest
+        .output_edge()
+        .max_payload_bytes()
+        .is_some_and(|maximum| payload_bytes > maximum)
+    {
+        return Err(PyValueError::new_err(coded_reason(
+            "operator.invalid_contract",
+            "Python Operator PCM frame exceeds its output edge payload bound",
+        )));
+    }
+    Ok(Some(OperatorAudioOutputSpec {
+        sample_spec: SampleSpec::new(sample_rate_hz, channels, SampleFormat::F32Interleaved),
+        frame_samples_per_channel,
+        pool_slots: manifest
+            .queue_capacity_frames()
+            .min(AUDIO_OUTPUT_POOL_MAX_SLOTS),
+    }))
 }
 
 fn python_prepare_context(

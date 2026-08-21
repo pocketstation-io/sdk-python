@@ -22,7 +22,7 @@ from .graph import (
     PortSpec,
     SignalSpec,
 )
-from .signal import SignalEnvelope
+from .signal import SignalAudioPayload, SignalEnvelope
 
 
 class _SessionOwner(Protocol):
@@ -118,6 +118,18 @@ class OperatorEmission:
 
     def __init__(self, native: _NativeOperatorEmission) -> None:
         self._native = native
+
+    @classmethod
+    def audio(
+        cls,
+        samples: object,
+        *,
+        signal: SignalSpec[SignalAudioPayload],
+    ) -> OperatorEmission:
+        """Copy one exact float32 PCM frame into a bounded Core-owned pool."""
+        return cls(
+            _native_call(lambda: _NativeOperatorEmission.audio(samples, signal._native))
+        )
 
     @classmethod
     def text(cls, payload: str, *, signal: SignalSpec[str]) -> OperatorEmission:
