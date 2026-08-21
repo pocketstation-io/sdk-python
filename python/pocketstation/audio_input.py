@@ -8,7 +8,7 @@ from time import monotonic, sleep
 
 from ._native import _AudioInput as _NativeAudioInput
 from ._native import _AudioInputObservations as _NativeAudioInputObservations
-from .errors import AudioInputFullError, _native_call
+from .errors import AudioInputBufferError, AudioInputFullError, _native_call
 from .graph import Endpoint, SourceOutput
 from .identity import SourceId, StreamId
 
@@ -89,9 +89,18 @@ class PcmSource:
 
     def try_write(self, samples: object, *, discontinuity: bool = False) -> None:
         """Copy one C-contiguous float32 frame into a preallocated Core buffer."""
-        _native_call(
-            lambda: self._native.try_write(samples, discontinuity=discontinuity)
-        )
+        try:
+            _native_call(
+                lambda: self._native.try_write(samples, discontinuity=discontinuity)
+            )
+        except BufferError as error:
+            # PyO3 rejects an incompatible buffer format before entering the
+            # native method, so it cannot attach PocketStation's coded error.
+            # Keep that binding detail out of the public SDK contract.
+            raise AudioInputBufferError(
+                "samples must be a C-contiguous float32 buffer",
+                "audio_input.invalid_buffer",
+            ) from error
 
     def close(self) -> None:
         """Close after accepted frames drain; subsequent writes fail explicitly."""

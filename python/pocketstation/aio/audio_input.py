@@ -44,17 +44,22 @@ class PcmSource:
         *,
         discontinuity: bool = False,
     ) -> None:
-        await asyncio.to_thread(
-            self._source.try_write,
-            samples,
-            discontinuity=discontinuity,
-        )
+        """Attempt one immediate write into Core's finite preallocated pool.
+
+        The native operation never waits for capacity. It either accepts the
+        frame or reports ``Full``, ``Closed``, ``Cancelled``, or an invalid
+        buffer, so dispatching every write through the thread pool would add
+        scheduling overhead without making the operation more asynchronous.
+        """
+        self._source.try_write(samples, discontinuity=discontinuity)
 
     async def close(self) -> None:
-        await asyncio.to_thread(self._source.close)
+        """Close the native input immediately after its accepted frames drain."""
+        self._source.close()
 
     async def observations(self) -> AudioInputObservations:
-        return await asyncio.to_thread(self._source.observations)
+        """Read one immediate point-in-time snapshot from Core."""
+        return self._source.observations()
 
 
 class AudioInput(PcmSource):

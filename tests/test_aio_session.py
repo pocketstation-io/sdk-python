@@ -107,6 +107,50 @@ async def test_async_audio_write_wait_is_finite_and_adds_no_python_queue() -> No
 
 
 @pytest.mark.asyncio
+async def test_async_audio_input_immediate_operations_do_not_use_thread_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Session()
+    audio = session.audio_input(
+        "playback",
+        capacity_frames=2,
+        frame_samples_per_channel=4,
+    )
+
+    async def unexpected_to_thread(*args, **kwargs):
+        raise AssertionError("immediate audio input operation used asyncio.to_thread")
+
+    monkeypatch.setattr(asyncio, "to_thread", unexpected_to_thread)
+    await audio.try_write(array("f", [0.1, 0.2, 0.3, 0.4]))
+    assert (await audio.observations()).accepted_total == 1
+    await audio.close()
+    assert (await audio.observations()).closed
+
+
+@pytest.mark.asyncio
+async def test_cancelled_async_audio_write_leaves_no_background_write() -> None:
+    session = Session()
+    audio = session.audio_input(
+        "playback",
+        capacity_frames=1,
+        frame_samples_per_channel=4,
+    )
+    samples = array("f", [0.1, 0.2, 0.3, 0.4])
+    await audio.try_write(samples)
+
+    pending = asyncio.create_task(audio.write(samples, timeout_s=1.0))
+    await asyncio.sleep(0.01)
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+
+    await asyncio.sleep(0.01)
+    observations = await audio.observations()
+    assert observations.accepted_total == 1
+    assert observations.full_total > 0
+
+
+@pytest.mark.asyncio
 async def test_async_endpoint_runs_on_owning_loop_over_core_receivers() -> None:
     delivered = asyncio.Event()
     owning_thread = threading.get_ident()
