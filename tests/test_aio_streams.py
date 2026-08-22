@@ -6,9 +6,10 @@ import asyncio
 import threading
 from time import monotonic
 
+import pocketstation._native as _native
 import pytest
-from pocketstation import STREAM_EOF, StreamInUseError, StreamModeError, _native
-from pocketstation.aio import AudioStream, RunningSession
+from pocketstation._api import STREAM_EOF, StreamInUseError, StreamModeError
+from pocketstation.aio._api import AudioStream, RunningSession
 from pocketstation.aio.session import _native_async
 
 

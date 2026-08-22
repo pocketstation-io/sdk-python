@@ -1,4 +1,4 @@
-"""Immutable typed signals delivered by canonical Rust Session endpoints."""
+"""Read immutable typed signals delivered by Rust Session endpoints."""
 
 from __future__ import annotations
 

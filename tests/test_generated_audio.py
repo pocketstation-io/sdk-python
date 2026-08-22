@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from time import monotonic
 
+import pocketstation._native as _native
 import pytest
-
-from pocketstation import Operator, PocketStationError, Session, Source, _native
+from pocketstation._api import Operator, PocketStationError, Session, Source
 
 GRAPH_OPERATOR_ID = "org.pocketstation.python.conformance.audio-pass-through.v1"
 NONCONCRETE_OPERATOR_ID = "org.pocketstation.python.conformance.nonconcrete-audio.v1"

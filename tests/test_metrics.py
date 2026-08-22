@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 
+import pocketstation._native as _native
 import pytest
-
-from pocketstation import (
+from pocketstation._api import (
     EndpointObservationStage,
     PocketStationError,
     Session,
     Source,
-    _native,
 )
 
 

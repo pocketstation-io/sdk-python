@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 
+import pocketstation._api as pocketstation
 import pytest
-
-import pocketstation
-from pocketstation import SourceKind, SourceQuery
+from pocketstation._api import SourceKind, SourceQuery
 
 
 def test_discovery_returns_an_immutable_typed_native_snapshot() -> None:

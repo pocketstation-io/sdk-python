@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
 
+import pocketstation._native as _native
 import pytest
-
-from pocketstation import (
+from pocketstation._api import (
     Platform,
     RunningSession,
     Session,
@@ -15,7 +15,6 @@ from pocketstation import (
     SourceRecoveryRequirement,
     SourceRuntimeEvent,
     SourceRuntimeEventKind,
-    _native,
 )
 from pocketstation.observations import SessionEvent
 

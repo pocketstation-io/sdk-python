@@ -5,13 +5,13 @@ from __future__ import annotations
 import threading
 from types import SimpleNamespace
 
+import pocketstation._native as _native
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     EventStream,
     RunningSession,
     StreamInUseError,
     StreamModeError,
-    _native,
 )
 
 

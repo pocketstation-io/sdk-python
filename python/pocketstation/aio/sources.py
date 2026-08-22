@@ -21,7 +21,7 @@ from ..sources import (
 async def discover_sources(
     query: SourceQuery | None = None,
 ) -> tuple[DiscoveredSource, ...]:
-    """Run canonical native source discovery off the asyncio event loop."""
+    """Run native source discovery without blocking the asyncio event loop."""
     return await asyncio.to_thread(_discover_sources, query)
 
 

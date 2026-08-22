@@ -1,5 +1,8 @@
 # PY-004-backpressure-policy — Backpressure Policy on Pool / Ring Exhaustion
 
+> **Historical record.** This v2.3 scaffold decision does not define the
+> current SDK. See [Python SDK design](../PYTHON_SDK_DESIGN.md).
+
 ## Status
 Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote, urljoin, urlparse
 
 import httpx
@@ -83,24 +83,53 @@ class IceServer:
 @dataclass(frozen=True, slots=True)
 class SessionCredentials:
     session_id: SessionId
+    required_buses: tuple[str, ...]
     source_token: SecretToken
-    subscriber_token: SecretToken
     whip_url: str | None = None
     whep_url: str | None = None
     ice_servers: tuple[IceServer, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
+class BusState:
+    bus_id: str
+    role: str
+    source_active: bool
+    source_generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class SubscriptionState:
+    subscriber_id: str
+    bus_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class SessionSnapshot:
     session_id: SessionId
-    source_active: bool
+    state_revision: int
+    relay_epoch: str | None
+    relay_revision: int
+    required_buses: tuple[str, ...]
+    buses: tuple[BusState, ...]
+    subscriptions: tuple[SubscriptionState, ...]
+    ready: bool
     subscription_count: int
     codec: str
 
 
 @dataclass(frozen=True, slots=True)
+class Invitation:
+    session_id: SessionId
+    join_code: str
+    join_url: str
+    expires_at: str
+
+
+@dataclass(frozen=True, slots=True)
 class SubscriberCredentials:
     session_id: SessionId
+    bus_id: str
     subscriber_token: SecretToken
 
 
@@ -123,19 +152,23 @@ class ControlClient:
     def create_session(
         self,
         *,
+        required_buses: tuple[str, ...] = ("application", "microphone"),
         timeout_seconds: float | None = None,
     ) -> SessionCredentials:
+        required_buses = _bus_ids(required_buses, "required_buses")
         payload = self._json_request(
             "POST",
             "v1/sessions",
             expected_status=201,
             timeout_seconds=timeout_seconds,
+            json_body={"required_buses": list(required_buses)},
         )
         return _session_credentials(payload)
 
     def session(
         self,
         session_id: str | SessionId,
+        source_token: SecretToken,
         *,
         timeout_seconds: float | None = None,
     ) -> SessionSnapshot:
@@ -145,23 +178,49 @@ class ControlClient:
             f"v1/sessions/{quote(identifier, safe='')}",
             expected_status=200,
             timeout_seconds=timeout_seconds,
+            authorization=source_token,
         )
         return _session_snapshot(payload)
 
     def issue_subscriber_credentials(
         self,
         session_id: str | SessionId,
+        source_token: SecretToken,
         *,
+        bus_id: str = "mix",
         timeout_seconds: float | None = None,
     ) -> SubscriberCredentials:
         identifier = SessionId(str(session_id))
+        bus_id = _bus_id(bus_id, "bus_id")
         payload = self._json_request(
             "POST",
             f"v1/sessions/{quote(identifier, safe='')}/subscribe",
             expected_status=200,
             timeout_seconds=timeout_seconds,
+            authorization=source_token,
+            json_body={"bus_id": bus_id},
         )
         return _subscriber_credentials(payload)
+
+    def create_invitation(
+        self,
+        session_id: str | SessionId,
+        source_token: SecretToken,
+        *,
+        bus_id: str = "mix",
+        timeout_seconds: float | None = None,
+    ) -> Invitation:
+        identifier = SessionId(str(session_id))
+        bus_id = _bus_id(bus_id, "bus_id")
+        payload = self._json_request(
+            "POST",
+            f"v1/sessions/{quote(identifier, safe='')}/invitations",
+            expected_status=201,
+            timeout_seconds=timeout_seconds,
+            authorization=source_token,
+            json_body={"bus_id": bus_id},
+        )
+        return _invitation(payload, identifier)
 
     def delete_session(
         self,
@@ -207,14 +266,17 @@ class ControlClient:
         *,
         expected_status: int,
         timeout_seconds: float | None,
+        authorization: SecretToken | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self._request(
             method,
             path,
             expected_status=expected_status,
             timeout_seconds=timeout_seconds,
-            authorization=None,
+            authorization=authorization,
             expect_json=True,
+            json_body=json_body,
         )
 
     def _request(
@@ -226,6 +288,7 @@ class ControlClient:
         timeout_seconds: float | None,
         authorization: SecretToken | None,
         expect_json: bool,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self._closed:
             raise RuntimeError("ControlClient has closed")
@@ -241,6 +304,7 @@ class ControlClient:
                 method,
                 urljoin(self.control_plane_url, path),
                 headers=headers,
+                json=json_body,
                 timeout=timeout,
             ) as response:
                 if response.status_code != expected_status:
@@ -382,8 +446,11 @@ def _ice_servers(payload: dict[str, Any]) -> tuple[IceServer, ...]:
 def _session_credentials(payload: dict[str, Any]) -> SessionCredentials:
     return SessionCredentials(
         session_id=SessionId(_required(payload, "session_id", str)),
+        required_buses=_decoded_bus_ids(
+            tuple(_required(payload, "required_buses", list)),
+            "required_buses",
+        ),
         source_token=SecretToken(_required(payload, "source_token", str)),
-        subscriber_token=SecretToken(_required(payload, "subscriber_token", str)),
         whip_url=_optional_string(payload, "whip_url"),
         whep_url=_optional_string(payload, "whep_url"),
         ice_servers=_ice_servers(payload),
@@ -391,6 +458,8 @@ def _session_credentials(payload: dict[str, Any]) -> SessionCredentials:
 
 
 def _session_snapshot(payload: dict[str, Any]) -> SessionSnapshot:
+    state_revision = _nonnegative_integer(payload, "state_revision", minimum=1)
+    relay_revision = _nonnegative_integer(payload, "relay_revision")
     subscription_count = _required(payload, "subscription_count", int)
     if subscription_count < 0:
         raise ControlPlaneError(
@@ -399,7 +468,16 @@ def _session_snapshot(payload: dict[str, Any]) -> SessionSnapshot:
         )
     return SessionSnapshot(
         session_id=SessionId(_required(payload, "session_id", str)),
-        source_active=_required(payload, "source_active", bool),
+        state_revision=state_revision,
+        relay_epoch=_optional_string(payload, "relay_epoch"),
+        relay_revision=relay_revision,
+        required_buses=_decoded_bus_ids(
+            tuple(_required(payload, "required_buses", list)),
+            "required_buses",
+        ),
+        buses=_bus_states(payload),
+        subscriptions=_subscription_states(payload),
+        ready=_required(payload, "ready", bool),
         subscription_count=subscription_count,
         codec=_required(payload, "codec", str),
     )
@@ -408,7 +486,106 @@ def _session_snapshot(payload: dict[str, Any]) -> SessionSnapshot:
 def _subscriber_credentials(payload: dict[str, Any]) -> SubscriberCredentials:
     return SubscriberCredentials(
         session_id=SessionId(_required(payload, "session_id", str)),
+        bus_id=_bus_id(_required(payload, "bus_id", str), "bus_id"),
         subscriber_token=SecretToken(_required(payload, "subscriber_token", str)),
+    )
+
+
+def _invitation(payload: dict[str, Any], session_id: SessionId) -> Invitation:
+    return Invitation(
+        session_id=session_id,
+        join_code=_required(payload, "join_code", str),
+        join_url=_required(payload, "join_url", str),
+        expires_at=_required(payload, "expires_at", str),
+    )
+
+
+def _nonnegative_integer(payload: dict[str, Any], key: str, *, minimum: int = 0) -> int:
+    value = cast(int, _required(payload, key, int))
+    if value < minimum:
+        raise ControlPlaneError(
+            f"control-plane response field {key!r} must be at least {minimum}",
+            "control.response_decode",
+        )
+    return value
+
+
+def _identifier(value: str, field: str, maximum: int) -> str:
+    if (
+        not value
+        or len(value) > maximum
+        or not all(
+            character.isascii() and (character.isalnum() or character in "._-")
+            for character in value
+        )
+    ):
+        raise ValueError(
+            f"{field} must contain 1 to {maximum} ASCII letters, digits, "
+            "'.', '_' or '-'"
+        )
+    return value
+
+
+def _bus_id(value: str, field: str) -> str:
+    return _identifier(value, field, 64)
+
+
+def _bus_ids(values: tuple[Any, ...], field: str) -> tuple[str, ...]:
+    if not 1 <= len(values) <= 16 or not all(
+        isinstance(value, str) for value in values
+    ):
+        raise ValueError(f"{field} must contain between 1 and 16 bus IDs")
+    result = tuple(_bus_id(value, field) for value in values)
+    if len(set(result)) != len(result):
+        raise ValueError(f"{field} must not contain duplicate bus IDs")
+    return result
+
+
+def _decoded_bus_ids(values: tuple[Any, ...], field: str) -> tuple[str, ...]:
+    try:
+        return _bus_ids(values, field)
+    except ValueError as error:
+        raise ControlPlaneError(str(error), "control.response_decode") from error
+
+
+def _required_identifier(payload: dict[str, Any], key: str, *, maximum: int) -> str:
+    try:
+        return _identifier(_required(payload, key, str), key, maximum)
+    except ValueError as error:
+        raise ControlPlaneError(str(error), "control.response_decode") from error
+
+
+def _bus_states(payload: dict[str, Any]) -> tuple[BusState, ...]:
+    raw = _required(payload, "buses", list)
+    if len(raw) > 16 or not all(isinstance(value, dict) for value in raw):
+        raise ControlPlaneError(
+            "control-plane buses must contain at most 16 objects",
+            "control.response_decode",
+        )
+    return tuple(
+        BusState(
+            bus_id=_required_identifier(value, "bus_id", maximum=64),
+            role=_required_identifier(value, "role", maximum=64),
+            source_active=_required(value, "source_active", bool),
+            source_generation=_nonnegative_integer(value, "source_generation"),
+        )
+        for value in raw
+    )
+
+
+def _subscription_states(payload: dict[str, Any]) -> tuple[SubscriptionState, ...]:
+    raw = _required(payload, "subscriptions", list)
+    if len(raw) > 1_024 or not all(isinstance(value, dict) for value in raw):
+        raise ControlPlaneError(
+            "control-plane subscriptions must contain at most 1024 objects",
+            "control.response_decode",
+        )
+    return tuple(
+        SubscriptionState(
+            subscriber_id=_required_identifier(value, "subscriber_id", maximum=128),
+            bus_id=_required_identifier(value, "bus_id", maximum=64),
+        )
+        for value in raw
     )
 
 
@@ -423,12 +600,15 @@ def _optional_string(payload: dict[str, Any], key: str) -> str | None:
 
 
 __all__ = [
+    "BusState",
     "ControlClient",
     "ControlPlaneError",
     "IceServer",
+    "Invitation",
     "SecretToken",
     "SessionCredentials",
     "SessionId",
     "SessionSnapshot",
     "SubscriberCredentials",
+    "SubscriptionState",
 ]

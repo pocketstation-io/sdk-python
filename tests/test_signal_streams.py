@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from time import monotonic
 
+import pocketstation._native as _native
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     STREAM_EOF,
     BackpressurePolicy,
     BinaryFormat,
@@ -18,7 +19,6 @@ from pocketstation import (
     SignalSpec,
     Source,
     TextFormat,
-    _native,
     aio,
 )
 

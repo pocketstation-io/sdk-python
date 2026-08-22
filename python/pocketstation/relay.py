@@ -1,32 +1,29 @@
-"""Explicit control and declaration composition for the real relay services."""
+"""Create RelaySessions and compose their publication declarations."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import monotonic, sleep
 from types import TracebackType
-from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, quote, urljoin, urlparse
-
-import httpx
+from typing import TYPE_CHECKING
+from urllib.parse import parse_qs, urlparse
 
 from ._native import RelayPublisher as _NativeRelayPublisher
 from .control import (
     ControlClient,
-    SecretToken,
     SessionCredentials,
     SessionId,
     SessionSnapshot,
+)
+from .control import (
+    Invitation as ControlInvitation,
 )
 from .errors import PocketStationError, _native_call
 from .identity import RouteId
 
 if TYPE_CHECKING:
     from .session import Session
-
-_MAX_RELAY_RESPONSE_BYTES = 16_384
 
 
 class RelayError(PocketStationError):
@@ -61,7 +58,7 @@ class ReceiverActivation:
 
 @dataclass(frozen=True, slots=True)
 class ReceiverInvitation:
-    """Opaque relay-issued browser invitation containing no subscriber token."""
+    """Opaque control-plane invitation containing no subscriber capability."""
 
     session_id: SessionId
     join_code: str
@@ -94,7 +91,7 @@ class RelaySession:
 
     The object creates no relay, control-plane, browser, signaling, or media
     process. Callers provide already-running service origins. Audio remains in
-    the canonical Rust Session and shared ``pocketstation-relay`` crate.
+    the Rust Session and shared ``pocketstation-relay`` crate.
     """
 
     def __init__(
@@ -103,17 +100,13 @@ class RelaySession:
         relay_url: str,
         credentials: SessionCredentials,
         control: ControlClient,
-        relay_http: httpx.Client,
         owns_control: bool,
-        owns_relay_http: bool,
         request_timeout_seconds: float,
     ) -> None:
         self.relay_url = _normalize_relay_url(relay_url)
         self.credentials = credentials
         self._control = control
-        self._relay_http = relay_http
         self._owns_control = owns_control
-        self._owns_relay_http = owns_relay_http
         self._request_timeout_seconds = request_timeout_seconds
         self._publisher_activation: PublisherActivation | None = None
         self._invitation: ReceiverInvitation | None = None
@@ -127,27 +120,22 @@ class RelaySession:
         control_plane_url: str,
         relay_url: str,
         request_timeout_seconds: float = 10.0,
+        required_buses: tuple[str, ...] = ("application", "microphone"),
         control_client: ControlClient | None = None,
-        relay_http_client: httpx.Client | None = None,
     ) -> RelaySession:
         request_timeout_seconds = _validate_request_timeout(request_timeout_seconds)
         normalized_relay_url = _normalize_relay_url(relay_url)
         owns_control = control_client is None
-        owns_relay_http = relay_http_client is None
         control = control_client or ControlClient(
             control_plane_url,
             timeout_seconds=request_timeout_seconds,
         )
-        relay_http = relay_http_client or httpx.Client(
-            timeout=request_timeout_seconds,
-        )
         try:
             credentials = control.create_session(
+                required_buses=required_buses,
                 timeout_seconds=request_timeout_seconds,
             )
         except Exception:
-            if owns_relay_http:
-                relay_http.close()
             if owns_control:
                 control.close()
             raise
@@ -155,9 +143,7 @@ class RelaySession:
             relay_url=normalized_relay_url,
             credentials=credentials,
             control=control,
-            relay_http=relay_http,
             owns_control=owns_control,
-            owns_relay_http=owns_relay_http,
             request_timeout_seconds=request_timeout_seconds,
         )
 
@@ -202,7 +188,7 @@ class RelaySession:
         """Wait for the relay's source-active callback, within one deadline."""
         self._require_open()
         snapshot = self._wait_for_snapshot(
-            lambda value: value.source_active,
+            lambda value: value.ready,
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             timeout_code="relay.publisher_timeout",
@@ -212,24 +198,21 @@ class RelaySession:
         self._publisher_activation = activation
         return activation
 
-    def create_receiver_invitation(self) -> ReceiverInvitation:
-        """Ask the relay for an opaque invitation after publisher activation."""
+    def create_receiver_invitation(self, *, bus_id: str = "mix") -> ReceiverInvitation:
+        """Create a scoped invitation after every required bus is attached."""
         self._require_open()
         if self._publisher_activation is None:
             raise RelayError(
                 "wait_for_publisher() must succeed before creating an invitation",
                 "relay.publisher_not_active",
             )
-        payload = _relay_json_request(
-            self._relay_http,
-            relay_url=self.relay_url,
-            method="POST",
-            path=(f"v1/sessions/{quote(str(self.session_id), safe='')}/invitations"),
-            expected_status=201,
-            authorization=self.credentials.source_token,
+        created = self._control.create_invitation(
+            self.session_id,
+            self.credentials.source_token,
+            bus_id=bus_id,
             timeout_seconds=self._request_timeout_seconds,
         )
-        invitation = _receiver_invitation(payload, self.session_id)
+        invitation = _receiver_invitation(created, self.session_id)
         self._invitation = invitation
         return invitation
 
@@ -260,7 +243,7 @@ class RelaySession:
                 "relay.invitation_missing",
             )
         snapshot = self._wait_for_snapshot(
-            lambda value: value.source_active and value.subscription_count > 0,
+            lambda value: value.ready and value.subscription_count > 0,
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             timeout_code="relay.receiver_timeout",
@@ -282,8 +265,6 @@ class RelaySession:
                     timeout_seconds=self._request_timeout_seconds,
                 )
         finally:
-            if self._owns_relay_http:
-                self._relay_http.close()
             if self._owns_control:
                 self._control.close()
 
@@ -327,6 +308,7 @@ class RelaySession:
             )
             snapshot = self._control.session(
                 self.session_id,
+                self.credentials.source_token,
                 timeout_seconds=request_timeout,
             )
             if predicate(snapshot):
@@ -375,81 +357,17 @@ def _bounded_request_timeout(
     return min(remaining_seconds, configured_seconds)
 
 
-def _relay_json_request(
-    client: httpx.Client,
-    *,
-    relay_url: str,
-    method: str,
-    path: str,
-    expected_status: int,
-    authorization: SecretToken,
-    timeout_seconds: float,
-) -> dict[str, Any]:
-    exposed = authorization.expose_secret()
-    try:
-        with client.stream(
-            method,
-            urljoin(relay_url + "/", path),
-            headers={"Authorization": f"Bearer {exposed}"},
-            timeout=timeout_seconds,
-        ) as response:
-            body = _read_bounded(response.iter_bytes(), _MAX_RELAY_RESPONSE_BYTES)
-            if response.status_code != expected_status:
-                detail = body.decode("utf-8", errors="replace").replace(
-                    exposed,
-                    "[redacted]",
-                )
-                raise RelayError(
-                    f"relay returned HTTP {response.status_code}: {detail}",
-                    "relay.http_status",
-                )
-    except RelayError:
-        raise
-    except httpx.HTTPError as error:
-        message = str(error).replace(exposed, "[redacted]")
-        raise RelayError(f"relay request failed: {message}", "relay.request") from error
-    try:
-        payload = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RelayError(
-            f"relay response could not be decoded: {error}",
-            "relay.response_decode",
-        ) from error
-    if not isinstance(payload, dict):
-        raise RelayError(
-            "relay response must be a JSON object",
-            "relay.response_decode",
-        )
-    return payload
-
-
-def _read_bounded(chunks: Any, limit_bytes: int) -> bytes:
-    body = bytearray()
-    for chunk in chunks:
-        remaining = limit_bytes + 1 - len(body)
-        if remaining <= 0:
-            break
-        body.extend(chunk[:remaining])
-    if len(body) > limit_bytes:
-        raise RelayError(
-            f"relay response exceeds {limit_bytes} bytes",
-            "relay.response_too_large",
-        )
-    return bytes(body)
-
-
 def _receiver_invitation(
-    payload: dict[str, Any],
+    created: ControlInvitation,
     expected_session_id: SessionId,
 ) -> ReceiverInvitation:
-    session_id = SessionId(_required_string(payload, "session_id"))
-    if session_id != expected_session_id:
+    if created.session_id != expected_session_id:
         raise RelayError(
-            "relay invitation belongs to a different Session",
+            "control-plane invitation belongs to a different Session",
             "relay.response_identity",
         )
-    join_code = _required_string(payload, "join_code")
-    invitation_url = _required_string(payload, "join_url")
+    join_code = created.join_code
+    invitation_url = created.join_url
     parsed = urlparse(invitation_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise RelayError(
@@ -479,17 +397,7 @@ def _receiver_invitation(
             "relay invitation URL exposes the Session identifier",
             "relay.unsafe_invitation",
         )
-    return ReceiverInvitation(session_id, join_code, invitation_url)
-
-
-def _required_string(payload: dict[str, Any], key: str) -> str:
-    value = payload.get(key)
-    if not isinstance(value, str) or not value:
-        raise RelayError(
-            f"relay response field {key!r} must be a non-empty string",
-            "relay.response_decode",
-        )
-    return value
+    return ReceiverInvitation(created.session_id, join_code, invitation_url)
 
 
 __all__ = [

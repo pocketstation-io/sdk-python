@@ -1,4 +1,4 @@
-"""Typed, immutable observations from the canonical native Session."""
+"""Inspect typed, immutable observations from the native Session."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Bounded asyncio Connector authoring over the canonical Core worker."""
+"""Author bounded Python Connectors with asyncio lifecycle methods."""
 
 from __future__ import annotations
 

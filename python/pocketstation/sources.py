@@ -247,7 +247,7 @@ class StableSourceId:
 
 @dataclass(frozen=True, slots=True)
 class DiscoveredSource:
-    """Immutable point-in-time result from the canonical Rust discovery query."""
+    """Immutable point-in-time result from native source discovery."""
 
     stable_id: StableSourceId
     name: str
@@ -323,7 +323,7 @@ class DiscoveredSource:
 
 @dataclass(frozen=True, slots=True)
 class SourceQuery:
-    """Typed query executed by the canonical Rust source provider."""
+    """Describe a typed query for the native source provider to execute."""
 
     _query_kind: str = "any"
     _value: str | None = None
@@ -360,7 +360,7 @@ SourceSelectorValue = str | int | StableSourceId | ProcessInstanceSelector | Non
 
 @dataclass(frozen=True, slots=True)
 class Source:
-    """Immutable declaration lowered by the canonical Rust ``Session``."""
+    """Immutable Source declaration compiled by the Rust ``Session``."""
 
     _native: _NativeSource = field(repr=False)
     kind: SourceKind
@@ -511,6 +511,22 @@ class Source:
             f"{stable_id.kind.value!r} is not a frozen built-in Session Source",
             "source.unsupported_session_kind",
         )
+
+
+def _capture_application(application: str | int) -> Source:
+    """Resolve the concise capture façade's name-or-process selector."""
+    if isinstance(application, int):
+        return Source.application_process_id(application)
+    if application.isascii() and application.isdecimal():
+        return Source.application_process_id(int(application))
+    if application.startswith("app:"):
+        process_id = application.removeprefix("app:")
+        if not process_id.isascii() or not process_id.isdecimal():
+            raise ValueError("app: application selector must contain a process ID")
+        return Source.application_process_id(int(process_id))
+    if application.startswith("bundle:"):
+        return Source.application_bundle_id(application.removeprefix("bundle:"))
+    return Source.application(application)
 
 
 @dataclass(frozen=True, slots=True)

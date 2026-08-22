@@ -13,6 +13,9 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.scripts]
+pocketstation-demo = "pocketstation_examples:main"
+
 [project.optional-dependencies]
 transcription = [
     "faster-whisper>=1.2.1,<2.0",
@@ -29,7 +32,7 @@ asyncio_mode = "auto"
 pythonpath = ["."]
 
 [tool.mypy]
-packages = ["pocketstation"]
+packages = ["pocketstation", "pocketstation_examples"]
 mypy_path = "python"
 python_version = "3.11"
 strict = true
@@ -43,6 +46,6 @@ select = ["B", "E", "F", "I", "RUF", "UP"]
 [tool.maturin]
 manifest-path = "native/Cargo.toml"
 python-source = "python"
+python-packages = ["pocketstation", "pocketstation_examples"]
 module-name = "pocketstation._native"
-include = [{ path = "examples/**/*", format = "sdist" }]
 exclude = ["**/__pycache__/**", "**/*.pyc", "**/*.pyo"]

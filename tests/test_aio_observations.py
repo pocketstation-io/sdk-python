@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+import pocketstation._native as _native
 import pytest
-from pocketstation import StreamInUseError, StreamModeError, _native
-from pocketstation.aio import EventStream, RunningSession
+from pocketstation._api import StreamInUseError, StreamModeError
+from pocketstation.aio._api import EventStream, RunningSession
 from pocketstation.aio.session import _native_async
 
 

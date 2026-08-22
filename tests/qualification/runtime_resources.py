@@ -1,4 +1,9 @@
-"""Measure Python boundary cost and prove bounded slow-consumer behavior."""
+"""Measure Python boundary cost and prove bounded slow-consumer behavior.
+
+The copy counters describe the audited native implementation: Core samples are
+copied into an owned Rust byte vector, then into Python-owned bytes. The
+returned memoryview adds no third PCM copy.
+"""
 
 from __future__ import annotations
 
@@ -28,6 +33,9 @@ class BoundaryResult:
     mode: str
     frames_total: int
     samples_per_frame: int
+    audited_native_to_owned_copies_per_frame: int
+    audited_owned_to_python_copies_per_frame: int
+    audited_total_pcm_copies_per_frame: int
     wall_time_ns: int
     process_cpu_time_ns: int
     frame_latency_p50_ns: int
@@ -153,6 +161,9 @@ def qualify_sync(frames_total: int, samples_per_frame: int) -> BoundaryResult:
         mode="sync",
         frames_total=frames_total,
         samples_per_frame=samples_per_frame,
+        audited_native_to_owned_copies_per_frame=1,
+        audited_owned_to_python_copies_per_frame=1,
+        audited_total_pcm_copies_per_frame=2,
         wall_time_ns=wall_time_ns,
         process_cpu_time_ns=process_cpu_time_ns,
         frame_latency_p50_ns=_percentile(latencies_ns, 50),
@@ -224,6 +235,9 @@ async def qualify_async(
         mode="asyncio",
         frames_total=frames_total,
         samples_per_frame=samples_per_frame,
+        audited_native_to_owned_copies_per_frame=1,
+        audited_owned_to_python_copies_per_frame=1,
+        audited_total_pcm_copies_per_frame=2,
         wall_time_ns=wall_time_ns,
         process_cpu_time_ns=process_cpu_time_ns,
         frame_latency_p50_ns=_percentile(latencies_ns, 50),

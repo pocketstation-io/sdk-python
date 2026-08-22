@@ -234,7 +234,7 @@ class SignalStream(Generic[_PayloadT]):
 
     ``None`` means a bounded read timed out, while ``STREAM_EOF`` means the
     endpoint is permanently closed. Iteration handles both states naturally
-    and owns no queue or worker beyond the canonical Rust edge.
+    and owns no queue or worker beyond the Rust edge.
     """
 
     def __init__(
@@ -346,7 +346,9 @@ class SignalStream(Generic[_PayloadT]):
 
 
 __all__ = [
+    "AudioBatch",
     "AudioBatchReadResult",
+    "AudioFrame",
     "AudioStream",
     "ClockDomainDescriptor",
     "SignalStream",

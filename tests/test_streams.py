@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import threading
 
+import pocketstation._native as _native
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     STREAM_EOF,
     AudioStream,
     RunningSession,
     StreamInUseError,
     StreamModeError,
-    _native,
 )
 
 

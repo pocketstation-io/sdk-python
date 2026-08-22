@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Event, Thread
 from time import sleep
 
-import pocketstation
+import pocketstation._api as pocketstation
 
 
 class InstalledSource(pocketstation.SourceDriver):

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from array import array
 
+import pocketstation._native as _native
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     PocketStationError,
     Session,
     SessionLifecycleState,
     Source,
-    _native,
 )
 
 

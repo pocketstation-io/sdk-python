@@ -1,21 +1,16 @@
-"""Asyncio control composition for the real PocketStation relay services."""
+"""Create and operate PocketStation RelaySessions with asyncio."""
 
 from __future__ import annotations
 
 import asyncio
-import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from time import monotonic
 from types import TracebackType
-from typing import TYPE_CHECKING, Any
-from urllib.parse import quote, urljoin
+from typing import TYPE_CHECKING
 
-import httpx
-
-from ..control import SecretToken, SessionCredentials, SessionId, SessionSnapshot
+from ..control import SessionCredentials, SessionId, SessionSnapshot
 from ..errors import _native_call
 from ..relay import (
-    _MAX_RELAY_RESPONSE_BYTES,
     PublisherActivation,
     ReceiverActivation,
     ReceiverInvitation,
@@ -43,17 +38,13 @@ class RelaySession:
         relay_url: str,
         credentials: SessionCredentials,
         control: ControlClient,
-        relay_http: httpx.AsyncClient,
         owns_control: bool,
-        owns_relay_http: bool,
         request_timeout_seconds: float,
     ) -> None:
         self.relay_url = _normalize_relay_url(relay_url)
         self.credentials = credentials
         self._control = control
-        self._relay_http = relay_http
         self._owns_control = owns_control
-        self._owns_relay_http = owns_relay_http
         self._request_timeout_seconds = request_timeout_seconds
         self._publisher_activation: PublisherActivation | None = None
         self._invitation: ReceiverInvitation | None = None
@@ -67,27 +58,22 @@ class RelaySession:
         control_plane_url: str,
         relay_url: str,
         request_timeout_seconds: float = 10.0,
+        required_buses: tuple[str, ...] = ("application", "microphone"),
         control_client: ControlClient | None = None,
-        relay_http_client: httpx.AsyncClient | None = None,
     ) -> RelaySession:
         request_timeout_seconds = _validate_request_timeout(request_timeout_seconds)
         normalized_relay_url = _normalize_relay_url(relay_url)
         owns_control = control_client is None
-        owns_relay_http = relay_http_client is None
         control = control_client or ControlClient(
             control_plane_url,
             timeout_seconds=request_timeout_seconds,
         )
-        relay_http = relay_http_client or httpx.AsyncClient(
-            timeout=request_timeout_seconds,
-        )
         try:
             credentials = await control.create_session(
+                required_buses=required_buses,
                 timeout_seconds=request_timeout_seconds,
             )
         except BaseException:
-            if owns_relay_http:
-                await relay_http.aclose()
             if owns_control:
                 await control.aclose()
             raise
@@ -95,9 +81,7 @@ class RelaySession:
             relay_url=normalized_relay_url,
             credentials=credentials,
             control=control,
-            relay_http=relay_http,
             owns_control=owns_control,
-            owns_relay_http=owns_relay_http,
             request_timeout_seconds=request_timeout_seconds,
         )
 
@@ -141,7 +125,7 @@ class RelaySession:
     ) -> PublisherActivation:
         self._require_open()
         snapshot = await self._wait_for_snapshot(
-            lambda value: value.source_active,
+            lambda value: value.ready,
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             timeout_code="relay.publisher_timeout",
@@ -151,23 +135,22 @@ class RelaySession:
         self._publisher_activation = activation
         return activation
 
-    async def create_receiver_invitation(self) -> ReceiverInvitation:
+    async def create_receiver_invitation(
+        self, *, bus_id: str = "mix"
+    ) -> ReceiverInvitation:
         self._require_open()
         if self._publisher_activation is None:
             raise RelayError(
                 "wait_for_publisher() must succeed before creating an invitation",
                 "relay.publisher_not_active",
             )
-        payload = await _relay_json_request(
-            self._relay_http,
-            relay_url=self.relay_url,
-            method="POST",
-            path=(f"v1/sessions/{quote(str(self.session_id), safe='')}/invitations"),
-            expected_status=201,
-            authorization=self.credentials.source_token,
+        created = await self._control.create_invitation(
+            self.session_id,
+            self.credentials.source_token,
+            bus_id=bus_id,
             timeout_seconds=self._request_timeout_seconds,
         )
-        invitation = _receiver_invitation(payload, self.session_id)
+        invitation = _receiver_invitation(created, self.session_id)
         self._invitation = invitation
         return invitation
 
@@ -197,7 +180,7 @@ class RelaySession:
                 "relay.invitation_missing",
             )
         snapshot = await self._wait_for_snapshot(
-            lambda value: value.source_active and value.subscription_count > 0,
+            lambda value: value.ready and value.subscription_count > 0,
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             timeout_code="relay.receiver_timeout",
@@ -219,8 +202,6 @@ class RelaySession:
                     timeout_seconds=self._request_timeout_seconds,
                 )
         finally:
-            if self._owns_relay_http:
-                await self._relay_http.aclose()
             if self._owns_control:
                 await self._control.aclose()
 
@@ -260,6 +241,7 @@ class RelaySession:
                 raise RelayTimeoutError(timeout_message, timeout_code)
             snapshot = await self._control.session(
                 self.session_id,
+                self.credentials.source_token,
                 timeout_seconds=_bounded_request_timeout(
                     remaining,
                     self._request_timeout_seconds,
@@ -274,72 +256,6 @@ class RelaySession:
     def _require_open(self) -> None:
         if self._closed:
             raise RelayError("RelaySession has closed", "relay.closed")
-
-
-async def _relay_json_request(
-    client: httpx.AsyncClient,
-    *,
-    relay_url: str,
-    method: str,
-    path: str,
-    expected_status: int,
-    authorization: SecretToken,
-    timeout_seconds: float,
-) -> dict[str, Any]:
-    exposed = authorization.expose_secret()
-    try:
-        async with client.stream(
-            method,
-            urljoin(relay_url + "/", path),
-            headers={"Authorization": f"Bearer {exposed}"},
-            timeout=timeout_seconds,
-        ) as response:
-            body = await _read_bounded(
-                response.aiter_bytes(),
-                _MAX_RELAY_RESPONSE_BYTES,
-            )
-            if response.status_code != expected_status:
-                detail = body.decode("utf-8", errors="replace").replace(
-                    exposed,
-                    "[redacted]",
-                )
-                raise RelayError(
-                    f"relay returned HTTP {response.status_code}: {detail}",
-                    "relay.http_status",
-                )
-    except RelayError:
-        raise
-    except httpx.HTTPError as error:
-        message = str(error).replace(exposed, "[redacted]")
-        raise RelayError(f"relay request failed: {message}", "relay.request") from error
-    try:
-        payload = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RelayError(
-            f"relay response could not be decoded: {error}",
-            "relay.response_decode",
-        ) from error
-    if not isinstance(payload, dict):
-        raise RelayError(
-            "relay response must be a JSON object",
-            "relay.response_decode",
-        )
-    return payload
-
-
-async def _read_bounded(chunks: AsyncIterator[bytes], limit_bytes: int) -> bytes:
-    body = bytearray()
-    async for chunk in chunks:
-        remaining = limit_bytes + 1 - len(body)
-        if remaining <= 0:
-            break
-        body.extend(chunk[:remaining])
-    if len(body) > limit_bytes:
-        raise RelayError(
-            f"relay response exceeds {limit_bytes} bytes",
-            "relay.response_too_large",
-        )
-    return bytes(body)
 
 
 __all__ = [

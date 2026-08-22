@@ -1,6 +1,11 @@
 # PocketStation
 ## Program Document v3.0
 
+> **Historical architecture record.** This document preserves an earlier
+> program design. It does not describe the current Python SDK API or supported
+> workflow. Start with the repository [README](../../README.md), then use the
+> [SDK design contract](../PYTHON_SDK_DESIGN.md) for current ownership.
+
 **Date:** 2026-06-26
 **Status:** Green-light version. AudioGraph is the product center. v2.3 core algorithm, platform specs, and engineering ADRs are fully preserved underneath the new graph abstraction. No further structural rewrites planned.
 **Supersedes:** v2.3 (Universal Audio Fabric / mobile-first SDK + relay positioning)

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import sys
 
-import pocketstation
+import pocketstation._api as pocketstation
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     CapturePermissionLifecycle,
     CapturePermissionTransitionKind,
     PermissionObservation,
+)
+from pocketstation.aio.sources import (
+    microphone_permission_observation as async_microphone_permission_observation,
 )
 
 
@@ -65,6 +68,6 @@ def test_linux_truth_is_not_reinterpreted_as_allowed_or_denied() -> None:
 @pytest.mark.asyncio
 async def test_async_permission_observation_shares_native_policy() -> None:
     assert (
-        await pocketstation.aio.microphone_permission_observation()
+        await async_microphone_permission_observation()
         is pocketstation.microphone_permission_observation()
     )

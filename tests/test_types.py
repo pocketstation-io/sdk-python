@@ -1,8 +1,7 @@
 """Stable exception contract tests."""
 
 import pytest
-
-from pocketstation import PocketStationError
+from pocketstation._api import PocketStationError
 
 
 def test_given_pocketstation_error_when_raised_then_code_set():

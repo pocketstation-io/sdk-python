@@ -33,7 +33,6 @@ TEST_CASES = (
     "tests/test_operator_authoring.py::test_async_operator_pcm_uses_the_same_core_reentry",
     "tests/test_connector.py::test_connector_worker_receives_finite_native_owned_batches",
     "tests/test_aio_session.py::test_async_connector_worker_receives_finite_native_batches",
-    "tests/test_audio_transport_example.py::test_call_audio_template_uses_core_source_and_connector",
     "tests/test_transcription_example.py::test_faster_whisper_is_the_concise_source_aware_python_path",
 )
 

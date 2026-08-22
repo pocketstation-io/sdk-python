@@ -8,16 +8,16 @@ import time
 from array import array
 
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     Connector,
     ConnectorDeliveryOutcome,
     ConnectorManifest,
     SessionLifecycleState,
 )
-from pocketstation.aio import (
+from pocketstation.aio._api import (
     Connector as AsyncConnector,
 )
-from pocketstation.aio import (
+from pocketstation.aio._api import (
     ConnectorDeadlines,
     ConnectorWorker,
     EndpointDriverObservations,

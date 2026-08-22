@@ -1,4 +1,4 @@
-"""Python-authored typed Sources over the canonical Core source lifecycle."""
+"""Author typed Python Sources on the Core source lifecycle."""
 
 from __future__ import annotations
 
@@ -188,7 +188,7 @@ class SourceDriver:
 
 @runtime_checkable
 class SourceFactory(Protocol):
-    """Reusable factory retained by one canonical Session."""
+    """Reusable factory retained by one Session."""
 
     def create(self, configuration: Mapping[str, str]) -> SourceDriver: ...
 
@@ -292,7 +292,7 @@ class _NativeFactoryAdapter:
 
 
 class RegisteredSource:
-    """One Source implementation registered into one canonical Session."""
+    """Register one Python Source implementation in a Session."""
 
     __slots__ = ("_native", "_provider", "_session")
 

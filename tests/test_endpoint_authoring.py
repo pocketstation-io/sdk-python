@@ -6,7 +6,7 @@ from threading import Event, Thread
 from time import monotonic, sleep
 
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     EndpointDriverError,
     EndpointDriverObservations,
     EndpointFailureRetryability,

@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     ControlClient,
     ControlPlaneError,
     SecretToken,
     SessionId,
 )
-from pocketstation.aio import ControlClient as AsyncControlClient
+from pocketstation.aio._api import ControlClient as AsyncControlClient
 
 CREATE_RESPONSE = {
     "session_id": "session_123",
+    "required_buses": ["application", "microphone"],
     "source_token": "source-secret",
-    "subscriber_token": "subscriber-secret",
     "whip_url": "https://relay.example/v1/sessions/session_123/whip",
     "whep_url": "https://relay.example/v1/sessions/session_123/whep",
     "ice_servers": [
@@ -28,6 +28,35 @@ CREATE_RESPONSE = {
 }
 
 
+def _snapshot(*, ready: bool, subscription_count: int) -> dict[str, object]:
+    buses = [
+        {
+            "bus_id": bus_id,
+            "role": "voice",
+            "source_active": ready,
+            "source_generation": 1 if ready else 0,
+        }
+        for bus_id in ("application", "microphone")
+    ]
+    return {
+        "session_id": "session_123",
+        "state_revision": 3,
+        "relay_epoch": "relay-epoch-1" if ready else "",
+        "relay_revision": 2 if ready else 0,
+        "required_buses": ["application", "microphone"],
+        "buses": buses,
+        "subscriptions": (
+            [{"subscriber_id": "receiver_1", "bus_id": "mix"}]
+            if subscription_count
+            else []
+        ),
+        "ready": ready,
+        "source_active": ready,
+        "subscription_count": subscription_count,
+        "codec": "opus",
+    }
+
+
 def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> None:
     requests: list[httpx.Request] = []
 
@@ -36,21 +65,26 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
         if request.method == "POST" and request.url.path.endswith("/v1/sessions"):
             return httpx.Response(201, json=CREATE_RESPONSE)
         if request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "session_id": "session_123",
-                    "source_active": True,
-                    "subscription_count": 2,
-                    "codec": "opus",
-                },
-            )
+            return httpx.Response(200, json=_snapshot(ready=True, subscription_count=1))
         if request.url.path.endswith("/subscribe"):
             return httpx.Response(
                 200,
                 json={
                     "session_id": "session_123",
+                    "bus_id": "mix",
                     "subscriber_token": "next-subscriber-secret",
+                },
+            )
+        if request.url.path.endswith("/invitations"):
+            return httpx.Response(
+                201,
+                json={
+                    "join_code": "opaque-code",
+                    "join_url": (
+                        "https://receiver.example/?join=opaque-code"
+                        "&control=https%3A%2F%2Fcontrol.example"
+                    ),
+                    "expires_at": "2026-08-21T18:00:00Z",
                 },
             )
         assert request.headers["authorization"] == "Bearer source-secret"
@@ -63,8 +97,13 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
             http_client=http_client,
         ) as client:
             credentials = client.create_session()
-            snapshot = client.session(credentials.session_id)
-            subscriber = client.issue_subscriber_credentials(credentials.session_id)
+            snapshot = client.session(credentials.session_id, credentials.source_token)
+            subscriber = client.issue_subscriber_credentials(
+                credentials.session_id, credentials.source_token
+            )
+            invitation = client.create_invitation(
+                credentials.session_id, credentials.source_token
+            )
             client.delete_session(credentials.session_id, credentials.source_token)
 
     assert credentials.session_id == SessionId("session_123")
@@ -74,13 +113,18 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
     assert credentials.ice_servers[0].credential is not None
     assert credentials.ice_servers[0].credential.expose_secret() == "turn-secret"
     assert "turn-secret" not in repr(credentials)
-    assert snapshot.source_active is True
-    assert snapshot.subscription_count == 2
+    assert credentials.required_buses == ("application", "microphone")
+    assert snapshot.ready is True
+    assert snapshot.subscription_count == 1
+    assert snapshot.buses[0].source_generation == 1
     assert subscriber.subscriber_token.expose_secret() == "next-subscriber-secret"
+    assert subscriber.bus_id == "mix"
+    assert invitation.join_code == "opaque-code"
     assert [(request.method, request.url.path) for request in requests] == [
         ("POST", "/base/v1/sessions"),
         ("GET", "/base/v1/sessions/session_123"),
         ("POST", "/base/v1/sessions/session_123/subscribe"),
+        ("POST", "/base/v1/sessions/session_123/invitations"),
         ("DELETE", "/base/v1/sessions/session_123"),
     ]
 
@@ -95,19 +139,14 @@ async def test_async_client_has_the_same_wire_contract() -> None:
             return httpx.Response(201, json=CREATE_RESPONSE)
         if request.method == "GET":
             return httpx.Response(
-                200,
-                json={
-                    "session_id": "session_123",
-                    "source_active": False,
-                    "subscription_count": 0,
-                    "codec": "opus",
-                },
+                200, json=_snapshot(ready=False, subscription_count=0)
             )
         if request.url.path.endswith("/subscribe"):
             return httpx.Response(
                 200,
                 json={
                     "session_id": "session_123",
+                    "bus_id": "mix",
                     "subscriber_token": "next-subscriber-secret",
                 },
             )
@@ -121,16 +160,18 @@ async def test_async_client_has_the_same_wire_contract() -> None:
             http_client=http_client,
         ) as client:
             credentials = await client.create_session()
-            snapshot = await client.session(credentials.session_id)
+            snapshot = await client.session(
+                credentials.session_id, credentials.source_token
+            )
             subscriber = await client.issue_subscriber_credentials(
-                credentials.session_id
+                credentials.session_id, credentials.source_token
             )
             await client.delete_session(
                 credentials.session_id,
                 credentials.source_token,
             )
 
-    assert snapshot.source_active is False
+    assert snapshot.ready is False
     assert subscriber.subscriber_token.expose_secret() == "next-subscriber-secret"
     assert [(request.method, request.url.path) for request in requests] == [
         ("POST", "/v1/sessions"),
@@ -178,17 +219,15 @@ def test_control_decoder_rejects_boolean_or_negative_subscription_counts() -> No
             lambda _request, value=invalid: httpx.Response(
                 200,
                 json={
-                    "session_id": "session_123",
-                    "source_active": True,
+                    **_snapshot(ready=True, subscription_count=0),
                     "subscription_count": value,
-                    "codec": "opus",
                 },
             )
         )
         with httpx.Client(transport=transport) as http_client:
             client = ControlClient("https://control.example", http_client=http_client)
             with pytest.raises(ControlPlaneError) as raised:
-                client.session("session_123")
+                client.session("session_123", SecretToken("source-secret"))
         assert raised.value.code == "control.response_decode"
 
 

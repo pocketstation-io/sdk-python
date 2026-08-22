@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from pathlib import Path
 from types import TracebackType
+from typing import TypeVar
 
 from .._native import AudioBatch
 from ..graph import Stem
@@ -15,10 +16,13 @@ from ..observations import (
     SessionTraceConfiguration,
     StopResult,
 )
-from ..sources import Source
+from ..signal import BusSubscription
+from ..sources import Source, _capture_application
 from .observations import EventStream
 from .session import RunningSession, Session
-from .streams import AudioStream
+from .streams import AudioStream, SignalStream
+
+_PayloadT = TypeVar("_PayloadT")
 
 
 class Capture:
@@ -27,13 +31,18 @@ class Capture:
     def __init__(
         self,
         *,
-        application: str,
+        application: str | int,
         microphone: bool | str = True,
         record_to: str | Path | None = None,
+        stream_audio: bool = True,
         trace: SessionTraceConfiguration | None = None,
     ) -> None:
-        if not application.strip():
+        if isinstance(application, str) and not application.strip():
             raise ValueError("application must not be empty")
+        if not isinstance(application, (str, int)) or isinstance(application, bool):
+            raise TypeError("application must be a display name or process ID")
+        if isinstance(application, int) and application <= 0:
+            raise ValueError("application process ID must be positive")
         if not isinstance(microphone, (bool, str)):
             raise TypeError("microphone must be True, False, or a device ID")
         if isinstance(microphone, str) and not microphone.strip():
@@ -42,6 +51,7 @@ class Capture:
         self._application_name = application
         self._microphone = microphone
         self._record_to = None if record_to is None else Path(record_to)
+        self._stream_audio = stream_audio
         self._trace = trace
         self._running: RunningSession | None = None
         self._entered = False
@@ -53,18 +63,21 @@ class Capture:
             if self._trace is None
             else Session(recording_root=self._record_to, trace=self._trace)
         )
-        application = session.capture(Source.application(self._application_name))
+        application = session.capture(_capture_application(self._application_name))
         microphone: Stem | None = None
         if self._microphone is True:
             microphone = session.capture(Source.microphone_default())
         elif isinstance(self._microphone, str):
             microphone = session.capture(Source.microphone_id(self._microphone))
 
-        audio = session.polled_audio()
-        self.application_route_id = application.send(audio)
-        self.microphone_route_id = (
-            None if microphone is None else microphone.send(audio)
-        )
+        self.application_route_id = None
+        self.microphone_route_id = None
+        if self._stream_audio:
+            audio = session.polled_audio()
+            self.application_route_id = application.send(audio)
+            self.microphone_route_id = (
+                None if microphone is None else microphone.send(audio)
+            )
         if self._record_to is not None:
             application.record("application")
             if microphone is not None:
@@ -73,6 +86,13 @@ class Capture:
         self.session = session
         self.application_stem = application
         self.microphone_stem = microphone
+
+    @property
+    def stems(self) -> tuple[Stem, ...]:
+        """The independently routable application and optional microphone stems."""
+        if self.microphone_stem is None:
+            return (self.application_stem,)
+        return (self.application_stem, self.microphone_stem)
 
     @property
     def is_running(self) -> bool:
@@ -96,6 +116,12 @@ class Capture:
     def events(self) -> EventStream:
         """Async lifecycle and failure events from the native Session."""
         return self._require_running().events
+
+    def signals(
+        self, subscription: BusSubscription[_PayloadT]
+    ) -> SignalStream[_PayloadT]:
+        """Read one declared typed-signal branch from this running capture."""
+        return self._require_running().signals(subscription)
 
     async def start(self) -> Capture:
         if self._running is not None:
@@ -160,9 +186,10 @@ class Capture:
 
 def capture(
     *,
-    application: str,
+    application: str | int,
     microphone: bool | str = True,
     record_to: str | Path | None = None,
+    stream_audio: bool = True,
     trace: SessionTraceConfiguration | None = None,
 ) -> Capture:
     """Declare a concise app+mic recipe backed by one native Rust Session."""
@@ -170,6 +197,7 @@ def capture(
         application=application,
         microphone=microphone,
         record_to=record_to,
+        stream_audio=stream_audio,
         trace=trace,
     )
 

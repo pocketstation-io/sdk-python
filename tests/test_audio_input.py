@@ -5,7 +5,7 @@ from __future__ import annotations
 from array import array
 
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     AudioInputBufferError,
     AudioInputCancelledError,
     AudioInputClosedError,

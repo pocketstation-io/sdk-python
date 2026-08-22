@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from time import monotonic
 
-import pocketstation as pks
+import pocketstation._api as pks
 import pocketstation.aio as aio
 import pytest
 from pocketstation._native import Session as NativeSession

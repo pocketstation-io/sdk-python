@@ -63,7 +63,7 @@ class PcmSource:
 
 
 class AudioInput(PcmSource):
-    """Intent-first asyncio input over the canonical bounded native source."""
+    """Write application-owned PCM to a bounded native Source with asyncio."""
 
     async def write(
         self,

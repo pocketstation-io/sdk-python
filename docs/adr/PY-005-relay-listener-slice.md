@@ -1,5 +1,9 @@
 # PY-005-relay-listener-slice — Relay Listener Slice Model
 
+> **Historical record.** This v2.3 scaffold decision does not define the
+> current SDK. The current receiver term is `BusSubscription`; see
+> [Python SDK design](../PYTHON_SDK_DESIGN.md).
+
 ## Status
 Accepted for v2.3 scaffold. Reversal requires Phase 0/1 measurement data.
 

@@ -1,4 +1,4 @@
-"""Finite source-aware PCM windows shared by transcription examples."""
+"""Finite source-aware PCM windows for the example transcription provider."""
 
 from __future__ import annotations
 
@@ -6,18 +6,29 @@ import sys
 from array import array
 from dataclasses import dataclass, field
 
-import pocketstation
+from pocketstation.signal import SignalAudioPayload, SignalEnvelope
 
 
 @dataclass(slots=True)
 class AudioWindow:
     sample_rate_hz: int
     channel_count: int
+    session_id: int
     source_id: int
     stream_id: int
+    clock_id: int
+    source_generation: int
+    policy_epoch: int
     sequence_start: int
     sequence_end: int
     discontinuity_epoch: int
+    timestamp_start_ns: int
+    timestamp_end_ns: int
+    source_timestamp_start_ns: int | None
+    source_timestamp_end_ns: int | None
+    session_timestamp_start_ns: int | None
+    session_timestamp_end_ns: int | None
+    discontinuity_reasons: tuple[str, ...] = ()
     samples: array[float] = field(default_factory=lambda: array("f"))
 
     @property
@@ -37,10 +48,10 @@ class AudioWindowBuffer:
 
     def push(
         self,
-        envelope: pocketstation.SignalEnvelope[object],
+        envelope: SignalEnvelope[object],
     ) -> tuple[AudioWindow, ...]:
         payload = envelope.payload
-        if not isinstance(payload, pocketstation.SignalAudioPayload):
+        if not isinstance(payload, SignalAudioPayload):
             raise TypeError("transcription accepts only PCM audio signals")
         lineage = envelope.lineage
         if lineage is None:
@@ -48,13 +59,24 @@ class AudioWindowBuffer:
 
         key = (payload.source_id, payload.stream_id)
         window = self._windows.get(key)
-        incompatible = window is not None and (
-            window.sample_rate_hz != payload.sample_rate_hz
-            or window.channel_count != payload.channel_count
-            or window.discontinuity_epoch != lineage.discontinuity_epoch
-        )
+        reasons: list[str] = []
+        if window is not None:
+            if window.sample_rate_hz != payload.sample_rate_hz:
+                reasons.append("sample-rate-change")
+            if window.channel_count != payload.channel_count:
+                reasons.append("channel-count-change")
+            if window.clock_id != lineage.clock_id:
+                reasons.append("clock-change")
+            if window.source_generation != lineage.source_generation:
+                reasons.append("source-generation-change")
+            if window.policy_epoch != lineage.policy_epoch:
+                reasons.append("policy-epoch-change")
+            if window.discontinuity_epoch != lineage.discontinuity_epoch:
+                reasons.append("discontinuity-epoch-change")
+            if payload.sequence_number != window.sequence_end + 1:
+                reasons.append("sequence-gap")
         completed: list[AudioWindow] = []
-        if incompatible and window is not None:
+        if reasons and window is not None:
             if window.samples:
                 completed.append(window)
             del self._windows[key]
@@ -65,11 +87,22 @@ class AudioWindowBuffer:
             window = AudioWindow(
                 sample_rate_hz=payload.sample_rate_hz,
                 channel_count=payload.channel_count,
+                session_id=lineage.session_id,
                 source_id=payload.source_id,
                 stream_id=payload.stream_id,
+                clock_id=lineage.clock_id,
+                source_generation=lineage.source_generation,
+                policy_epoch=lineage.policy_epoch,
                 sequence_start=payload.sequence_number,
                 sequence_end=payload.sequence_number,
                 discontinuity_epoch=lineage.discontinuity_epoch,
+                timestamp_start_ns=payload.timestamp_ns,
+                timestamp_end_ns=payload.timestamp_ns,
+                source_timestamp_start_ns=envelope.timing.source_timestamp_ns,
+                source_timestamp_end_ns=envelope.timing.source_timestamp_ns,
+                session_timestamp_start_ns=envelope.timing.session_timestamp_ns,
+                session_timestamp_end_ns=envelope.timing.session_timestamp_ns,
+                discontinuity_reasons=tuple(reasons),
             )
             self._windows[key] = window
 
@@ -81,25 +114,30 @@ class AudioWindowBuffer:
             raise ValueError("audio payload size does not match sample_count")
         window.samples.extend(samples)
         window.sequence_end = payload.sequence_number
+        duration_ns = envelope.timing.duration_ns or round(
+            payload.sample_count
+            / (payload.sample_rate_hz * payload.channel_count)
+            * 1_000_000_000
+        )
+        window.timestamp_end_ns = payload.timestamp_ns + duration_ns
+        if envelope.timing.source_timestamp_ns is not None:
+            window.source_timestamp_end_ns = (
+                envelope.timing.source_timestamp_ns + duration_ns
+            )
+        if envelope.timing.session_timestamp_ns is not None:
+            window.session_timestamp_end_ns = (
+                envelope.timing.session_timestamp_ns + duration_ns
+            )
 
         target_samples = int(
             window.sample_rate_hz * window.channel_count * self._window_seconds
         )
-        while len(window.samples) >= target_samples:
-            completed.append(
-                AudioWindow(
-                    sample_rate_hz=window.sample_rate_hz,
-                    channel_count=window.channel_count,
-                    source_id=window.source_id,
-                    stream_id=window.stream_id,
-                    sequence_start=window.sequence_start,
-                    sequence_end=window.sequence_end,
-                    discontinuity_epoch=window.discontinuity_epoch,
-                    samples=array("f", window.samples[:target_samples]),
-                )
-            )
-            del window.samples[:target_samples]
-            window.sequence_start = payload.sequence_number
+        # Keep complete input frames together. A window may exceed the target
+        # by at most one declared input frame, which preserves exact sequence
+        # and timing ranges instead of assigning one frame to two windows.
+        if len(window.samples) >= target_samples:
+            completed.append(window)
+            del self._windows[key]
         return tuple(completed)
 
     def flush(self) -> tuple[AudioWindow, ...]:

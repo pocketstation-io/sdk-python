@@ -5,14 +5,14 @@ from __future__ import annotations
 from time import monotonic
 from types import SimpleNamespace
 
+import pocketstation._native as _native
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     RecordingDiscontinuityKind,
     RecordingOutcome,
     RecordingState,
     Session,
     Source,
-    _native,
 )
 
 

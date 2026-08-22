@@ -1,4 +1,4 @@
-"""In-process Python Connector authoring over the canonical Core worker."""
+"""Author in-process Python Connectors on the Core worker lifecycle."""
 
 from __future__ import annotations
 

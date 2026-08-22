@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pocketstation
 from pocketstation import signal
+from pocketstation.graph import Endpoint, SignalSpec, Stem
+from pocketstation.relay import RelaySession
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "python" / "pocketstation"
@@ -52,11 +54,11 @@ def test_relay_modules_are_real_owners_not_empty_parity_scaffolds() -> None:
 
 def test_public_declarations_report_their_canonical_owner() -> None:
     assert pocketstation.Source.__module__ == "pocketstation.sources"
-    assert pocketstation.Endpoint.__module__ == "pocketstation.graph"
-    assert pocketstation.Stem.__module__ == "pocketstation.graph"
-    assert pocketstation.SignalSpec.__module__ == "pocketstation.graph"
-    assert pocketstation.RelaySession.__module__ == "pocketstation.relay"
-    assert signal.SignalSpec is pocketstation.SignalSpec
+    assert Endpoint.__module__ == "pocketstation.graph"
+    assert Stem.__module__ == "pocketstation.graph"
+    assert SignalSpec.__module__ == "pocketstation.graph"
+    assert RelaySession.__module__ == "pocketstation.relay"
+    assert signal.SignalSpec is SignalSpec
 
 
 def test_session_modules_do_not_redeclare_source_or_graph_types() -> None:

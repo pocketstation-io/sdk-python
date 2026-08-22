@@ -5,7 +5,7 @@ from threading import Event
 from time import monotonic
 
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     Connector,
     ConnectorConfigurationField,
     ConnectorConfigurationRequirement,
@@ -27,8 +27,8 @@ from pocketstation import (
     ConnectorWorker,
     PocketStationError,
     Session,
-    connector,
 )
+from pocketstation.connector import connector
 
 
 class CollectingDriver(ConnectorDriver):
@@ -251,7 +251,7 @@ def test_session_destination_does_not_merge_different_connector_implementations(
 
 
 def test_connector_manifest_rejects_output_ports() -> None:
-    from pocketstation import MediaCaps, PortDirection, PortSpec, SignalSpec
+    from pocketstation.graph import MediaCaps, PortDirection, PortSpec, SignalSpec
 
     with pytest.raises(Exception, match="input"):
         ConnectorManifest(

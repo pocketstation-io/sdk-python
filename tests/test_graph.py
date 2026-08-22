@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     AudioCaps,
     BackpressurePolicy,
     BinaryFormat,

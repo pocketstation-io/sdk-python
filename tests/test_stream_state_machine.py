@@ -7,9 +7,13 @@ import threading
 from dataclasses import dataclass
 
 import pytest
-
-from pocketstation import STREAM_EOF, StreamError, StreamInUseError, StreamModeError
-from pocketstation.aio import SignalStream as AsyncSignalStream
+from pocketstation._api import (
+    STREAM_EOF,
+    StreamError,
+    StreamInUseError,
+    StreamModeError,
+)
+from pocketstation.aio._api import SignalStream as AsyncSignalStream
 from pocketstation.streams import SignalStream
 
 

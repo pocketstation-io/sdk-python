@@ -1,4 +1,4 @@
-"""Pythonic graph declarations lowered by the canonical Rust ``Session``."""
+"""Declare Python graph routes for the Rust ``Session`` to compile."""
 
 from __future__ import annotations
 
@@ -345,7 +345,7 @@ class MediaCaps:
 
     @classmethod
     def for_signal(cls, signal: SignalSpec[object]) -> MediaCaps:
-        """Select the canonical wildcard media contract for a signal."""
+        """Select the wildcard media contract for a signal."""
         if signal.kind is SignalKind.PCM_AUDIO:
             return cls.audio()
         if signal.kind is SignalKind.ENCODED_AUDIO:
@@ -508,7 +508,7 @@ class EdgeObservabilityLevel(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class EdgeContract:
-    """Canonical bounded edge preset plus the exact public Rust modifiers."""
+    """Configure a bounded edge with the public Rust policy modifiers."""
 
     _native: _NativeEdgeContract = field(repr=False, compare=False)
 
@@ -849,7 +849,7 @@ class DerivedStream(_RoutableStream):
         )
 
     def reenter_audio(self) -> Stem:
-        """Declare canonical generated-PCM reentry; no Python callback runs."""
+        """Return generated PCM through Core without a Python audio callback."""
         return _native_call(
             lambda: Stem(self._native.reenter_audio(), self._destination)
         )
@@ -944,7 +944,7 @@ class _GraphSessionDeclarations:
 
     @property
     def id(self) -> RuntimeSessionId:
-        """Stable identity allocated by the canonical Rust Session."""
+        """Return the stable identity allocated by the Rust Session."""
         return RuntimeSessionId(self._native.id)
 
     def source(
@@ -974,7 +974,7 @@ class _GraphSessionDeclarations:
         )
 
     def endpoint(self, descriptor: EndpointDescriptor) -> Endpoint:
-        """Declare one open endpoint descriptor on the canonical draft."""
+        """Declare one open Endpoint descriptor on the Session draft."""
         return _native_call(lambda: Endpoint(self._native.endpoint(descriptor._native)))
 
     def connector(
@@ -1001,7 +1001,7 @@ class _GraphSessionDeclarations:
     ) -> BusSubscription[_PayloadT]:
         """Declare one bounded, exclusive typed-signal subscription.
 
-        The subscription is a real endpoint in the canonical Rust Session.
+        The subscription is an Endpoint in the Rust Session.
         Python owns no additional queue, router, or background pump.
         """
         from .signal import BusSubscription

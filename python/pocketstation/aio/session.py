@@ -1,4 +1,4 @@
-"""Asyncio ownership of the canonical native PocketStation Session."""
+"""Build and operate a native PocketStation Session with asyncio."""
 
 from __future__ import annotations
 
@@ -274,7 +274,7 @@ class RunningSession:
 
 
 class Session(_GraphSessionDeclarations):
-    """Explicit asyncio façade over the canonical Rust Session."""
+    """Build and operate one Rust Session from asyncio code."""
 
     def __init__(
         self,
@@ -313,7 +313,7 @@ class Session(_GraphSessionDeclarations):
 
     @classmethod
     def _from_native(cls, native: _NativeSession) -> Session:
-        """Construct an internal façade around a canonical conformance Session."""
+        """Construct an internal façade around a conformance Session."""
         session = cls.__new__(cls)
         session._native = native
         session._sample_rate_hz = 48_000

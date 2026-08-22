@@ -3,9 +3,9 @@ from __future__ import annotations
 from array import array
 from threading import Event
 
-import pocketstation.aio as pks_aio
+import pocketstation.aio._api as pks_aio
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     AudioCaps,
     ChannelLayout,
     Connector,

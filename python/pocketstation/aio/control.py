@@ -13,11 +13,15 @@ from ..control import (
     _MAX_ERROR_BODY_BYTES,
     _MAX_JSON_BODY_BYTES,
     ControlPlaneError,
+    Invitation,
     SecretToken,
     SessionCredentials,
     SessionId,
     SessionSnapshot,
     SubscriberCredentials,
+    _bus_id,
+    _bus_ids,
+    _invitation,
     _normalize_base_url,
     _resolve_timeout,
     _session_credentials,
@@ -46,19 +50,23 @@ class ControlClient:
     async def create_session(
         self,
         *,
+        required_buses: tuple[str, ...] = ("application", "microphone"),
         timeout_seconds: float | None = None,
     ) -> SessionCredentials:
+        required_buses = _bus_ids(required_buses, "required_buses")
         payload = await self._json_request(
             "POST",
             "v1/sessions",
             expected_status=201,
             timeout_seconds=timeout_seconds,
+            json_body={"required_buses": list(required_buses)},
         )
         return _session_credentials(payload)
 
     async def session(
         self,
         session_id: str | SessionId,
+        source_token: SecretToken,
         *,
         timeout_seconds: float | None = None,
     ) -> SessionSnapshot:
@@ -68,23 +76,49 @@ class ControlClient:
             f"v1/sessions/{quote(identifier, safe='')}",
             expected_status=200,
             timeout_seconds=timeout_seconds,
+            authorization=source_token,
         )
         return _session_snapshot(payload)
 
     async def issue_subscriber_credentials(
         self,
         session_id: str | SessionId,
+        source_token: SecretToken,
         *,
+        bus_id: str = "mix",
         timeout_seconds: float | None = None,
     ) -> SubscriberCredentials:
         identifier = SessionId(str(session_id))
+        bus_id = _bus_id(bus_id, "bus_id")
         payload = await self._json_request(
             "POST",
             f"v1/sessions/{quote(identifier, safe='')}/subscribe",
             expected_status=200,
             timeout_seconds=timeout_seconds,
+            authorization=source_token,
+            json_body={"bus_id": bus_id},
         )
         return _subscriber_credentials(payload)
+
+    async def create_invitation(
+        self,
+        session_id: str | SessionId,
+        source_token: SecretToken,
+        *,
+        bus_id: str = "mix",
+        timeout_seconds: float | None = None,
+    ) -> Invitation:
+        identifier = SessionId(str(session_id))
+        bus_id = _bus_id(bus_id, "bus_id")
+        payload = await self._json_request(
+            "POST",
+            f"v1/sessions/{quote(identifier, safe='')}/invitations",
+            expected_status=201,
+            timeout_seconds=timeout_seconds,
+            authorization=source_token,
+            json_body={"bus_id": bus_id},
+        )
+        return _invitation(payload, identifier)
 
     async def delete_session(
         self,
@@ -130,14 +164,17 @@ class ControlClient:
         *,
         expected_status: int,
         timeout_seconds: float | None,
+        authorization: SecretToken | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             method,
             path,
             expected_status=expected_status,
             timeout_seconds=timeout_seconds,
-            authorization=None,
+            authorization=authorization,
             expect_json=True,
+            json_body=json_body,
         )
 
     async def _request(
@@ -149,6 +186,7 @@ class ControlClient:
         timeout_seconds: float | None,
         authorization: SecretToken | None,
         expect_json: bool,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self._closed:
             raise RuntimeError("ControlClient has closed")
@@ -164,6 +202,7 @@ class ControlClient:
                 method,
                 urljoin(self.control_plane_url, path),
                 headers=headers,
+                json=json_body,
                 timeout=timeout,
             ) as response:
                 if response.status_code != expected_status:

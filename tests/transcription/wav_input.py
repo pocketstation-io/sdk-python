@@ -1,4 +1,4 @@
-"""Finite PCM WAV input for executable transcription examples."""
+"""Finite PCM WAV input for transcription qualification."""
 
 from __future__ import annotations
 
@@ -50,6 +50,7 @@ async def feed_live(
     *,
     timeout_s: float = 2.0,
     pacing_ratio: float = 0.1,
+    close_when_complete: bool = True,
 ) -> None:
     frame_values = source.frame_samples_per_channel * source.channels
     for offset in range(0, len(source.samples), frame_values):
@@ -60,7 +61,8 @@ async def feed_live(
         await asyncio.sleep(
             source.frame_samples_per_channel / source.sample_rate_hz * pacing_ratio
         )
-    await audio.close()
+    if close_when_complete:
+        await audio.close()
 
 
 __all__ = ["WavInput", "feed_live", "read_pcm16_wav"]

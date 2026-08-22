@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import pocketstation
+from pocketstation.control import ControlClient
 
 
 def test_given_primary_exports_when_inspected_then_room_vocabulary_is_absent():
     assert "PocketStation" not in pocketstation.__all__
     assert "RoomCredentials" not in pocketstation.__all__
-    assert "ControlClient" in pocketstation.__all__
+    assert "ControlClient" not in pocketstation.__all__
+    assert ControlClient.__module__ == "pocketstation.control"
     assert "Session" in pocketstation.__all__
 
 

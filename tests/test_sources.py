@@ -5,7 +5,7 @@ from dataclasses import FrozenInstanceError, replace
 from types import SimpleNamespace
 
 import pytest
-from pocketstation import (
+from pocketstation._api import (
     ApplicationPolicyObservation,
     AudioInputBufferError,
     AudioInputClosedError,

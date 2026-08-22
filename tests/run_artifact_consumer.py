@@ -69,6 +69,36 @@ def main() -> int:
             check=True,
             timeout=60,
         )
+        demo = (
+            environment / "Scripts" / "pocketstation-demo.exe"
+            if os.name == "nt"
+            else environment / "bin" / "pocketstation-demo"
+        )
+        if not demo.is_file():
+            raise SystemExit(
+                "installed artifact contains no pocketstation-demo command"
+            )
+        qualification = root / "runtime_resources.py"
+        report = root / "runtime-qualification.json"
+        shutil.copyfile(
+            REPOSITORY / "tests" / "qualification" / "runtime_resources.py",
+            qualification,
+        )
+        subprocess.run(
+            [
+                os.fspath(interpreter),
+                os.fspath(qualification),
+                "--frames",
+                "500",
+                "--output",
+                os.fspath(report),
+            ],
+            cwd=root,
+            env=process_environment,
+            check=True,
+            timeout=180,
+        )
+        print(report.read_text())
     return 0
 
 

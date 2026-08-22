@@ -114,7 +114,7 @@ impl PythonAudioFrame {
         )
     }
 
-    /// Read-only zero-copy Python view over owned little-endian f32 PCM bytes.
+    /// Read-only view over the frame's Python-owned PCM copy.
     #[getter]
     fn samples<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyMemoryView>> {
         PyMemoryView::from(self.samples_f32le.bind(py).as_any())

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pocketstation import Source
-from pocketstation.aio import ControlClient, RelaySession, Session
+from pocketstation._api import Source
+from pocketstation.aio._api import ControlClient, RelaySession, Session
 
 CREATE_RESPONSE = {
     "session_id": "session_123",
+    "required_buses": ["application", "microphone"],
     "source_token": "source-secret",
-    "subscriber_token": "subscriber-secret",
     "whip_url": "https://relay.example/v1/sessions/session_123/whip",
     "whep_url": "https://relay.example/v1/sessions/session_123/whep",
     "ice_servers": [],
@@ -30,35 +30,34 @@ async def test_async_relay_session_rejects_unbounded_request_timeout() -> None:
 @pytest.mark.asyncio
 async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
     control_requests: list[httpx.Request] = []
-    relay_requests: list[httpx.Request] = []
-    snapshots = iter([_snapshot(True, 0), _snapshot(True, 1)])
+    snapshots = iter(
+        [
+            _snapshot(ready=True, subscription_count=0),
+            _snapshot(ready=True, subscription_count=1),
+        ]
+    )
 
     async def control_handler(request: httpx.Request) -> httpx.Response:
         control_requests.append(request)
-        if request.method == "POST":
+        if request.method == "POST" and request.url.path == "/v1/sessions":
             return httpx.Response(201, json=CREATE_RESPONSE)
         if request.method == "GET":
             return httpx.Response(200, json=next(snapshots))
+        assert request.headers["authorization"] == "Bearer source-secret"
+        if request.method == "POST" and request.url.path.endswith("/invitations"):
+            return httpx.Response(
+                201,
+                json={
+                    "join_code": "opaque-code",
+                    "join_url": "https://receiver.example/?join=opaque-code",
+                    "expires_at": "2026-08-21T18:00:00Z",
+                },
+            )
         return httpx.Response(204)
 
-    async def relay_handler(request: httpx.Request) -> httpx.Response:
-        relay_requests.append(request)
-        assert request.headers["authorization"] == "Bearer source-secret"
-        return httpx.Response(
-            201,
-            json={
-                "session_id": "session_123",
-                "join_code": "opaque-code",
-                "join_url": "https://receiver.example/?join=opaque-code",
-            },
-        )
-
-    async with (
-        httpx.AsyncClient(
-            transport=httpx.MockTransport(control_handler)
-        ) as control_http,
-        httpx.AsyncClient(transport=httpx.MockTransport(relay_handler)) as relay_http,
-    ):
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(control_handler)
+    ) as control_http:
         control = ControlClient(
             "https://control.example",
             http_client=control_http,
@@ -67,7 +66,6 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
             control_plane_url="https://control.example",
             relay_url="https://relay.example/",
             control_client=control,
-            relay_http_client=relay_http,
         )
 
         session = Session()
@@ -97,16 +95,35 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
     assert [(request.method, request.url.path) for request in control_requests] == [
         ("POST", "/v1/sessions"),
         ("GET", "/v1/sessions/session_123"),
+        ("POST", "/v1/sessions/session_123/invitations"),
         ("GET", "/v1/sessions/session_123"),
         ("DELETE", "/v1/sessions/session_123"),
     ]
-    assert len(relay_requests) == 1
 
 
-def _snapshot(source_active: bool, subscription_count: int) -> dict[str, object]:
+def _snapshot(*, ready: bool, subscription_count: int) -> dict[str, object]:
     return {
         "session_id": "session_123",
-        "source_active": source_active,
+        "state_revision": 2,
+        "relay_epoch": "relay-epoch-1",
+        "relay_revision": 2,
+        "required_buses": ["application", "microphone"],
+        "buses": [
+            {
+                "bus_id": bus_id,
+                "role": "voice",
+                "source_active": ready,
+                "source_generation": 1 if ready else 0,
+            }
+            for bus_id in ("application", "microphone")
+        ],
+        "subscriptions": (
+            [{"subscriber_id": "receiver_1", "bus_id": "mix"}]
+            if subscription_count
+            else []
+        ),
+        "ready": ready,
+        "source_active": ready,
         "subscription_count": subscription_count,
         "codec": "opus",
     }

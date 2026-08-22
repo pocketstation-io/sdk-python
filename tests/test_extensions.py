@@ -7,8 +7,8 @@ import time
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
-import pocketstation as pks
-import pocketstation.aio as aio
+import pocketstation._api as pks
+import pocketstation.aio._api as aio
 import pytest
 
 SOURCE_ID = "dev.pocketstation.source.fixture.v1"
