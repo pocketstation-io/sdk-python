@@ -475,20 +475,11 @@ class Source:
         )
 
     @classmethod
-    def system_mix(cls) -> Source:
-        """Capture the host system output mix through native loopback."""
-        return cls(
-            _native_call(_NativeSource.system_mix),
-            SourceKind.SYSTEM_MIX,
-            SourceSelectorKind.SYSTEM_MIX,
-        )
-
-    @classmethod
     def from_discovered(cls, source: DiscoveredSource) -> Source:
         """Build the strongest supported Session declaration from discovery.
 
-        Output devices remain discovery-only. System mix is a built-in Session
-        source and retains the platform-owned loopback capability decision.
+        Output devices and system mix remain discovery-only in the stable 1.1
+        Session declaration contract.
         """
         stable_id = source.stable_id
         if stable_id.kind is SourceKind.APPLICATION:
@@ -504,8 +495,6 @@ class Source:
             )
         if stable_id.kind is SourceKind.INPUT_DEVICE:
             return cls.microphone_id(source.device_uid or stable_id.stable_key)
-        if stable_id.kind is SourceKind.SYSTEM_MIX:
-            return cls.system_mix()
         raise PocketStationError(
             "discovered "
             f"{stable_id.kind.value!r} is not a frozen built-in Session Source",

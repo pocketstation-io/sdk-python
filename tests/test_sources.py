@@ -63,9 +63,6 @@ def test_source_declarations_are_immutable_and_descriptive() -> None:
     assert application.selector_value == "PocketStation Fixture"
     assert microphone.kind is SourceKind.INPUT_DEVICE
     assert microphone.selector_kind is SourceSelectorKind.MICROPHONE_DEFAULT
-    system_mix = Source.system_mix()
-    assert system_mix.kind is SourceKind.SYSTEM_MIX
-    assert system_mix.selector_kind is SourceSelectorKind.SYSTEM_MIX
     with pytest.raises(FrozenInstanceError):
         application.selector_value = "changed"
 
@@ -82,13 +79,6 @@ def test_discovered_input_device_lowers_to_microphone_id() -> None:
 
     assert selected.selector_kind is SourceSelectorKind.MICROPHONE_ID
     assert selected.selector_value == "device-42"
-
-
-def test_discovered_system_mix_lowers_to_builtin_session_source() -> None:
-    selected = Source.from_discovered(_discovered(SourceKind.SYSTEM_MIX))
-
-    assert selected.kind is SourceKind.SYSTEM_MIX
-    assert selected.selector_kind is SourceSelectorKind.SYSTEM_MIX
 
 
 def test_discovered_source_projects_typed_pre_open_authorization_evidence() -> None:

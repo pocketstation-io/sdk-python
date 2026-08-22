@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from array import array
 
-import pocketstation._native as _native
 import pytest
 from pocketstation._api import (
     PocketStationError,
@@ -46,7 +45,6 @@ def test_given_selector_family_when_declared_then_each_shape_is_available():
         "bundle:com.spotify.client",
     )
     assert Source.microphone_id("device-42")
-    assert Source.system_mix()
 
 
 def test_given_invalid_process_or_platform_when_declared_then_rejected():
@@ -79,20 +77,3 @@ def test_running_session_projects_native_lifecycle_state() -> None:
     assert running.stop().success
     assert running.state is SessionLifecycleState.STOPPED
     assert running.is_stopped
-
-
-def test_system_mix_runs_through_the_canonical_capture_backend(tmp_path) -> None:
-    if not hasattr(_native.Session, "conformance"):
-        pytest.skip("native extension was not built with conformance-fixtures")
-
-    session = Session._from_native(_native.Session.conformance(tmp_path, None, 256))
-    system_mix = session.capture(Source.system_mix())
-    system_mix.send(session.polled_audio())
-
-    running = session.start()
-    frame = running.audio.read(timeout_s=1.0)
-    stop = running.stop()
-
-    assert frame is not None
-    assert frame.stem_id == system_mix.id
-    assert stop.success

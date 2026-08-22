@@ -27,7 +27,6 @@ pub(crate) enum SourceDeclaration {
     },
     MicrophoneDefault,
     MicrophoneId(String),
-    SystemMix,
 }
 
 impl SourceDeclaration {
@@ -62,7 +61,6 @@ impl SourceDeclaration {
             Self::MicrophoneId(device_id) => {
                 Source::microphone(DeviceSelector::id(DeviceId::new(device_id.clone())))
             }
-            Self::SystemMix => Source::system_mix(),
         }
     }
 }
@@ -310,13 +308,6 @@ impl PythonSource {
         Ok(Self {
             declaration: SourceDeclaration::MicrophoneId(device_id),
         })
-    }
-
-    #[staticmethod]
-    const fn system_mix() -> Self {
-        Self {
-            declaration: SourceDeclaration::SystemMix,
-        }
     }
 }
 

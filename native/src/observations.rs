@@ -2210,15 +2210,19 @@ pub(crate) fn owned_recording_outcome(
         })
         .collect();
     Some(OwnedRecordingOutcome {
-        session_id: outcome.session_id.get(),
-        group_id: outcome.group_id.as_str().to_owned(),
+        session_id: running.session_id().get(),
+        group_id: pocketstation::DEFAULT_MULTISTEM_RECORDING_GROUP_ID.to_owned(),
         complete: outcome.state == pocketstation::SessionRecordingState::Complete,
         state: format!("{:?}", outcome.state).to_lowercase(),
         completed_stems: outcome.completed_stems,
         failed_stems: outcome.failed_stems,
         session_directory: outcome.session_dir.display().to_string(),
-        manifest_path: outcome.manifest_path.display().to_string(),
-        manifest_schema_version: outcome.manifest_schema_version,
+        manifest_path: outcome
+            .session_dir
+            .join(pocketstation::SESSION_RECORDING_MANIFEST_FILE_NAME)
+            .display()
+            .to_string(),
+        manifest_schema_version: pocketstation::SESSION_RECORDING_MANIFEST_SCHEMA_VERSION,
         error_code: pocketstation::session_recording_outcome_error_code(outcome)
             .map(|code| code.as_str().to_owned()),
         stems,
