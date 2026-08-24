@@ -156,13 +156,12 @@ does not have the same execution cost as Rust.
 | Linux wheel | Pending external qualification |
 | Windows wheel | Pending external qualification |
 | WAN/TURN receiver | Pending external qualification |
-| Standalone sdist | Blocked by an unpublished Core correction |
+| Standalone sdist | Qualified from the immutable Core 1.1.2 dependency |
 | PyPI release | Requires explicit release authorization |
 
-The current `native/Cargo.toml` patches Core to a sibling checkout. That patch is
-development provenance, not a distributable dependency. Wheel CI checks out the
-pinned Core source commit used by the binding. Standalone sdist acceptance stays
-blocked until that Core revision is released and the path patch is removed.
+The native binding pins published Core `1.1.2` and the shared Relay connector
+`0.1.1`. Wheel and source-distribution builds resolve those immutable registry
+artifacts without a sibling repository checkout.
 
 The Rust-to-Python audio read currently copies native samples into Python-owned
 bytes before exposing a `memoryview`. The view avoids another Python-side copy;

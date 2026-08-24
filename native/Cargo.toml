@@ -16,13 +16,10 @@ default = []
 conformance-fixtures = ["pocketstation/conformance-fixtures"]
 
 [dependencies]
-pocketstation = "=1.1.1"
+pocketstation = "=1.1.2"
 pocketstation-relay = "=0.1.1"
 pyo3 = { version = "0.27", features = ["abi3-py311"] }
 
 [dev-dependencies]
-pocketstation = { version = "=1.1.1", features = ["conformance-fixtures"] }
+pocketstation = { version = "=1.1.2", features = ["conformance-fixtures"] }
 tempfile = "3"
-
-[patch.crates-io]
-pocketstation = { path = "../../pocketstation" }
