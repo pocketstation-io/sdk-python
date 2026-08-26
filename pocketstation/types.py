@@ -1,4 +1,4 @@
-"""PocketStation SDK type definitions. Phase 5."""
+"""Public values returned by the PocketStation Python SDK."""
 from __future__ import annotations
 import dataclasses
 import enum
@@ -8,7 +8,7 @@ from typing import Optional
 
 
 class AudioMode(enum.Enum):
-    """Audio session mode (spec §12.1)."""
+    """Audio session mode."""
     VOICE = "voice"
     VOICE_AGENT = "voice_agent"
     MUSIC = "music"
@@ -19,7 +19,7 @@ class AudioMode(enum.Enum):
 class AudioFrame:
     """A single audio frame received from the relay.
 
-    pcm: raw PCM bytes, 48 kHz mono f32-LE (PY-013).
+    pcm: raw PCM bytes, 48 kHz mono f32-LE.
     sequence: monotonically increasing frame counter per stream.
     timestamp_ns: monotonic nanosecond timestamp at frame receipt.
     """
@@ -39,7 +39,7 @@ class AudioFrame:
 
 @dataclass
 class IceServer:
-    """ICE server configuration (PY-023 embedded TURN)."""
+    """ICE server configuration returned by the control plane."""
     urls: list[str]
     username: Optional[str] = None
     credential: Optional[str] = None

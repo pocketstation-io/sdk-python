@@ -1,4 +1,4 @@
-"""PocketStation Python SDK — spec §12.1."""
+"""PocketStation Python SDK."""
 from .station import PocketStation
 from .types import AudioFrame, AudioMode, IceServer, PocketStationError, RoomCredentials
 

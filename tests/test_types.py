@@ -1,4 +1,4 @@
-"""Unit tests for pocketstation.types. Phase 5."""
+"""Tests for the public PocketStation values."""
 import pytest
 from pocketstation.types import IceServer, PocketStationError, RoomCredentials
 
