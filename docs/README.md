@@ -6,7 +6,7 @@ need the lower-level API.
 ## Get started
 
 - [Capture one desktop application](../README.md#capture-a-desktop-application)
-- [Debug both sides of a voice application](../README.md#debug-a-live-voice-application)
+- [Transcribe both sides of a voice application](../README.md#transcribe-both-sides-of-a-voice-application)
 - [Stream any application audio to a browser](../README.md#stream-any-application-audio-to-a-browser)
 - [Browse the runnable examples](../examples/README.md)
 

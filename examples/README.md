@@ -2,14 +2,14 @@
 
 Each example is a complete Python program. Start with the task you want to try.
 
-## Debug both sides of a voice application
+## Transcribe both sides of a voice application
 
 Use this example to inspect what a desktop voice application produced and what
 the person said into the microphone. PocketStation keeps both sources separate
 while one faster-whisper Operator transcribes them.
 
 ```bash
-python examples/debug_voice_ai.py
+python examples/transcribe_voice_app.py
 ```
 
 The example asks which running application to capture. Microphone capture is

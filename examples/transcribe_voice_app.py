@@ -1,4 +1,4 @@
-"""Transcribe both sides of a desktop voice application without mixing them."""
+"""Transcribe a desktop voice application and microphone as separate stems."""
 
 import asyncio
 

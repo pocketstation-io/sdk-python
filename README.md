@@ -36,9 +36,9 @@ Add `microphone=True` when you need the default microphone as a second
 independent stem. Add `record_to="recordings"` when you want each selected stem
 recorded. Both behaviors are off by default.
 
-## Debug a live voice application
+## Transcribe both sides of a voice application
 
-The voice-debug example requires:
+The transcription example requires:
 
 - macOS with Screen Recording and Microphone permission;
 - Python 3.11 or newer;
@@ -50,7 +50,7 @@ Install the transcription extra, then run the example:
 
 ```bash
 python -m pip install 'pocketstation[transcription] @ file:///absolute/path/to/pocketstation-0.1.0-cp311-abi3-macosx_11_0_arm64.whl'
-python examples/debug_voice_ai.py
+python examples/transcribe_voice_app.py
 ```
 
 The program asks which desktop voice application to inspect. It declares one
@@ -67,12 +67,12 @@ physical microphone┘
 ```
 
 The complete composition is visible in
-[`examples/debug_voice_ai.py`](examples/debug_voice_ai.py). The example-owned
+[`examples/transcribe_voice_app.py`](examples/transcribe_voice_app.py). The example-owned
 adapter imports `faster_whisper.WhisperModel` when the Operator starts; it is
 not built into the `pocketstation` SDK namespace.
 
-This example does not perform speaker diarization or conversational-agent
-orchestration.
+This example does not debug turn handling, interruption, agent latency, or
+browser playout. PocketStation does not receive those events in this program.
 
 ## Stream any application audio to a browser
 
