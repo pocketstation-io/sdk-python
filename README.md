@@ -20,9 +20,3 @@ python -m pytest
 The current package uses HTTP for session creation and a WebSocket for binary
 PCM. Configure the control-plane and Relay URLs in your application; the SDK
 does not start hidden infrastructure or select a hosted service for you.
-
-## Related projects
-
-- [PocketStation Core](https://github.com/pocketstation-io/pocketstation)
-- [PocketStation Relay](https://github.com/pocketstation-io/relay)
-- [PocketStation Control Plane](https://github.com/pocketstation-io/control-plane)
