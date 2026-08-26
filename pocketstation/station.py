@@ -1,4 +1,4 @@
-"""PocketStation session API — spec §12.1.
+"""PocketStation session API.
 
 Wire format contract:
   - broadcast() sends raw binary PCM bytes over the WebSocket, never base64 JSON.
@@ -6,8 +6,7 @@ Wire format contract:
   - Errors from the WebSocket propagate to the caller; they are never swallowed.
   - disconnect() sends a LEAVE message before closing the WebSocket.
 
-Phase scope: Phase 5 — WebSocket listener / voice-agent mode.
-WebRTC transport is intentionally out of scope for this binding (see FAKE_SCAFFOLD_INVENTORY).
+This preview uses a WebSocket transport and does not implement WebRTC.
 """
 from __future__ import annotations
 
@@ -30,7 +29,7 @@ _DEFAULT_FRAME_DURATION_MS = 20
 
 
 class PocketStation:
-    """Voice agent / broadcast session (spec §12.1).
+    """Receive and send PCM through one PocketStation session.
 
     Lifecycle::
 

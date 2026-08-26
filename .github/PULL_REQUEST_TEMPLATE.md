@@ -1,17 +1,12 @@
-## Linked issue
+## What changed
 
-Closes #
+Describe the developer problem and the change that solves it.
 
-## Summary
+## User impact
 
-## Scope control
+Describe any API, behavior, compatibility, performance, or documentation change.
 
-- [ ] I modified only this repo.
-- [ ] I respected the repo phase gate.
-- [ ] I did not edit architecture docs unless explicitly assigned.
-- [ ] I did not add dependencies without approval.
-
-## Tests run
+## Validation
 
 ```bash
 
@@ -19,5 +14,11 @@ Closes #
 
 ## Risks
 
-## Reviewer focus
+List known limits, follow-up work, or deployment considerations.
 
+## Checklist
+
+- [ ] Tests cover the behavior I changed.
+- [ ] Public behavior is documented.
+- [ ] Logs, examples, and fixtures contain no credentials or personal data.
+- [ ] Breaking changes and migration steps are clearly identified.

@@ -1,4 +1,4 @@
-"""Unit tests for pocketstation.station — spec §12.1 voice agent pattern."""
+"""Tests for the async PocketStation session client."""
 from __future__ import annotations
 
 import json
