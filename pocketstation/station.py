@@ -122,7 +122,7 @@ class PocketStation:
 
         The payload is transmitted as binary WebSocket data — not base64 JSON.
 
-        :param audio: raw PCM bytes (f32-LE 48 kHz mono per PY-013).
+        :param audio: raw PCM bytes (f32-LE, 48 kHz, mono).
         :raises RuntimeError: if not connected.
         :raises websockets.exceptions.WebSocketException: on send failure.
         """
