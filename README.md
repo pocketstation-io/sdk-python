@@ -1,66 +1,101 @@
 # PocketStation Python SDK
 
-PocketStation lets you inspect both sides of a live desktop voice application.
-It keeps the application's output separate from the physical microphone while
-one native Session transcribes, publishes, and records both sides.
+PocketStation lets Python applications capture one desktop application and an
+optional microphone as separate live audio stems. One native Session can route
+those stems to Python model code, Relay, and recording without mixing their
+source identities.
 
 The Python SDK uses the PocketStation Rust engine. Python owns application and
 model logic; it does not reimplement capture, routing, timing, recording, or
 Relay media transport.
 
-> **Status: PARTIAL.** The installed macOS wheel has completed the Lab workflow
-> described below. The package is not published to PyPI. Linux and Windows
-> wheels, WAN/TURN evidence, and a standalone source distribution remain
-> release gates.
+> **Status: preview.** The package is not published to PyPI. The macOS wheel has
+> been tested with the workflow below. Linux and Windows wheels, plus WAN and
+> TURN testing, are still in progress. The source distribution builds against
+> PocketStation Core `1.1.2` and Relay `0.1.1`.
+
+## Capture a desktop application
+
+Install a development wheel:
+
+```bash
+python -m pip install 'pocketstation @ file:///absolute/path/to/pocketstation-0.1.0-cp311-abi3-macosx_11_0_arm64.whl'
+```
+
+Capture one application without opening a microphone or writing files:
+
+```python
+import pocketstation
+
+with pocketstation.capture(application="Spotify") as live:
+    for frame in live.audio:
+        print(frame.source_id, frame.stem_id)
+```
+
+Add `microphone=True` when you need the default microphone as a second
+independent stem. Add `record_to="recordings"` when you want each selected stem
+recorded. Both behaviors are off by default.
 
 ## Debug a live voice application
 
-The demo requires:
+The voice-debug example requires:
 
 - macOS with Screen Recording and Microphone permission;
 - Python 3.11 or newer;
 - a PocketStation development wheel built for your Python and macOS target;
 - internet access on the first run to download the default faster-whisper
-  model;
-- access to the configured PocketStation control plane and Relay.
+  model.
 
-Install the wheel with its transcription dependency, then run one command:
+Install the transcription extra, then run the example:
 
 ```bash
 python -m pip install 'pocketstation[transcription] @ file:///absolute/path/to/pocketstation-0.1.0-cp311-abi3-macosx_11_0_arm64.whl'
-pocketstation-demo
+python examples/debug_voice_ai.py
 ```
 
-The command asks which desktop application to inspect. It then starts one
-Session and:
-
-- opens the browser invitation after Relay confirms the publisher;
-- prints each transcript with its original source identity;
-- writes the application and microphone to separate recording stems.
+The program asks which desktop voice application to inspect. It declares one
+faster-whisper Operator, connects both stems to its audio input, and prints each
+transcript with its original source identity. It does not start Relay or write a
+recording.
 
 The Session runs this path concurrently:
 
 ```text
 voice application ─┐
-physical microphone┼─ faster-whisper transcripts
-                   ├─ two named Relay/browser buses
-                   └─ two aligned recording stems
+                   ├─ one bounded faster-whisper Operator ─ transcripts
+physical microphone┘
 ```
 
-Press `Ctrl-C` to stop. PocketStation cancels pending model work, closes the
-RelaySession, and finalizes the recording.
+The complete composition is visible in
+[`examples/debug_voice_ai.py`](examples/debug_voice_ai.py). The example-owned
+adapter imports `faster_whisper.WhisperModel` when the Operator starts; it is
+not built into the `pocketstation` SDK namespace.
 
-The installed command is implemented in one program under 50 lines:
-[`python/pocketstation_examples/demo.py`](python/pocketstation_examples/demo.py).
-The example package imports `faster_whisper.WhisperModel` when it starts. Its
-adapter is example-owned and is not part of the `pocketstation` SDK namespace.
+This example does not perform speaker diarization or conversational-agent
+orchestration.
 
-This demo does not claim speaker diarization, conversational-agent behavior,
-WAN/TURN qualification, or a zero-copy Rust-to-Python model boundary.
+## Stream any application audio to a browser
 
-## Capture application and microphone audio
+Run the Relay example when you want another person to listen in a browser:
 
-Use `capture()` when you want frames in Python as well as separate recordings:
+```bash
+python examples/stream_any_app_audio.py
+```
+
+Choose any running application that is producing audio. The example publishes
+that application as one named AudioBus, waits for Relay readiness, and prints a
+single-use word code and browser URL. It does not open the microphone or record
+audio.
+
+The example uses PocketStation's small rate-limited demo service unless you set
+`POCKETSTATION_CONTROL_URL` and `POCKETSTATION_RELAY_URL` to services you
+operate. The shared URLs live in `pocketstation_examples`; application code does
+not contain service credentials.
+
+## Read application and microphone audio
+
+Set the optional microphone and recording parameters when the workflow needs
+both sides:
 
 ```python
 import pocketstation
@@ -124,7 +159,7 @@ be used as native capture callbacks. Compiled native extensions remain the path
 for native provider code, and process sidecars remain available when crash
 isolation is required.
 
-## Relay ownership
+## Use Relay from Python
 
 Python creates and deletes RelaySessions through the typed HTTP control client.
 The shared Rust `pocketstation-relay` connector publishes media. The Go Relay
@@ -144,20 +179,20 @@ Python callbacks still cross the interpreter boundary. Capture, routing,
 recording, and Relay transport remain native-speed; arbitrary Python model code
 does not have the same execution cost as Rust.
 
-## Release qualification
+## Current package status
 
-| Gate | Current evidence |
+| Area | Current status |
 |---|---|
-| Native Rust, Python, Ruff, MyPy | Passing locally |
-| Installed macOS wheel | REAL |
-| Real faster-whisper inference | REAL |
-| Same-host Relay and Chromium receiver | LOOPBACK-ONLY |
-| Physical application and microphone | REAL-DEVICE-PROVEN on the recorded host |
-| Linux wheel | Pending external qualification |
-| Windows wheel | Pending external qualification |
-| WAN/TURN receiver | Pending external qualification |
-| Standalone sdist | Qualified from the immutable Core 1.1.2 dependency |
-| PyPI release | Requires explicit release authorization |
+| Native Rust, Python, Ruff, and MyPy checks | Pass locally |
+| Installed macOS wheel | Tested |
+| Real faster-whisper inference | Tested |
+| Relay and Chromium receiver | Tested on the publisher host only |
+| Physical application and microphone | Tested on the recorded macOS host |
+| Linux wheel | Not yet tested externally |
+| Windows wheel | Not yet tested externally |
+| Receiver over WAN or TURN | Not yet tested externally |
+| Standalone source distribution | Builds from the published Core 1.1.2 dependency |
+| PyPI release | Not published |
 
 The native binding pins published Core `1.1.2` and the shared Relay connector
 `0.1.1`. Wheel and source-distribution builds resolve those immutable registry
@@ -167,7 +202,7 @@ The Rust-to-Python audio read currently copies native samples into Python-owned
 bytes before exposing a `memoryview`. The view avoids another Python-side copy;
 the complete boundary is not zero-copy.
 
-## Develop and verify
+## Verify a local change
 
 ```bash
 uv sync --extra transcription
@@ -177,20 +212,9 @@ uv run ruff format --check python tests examples
 uv run mypy python tests/qualification/typing_contract.py examples
 ```
 
-Run the installed product gate from the workspace root:
-
-```bash
-bash pocketstation-lab/tests/test-w21-python-batch-transcription-artifact.sh
-```
-
-That gate builds and installs the wheel, runs faster-whisper inference,
-publishes through the shared Relay connector, receives audio in Chromium, and
-verifies the finalized multistem recording. Same-host evidence remains labeled
-`LOOPBACK-ONLY`.
-
 ## Reference
 
-- [`examples/README.md`](examples/README.md) — product demo behavior and
+- [`examples/README.md`](examples/README.md) — runnable examples and
   prerequisites.
 - `pocketstation.capture` — concise application and microphone capture.
 - `pocketstation.session` — Session declarations and lifecycle.

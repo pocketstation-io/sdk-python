@@ -113,7 +113,7 @@ def test_given_recipe_when_entered_then_one_session_owns_two_stems(
 
 def test_given_recipe_without_microphone_when_declared_then_one_stem(monkeypatch):
     monkeypatch.setattr(capture_module, "Session", FakeSession)
-    live = capture_module.capture(application="Spotify", microphone=False)
+    live = capture_module.capture(application="Spotify")
 
     assert len(FakeSession.latest.stems) == 1
     assert live.microphone_stem is None

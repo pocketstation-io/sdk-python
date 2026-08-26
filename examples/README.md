@@ -1,55 +1,52 @@
-# Debug both sides of a live voice application
+# Python examples
 
-Use this demo when you need to see what a desktop voice application produced
-and what the person said into the microphone without mixing the two sides
-together. It transcribes both sides, sends them to a browser, and records each
-side as a separate stem.
+Each example is a complete Python program. Start with the task you want to try.
 
-## Prerequisites
+## Debug both sides of a voice application
 
-- macOS Screen Recording and Microphone permission;
-- Python 3.11 or newer;
-- an installed PocketStation wheel with the `transcription` extra;
-- network access for the first model download and the configured Relay services.
-
-## Run
+Use this example to inspect what a desktop voice application produced and what
+the person said into the microphone. PocketStation keeps both sources separate
+while one faster-whisper Operator transcribes them.
 
 ```bash
-pocketstation-demo
+python examples/debug_voice_ai.py
 ```
 
-Enter an application display name, process ID, or bundle identifier when
-prompted. The command uses PocketStation's small, rate-limited demonstration
-deployment by default. It can return `HTTP 429` when the shared capacity is in
-use. Set `POCKETSTATION_CONTROL_URL` and `POCKETSTATION_RELAY_URL` to use a
-deployment you operate.
+The example asks which running application to capture. Microphone capture is
+explicit in the source, and no recording or cloud service starts.
 
-The checkout runner calls the same installed entry point:
-[`debug_voice_ai.py`](debug_voice_ai.py). The complete installed command is a
-program under 50 lines: [`demo.py`](../python/pocketstation_examples/demo.py).
-Model buffering and provider code stay in the example-owned
-`pocketstation_examples` package, outside the `pocketstation` SDK namespace.
+Install the optional model dependency before the first run:
 
-## Expected result
-
-After Relay confirms publication, the command opens a browser invitation. It
-then prints transcript events produced by
-`faster_whisper.WhisperModel`, including the source identity for each result.
-
-```text
-voice application ─┐
-physical microphone┼─ independent local transcripts
-                   ├─ two browser buses
-                   └─ two recording stems
+```bash
+python -m pip install 'pocketstation[transcription] @ file:///absolute/path/to/pocketstation-0.1.0-cp311-abi3-macosx_11_0_arm64.whl'
 ```
 
-Press `Ctrl-C` to stop. The Session cancels pending model work, deletes the
-remote RelaySession, and finalizes both recordings under `recordings/`.
+The first run may download the configured faster-whisper model. Model work runs
+on a bounded off-realtime Operator worker, not on a capture callback.
 
-## Evidence boundary
+## Stream application audio to a browser
 
-The Lab gate installs the built wheel and uses faster-whisper inference,
-the Rust Relay connector, the Go Relay service, Chromium, and finalized
-recording artifacts. Its network path is same-host and remains
-`LOOPBACK-ONLY`; it does not prove WAN or TURN behavior. The model runs on a
-bounded off-realtime worker. The Rust-to-Python audio boundary is not zero-copy.
+Use this example to stream one selected application's audio as a named AudioBus
+and open a browser invitation:
+
+```bash
+python examples/stream_any_app_audio.py
+```
+
+The example prints the single-use word code and browser URL returned by the
+control plane. It does not open a microphone or write a recording. The shared
+Fly deployment is a small, rate-limited demonstration service and may return
+`HTTP 429` when capacity is in use. It is not a hosted production service.
+
+To use services you operate, set `POCKETSTATION_CONTROL_URL` and
+`POCKETSTATION_RELAY_URL` before running the command. No shared secret belongs
+in application code.
+
+## Run capture, transcription, browser audio, and recording together
+
+The installed `pocketstation-demo` command combines independent application and
+microphone capture, faster-whisper transcripts, two Relay/browser AudioBuses,
+and a finalized two-stem recording.
+
+The current browser test runs on the same host as the publisher. WAN and TURN
+behavior have not been verified yet.

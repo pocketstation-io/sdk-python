@@ -32,7 +32,7 @@ class Capture:
         self,
         *,
         application: str | int,
-        microphone: bool | str = True,
+        microphone: bool | str = False,
         record_to: str | Path | None = None,
         stream_audio: bool = True,
         trace: SessionTraceConfiguration | None = None,
@@ -187,12 +187,12 @@ class Capture:
 def capture(
     *,
     application: str | int,
-    microphone: bool | str = True,
+    microphone: bool | str = False,
     record_to: str | Path | None = None,
     stream_audio: bool = True,
     trace: SessionTraceConfiguration | None = None,
 ) -> Capture:
-    """Declare a concise app+mic recipe backed by one native Rust Session."""
+    """Capture one application and optionally add a microphone."""
     return Capture(
         application=application,
         microphone=microphone,

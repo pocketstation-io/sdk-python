@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from time import monotonic_ns
 from typing import Any, Protocol, cast
 
+from pocketstation.aio.capture import Capture
 from pocketstation.aio.operator_authoring import (
     OperatorDeadlines as AsyncOperatorDeadlines,
 )
@@ -39,7 +40,7 @@ from .audio_windows import (
     AudioWindowBuffer,
     mono_16khz,
 )
-from .transcript import TRANSCRIPT_SIGNAL
+from .transcript import TRANSCRIPT_SIGNAL, Transcript
 
 
 class WhisperSegment(Protocol):
@@ -415,6 +416,16 @@ class FasterWhisper:
             operator.output("transcript"),
             signal=TRANSCRIPT_SIGNAL,
         )
+
+    def transcribe(self, capture: Capture) -> AsyncIterator[Transcript]:
+        """Attach to every selected stem and return typed transcript results."""
+        subscription = self.attach_many(capture.session, capture.stems)
+
+        async def results() -> AsyncIterator[Transcript]:
+            async for event in capture.signals(subscription):
+                yield Transcript.from_json(event.payload)
+
+        return results()
 
 
 def _load_model(configuration: FasterWhisperConfiguration) -> WhisperModel:
