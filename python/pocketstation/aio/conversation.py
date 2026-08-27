@@ -594,7 +594,7 @@ class Conversation:
             routes_drained = bool(routes) and all(
                 route.edge.queue_depth_frames == 0
                 and route.edge.frames_delivered_total
-                + route.edge.discarded_output_frames_total
+                + (route.edge.discarded_output_frames_total or 0)
                 >= self._output_frames_written
                 for route in routes
             )

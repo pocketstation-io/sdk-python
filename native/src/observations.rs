@@ -564,7 +564,7 @@ pub(crate) struct PythonEdgeMetrics {
     #[pyo3(get)]
     shutdown_discarded_total: u64,
     #[pyo3(get)]
-    discarded_output_frames_total: u64,
+    discarded_output_frames_total: Option<u64>,
 }
 
 #[pyclass(name = "SessionMetrics", frozen)]
@@ -1216,7 +1216,9 @@ pub(crate) fn copy_metrics(
                 source_timestamp_to_receive_max_ns: route.edge.source_timestamp_to_receive_max_ns,
                 worker_failures_total: route.edge.worker_failures_total,
                 shutdown_discarded_total: route.edge.shutdown_discarded_total,
-                discarded_output_frames_total: route.edge.discarded_output_frames_total,
+                discarded_output_frames_total: running
+                    .route_discarded_output_frames_total(route.route_id)
+                    .unwrap_or(0),
                 endpoint_frames_received_total: endpoint.frames_received_total,
                 endpoint_frames_delivered_total: endpoint.frames_delivered_total,
                 endpoint_frames_dropped_total: endpoint.frames_dropped_total,
@@ -1255,7 +1257,7 @@ pub(crate) fn copy_metrics(
         audio_frames_delivered_total: audio.frames_delivered_total,
         audio_queue_full_drops_total: audio.queue_full_drops_total,
         audio_invalid_ownership_drops_total: audio.invalid_ownership_drops_total,
-        audio_discarded_output_frames_total: audio.discarded_output_frames_total,
+        audio_discarded_output_frames_total: running.audio_discarded_output_frames_total(),
         audio_lease_capacity_count: audio.lease_capacity_count,
         audio_outstanding_leases: audio.outstanding_leases,
         audio_lease_exhausted_total: audio.lease_exhausted_total,
@@ -1708,7 +1710,7 @@ impl From<pocketstation::EdgeObservations> for PythonEdgeMetrics {
             source_timestamp_to_receive_max_ns: edge.source_timestamp_to_receive_max_ns,
             worker_failures_total: edge.worker_failures_total,
             shutdown_discarded_total: edge.shutdown_discarded_total,
-            discarded_output_frames_total: edge.discarded_output_frames_total,
+            discarded_output_frames_total: None,
         }
     }
 }

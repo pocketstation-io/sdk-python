@@ -386,7 +386,7 @@ class EdgeMetrics:
     source_timestamp_to_receive: LatencyHistogram
     worker_failures_total: int
     shutdown_discarded_total: int
-    discarded_output_frames_total: int
+    discarded_output_frames_total: int | None
 
     @classmethod
     def _from_native(cls, value: _NativeEdgeMetrics) -> EdgeMetrics:

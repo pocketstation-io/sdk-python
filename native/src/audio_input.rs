@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use pocketstation::{
     AudioInput, AudioInputConfig, AudioInputObservations, AudioInputWriteError,
-    AudioInputWriteErrorKind, OutputGeneration,
+    AudioInputWriteErrorKind, AudioOutputWriteError, AudioOutputWriteErrorKind, OutputGeneration,
 };
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -36,6 +36,8 @@ impl PythonOutputGeneration {
 #[pyclass(name = "_AudioInputObservations", frozen)]
 pub(crate) struct PythonAudioInputObservations {
     observations: AudioInputObservations,
+    discarded_output_frames_total: u64,
+    cancelled_output_writes_total: u64,
 }
 
 #[pymethods]
@@ -72,12 +74,12 @@ impl PythonAudioInputObservations {
 
     #[getter]
     fn discarded_output_frames_total(&self) -> u64 {
-        self.observations.discarded_output_frames_total
+        self.discarded_output_frames_total
     }
 
     #[getter]
-    fn inactive_output_writes_total(&self) -> u64 {
-        self.observations.inactive_output_writes_total
+    fn cancelled_output_writes_total(&self) -> u64 {
+        self.cancelled_output_writes_total
     }
 
     #[getter]
@@ -178,9 +180,12 @@ impl PythonAudioInput {
                 buffer.mark_discontinuity();
             }
             if let Some(generation) = generation.as_deref() {
-                buffer.set_output_generation(&generation.generation);
+                input
+                    .try_send_for_output(&generation.generation, buffer)
+                    .map_err(audio_output_write_error)
+            } else {
+                input.try_send(buffer).map_err(audio_input_write_error)
             }
-            input.try_send(buffer).map_err(audio_input_write_error)
         })
     }
 
@@ -195,6 +200,8 @@ impl PythonAudioInput {
         self.with_input(|input| {
             Ok(PythonAudioInputObservations {
                 observations: input.observations(),
+                discarded_output_frames_total: input.discarded_output_frames_total(),
+                cancelled_output_writes_total: input.cancelled_output_writes_total(),
             })
         })
     }
@@ -220,12 +227,29 @@ fn audio_input_write_error(error: AudioInputWriteError) -> PyErr {
         AudioInputWriteErrorKind::Full => "audio_input.full",
         AudioInputWriteErrorKind::Closed => "audio_input.closed",
         AudioInputWriteErrorKind::Cancelled => "audio_input.cancelled",
-        AudioInputWriteErrorKind::OutputGenerationInactive(_) => "audio_input.output_inactive",
         AudioInputWriteErrorKind::InvalidBuffer(_) => "audio_input.invalid_buffer",
     };
     let message = error.to_string();
     match error.kind() {
         AudioInputWriteErrorKind::InvalidBuffer(_) => invalid_buffer(message),
+        _ => PyRuntimeError::new_err(coded_reason(code, message)),
+    }
+}
+
+fn audio_output_write_error(error: AudioOutputWriteError) -> PyErr {
+    let code = match error.kind() {
+        AudioOutputWriteErrorKind::Full => "audio_input.full",
+        AudioOutputWriteErrorKind::Closed => "audio_input.closed",
+        AudioOutputWriteErrorKind::SessionCancelled => "audio_input.cancelled",
+        AudioOutputWriteErrorKind::OutputCancelled(_) => "audio_input.output_cancelled",
+        AudioOutputWriteErrorKind::WrongInput => "audio_input.wrong_output_input",
+        AudioOutputWriteErrorKind::InvalidBuffer(_) => "audio_input.invalid_buffer",
+    };
+    let message = error.to_string();
+    match error.kind() {
+        AudioOutputWriteErrorKind::WrongInput | AudioOutputWriteErrorKind::InvalidBuffer(_) => {
+            invalid_buffer(message)
+        }
         _ => PyRuntimeError::new_err(coded_reason(code, message)),
     }
 }

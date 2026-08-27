@@ -142,7 +142,7 @@ def test_given_replaced_output_when_read_then_only_active_pcm_is_returned() -> N
     assert not first.active
     with pytest.raises(AudioInputError) as inactive:
         output.try_write(array("f", [-0.75] * 4), generation=first)
-    assert inactive.value.code == "audio_input.output_inactive"
+    assert inactive.value.code == "audio_input.output_cancelled"
 
     replacement = output.begin_output()
     output.try_write(array("f", [0.5] * 4), generation=replacement)
@@ -152,5 +152,5 @@ def test_given_replaced_output_when_read_then_only_active_pcm_is_returned() -> N
     assert frame.output_generation_id == replacement.id
     assert memoryview(frame.samples).cast("f")[0] == pytest.approx(0.5)
     assert running.audio.read(timeout_s=0.01) is None
-    assert output.observations().inactive_output_writes_total == 1
+    assert output.observations().cancelled_output_writes_total == 1
     assert running.stop().success

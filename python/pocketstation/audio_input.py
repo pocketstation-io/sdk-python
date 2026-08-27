@@ -40,7 +40,7 @@ class AudioInputObservations:
     full_total: int
     invalid_total: int
     discarded_output_frames_total: int
-    inactive_output_writes_total: int
+    cancelled_output_writes_total: int
     cancelled: bool
     closed: bool
 
@@ -57,7 +57,7 @@ class AudioInputObservations:
             full_total=native.full_total,
             invalid_total=native.invalid_total,
             discarded_output_frames_total=native.discarded_output_frames_total,
-            inactive_output_writes_total=native.inactive_output_writes_total,
+            cancelled_output_writes_total=native.cancelled_output_writes_total,
             cancelled=native.cancelled,
             closed=native.closed,
         )

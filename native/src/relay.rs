@@ -99,9 +99,7 @@ pub(crate) fn owned_relay_outcomes(relay: Option<&RelayRuntime>) -> Vec<OwnedRel
                     rtp_payload_bytes_sent_total: result.statistics.rtp_payload_bytes_sent_total,
                     ingress_queue_drops_total: result.statistics.ingress_queue_drops_total,
                     publisher_stale_drops_total: result.statistics.publisher_stale_drops_total,
-                    cancelled_output_frames_total: result
-                        .statistics
-                        .cancelled_output_frames_total,
+                    cancelled_output_frames_total: result.statistics.cancelled_output_frames_total,
                     cancelled_output_samples_total: result
                         .statistics
                         .cancelled_output_samples_total,

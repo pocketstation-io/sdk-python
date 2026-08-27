@@ -699,7 +699,7 @@ class _EdgeMetrics:
     source_timestamp_to_receive_max_ns: int
     worker_failures_total: int
     shutdown_discarded_total: int
-    discarded_output_frames_total: int
+    discarded_output_frames_total: int | None
 
 class RouteMetrics:
     route_id: int
@@ -1035,7 +1035,7 @@ class _AudioInputObservations:
     full_total: int
     invalid_total: int
     discarded_output_frames_total: int
-    inactive_output_writes_total: int
+    cancelled_output_writes_total: int
     cancelled: bool
     closed: bool
 
