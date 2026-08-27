@@ -1,5 +1,4 @@
 """Root package ownership and vocabulary tests."""
-
 from __future__ import annotations
 
 import pocketstation

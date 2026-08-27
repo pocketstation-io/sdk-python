@@ -34,3 +34,14 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .claude/
+
+# Local agent and engineering records
+/AGENTS.md
+/PHASE*_PROGRESS.md
+/docs/REPO_CONTRACT.md
+/docs/PYTHON_CAPABILITY_MATRIX.md
+/docs/PYTHON_SDK_CORE_PARITY_REFERENCE.md
+/docs/PYTHON_SDK_DESIGN.md
+/docs/adr/
+/docs/architecture/
+/docs/standards/
