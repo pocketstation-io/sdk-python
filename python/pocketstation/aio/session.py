@@ -70,7 +70,14 @@ from .source_authoring import SourceProvider
 from .streams import AudioStream, SignalStream
 
 if TYPE_CHECKING:
+    from ..conversation import ConversationConfig, TranscriptUpdate
     from ..relay import RelayPublisher
+    from ..signal import SignalEnvelope
+    from .conversation import (
+        Conversation,
+        ResponseHandler,
+        SynthesisHandler,
+    )
     from .relay import RelaySession
 
 _Result = TypeVar("_Result")
@@ -504,6 +511,35 @@ class Session(_GraphSessionDeclarations):
     def relay(self, remote: RelaySession) -> RelayPublisher:
         """Declare the existing bounded Rust relay connector."""
         return remote.publisher(self)
+
+    def conversation(
+        self,
+        *,
+        transcripts: BusSubscription[str],
+        respond: ResponseHandler,
+        synthesize: SynthesisHandler,
+        output: AudioInput,
+        config: ConversationConfig | None = None,
+        decode_transcript: Callable[[SignalEnvelope[str]], TranscriptUpdate | None]
+        | None = None,
+    ) -> Conversation:
+        """Compose an interruptible voice workflow over this Session draft.
+
+        The transcript subscription, generated-audio input, graph, routing, and
+        lifecycle remain owned by the existing Rust Session. The returned
+        object owns only bounded turn, provider, history, and interruption
+        orchestration.
+        """
+        from .conversation import Conversation
+
+        return Conversation(
+            transcripts=transcripts,
+            respond=respond,
+            synthesize=synthesize,
+            output=output,
+            config=config,
+            decode_transcript=decode_transcript,
+        )
 
     async def start(self) -> RunningSession:
         """Start transactionally and propagate asyncio cancellation to Rust."""

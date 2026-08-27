@@ -176,7 +176,7 @@ class SignalEnvelope(Generic[_PayloadT_co]):
     timing: SignalTiming
     lineage: SignalLineage | None
     derivation: SignalDerivation | None
-    payload: _PayloadT_co
+    payload: _PayloadT_co  # type: ignore[misc]
 
     @classmethod
     def _from_native(

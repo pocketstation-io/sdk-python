@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use pocketstation::{
     AudioInput, AudioInputConfig, AudioInputObservations, AudioInputWriteError,
-    AudioInputWriteErrorKind,
+    AudioInputWriteErrorKind, OutputGeneration,
 };
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -10,6 +10,28 @@ use pyo3::prelude::*;
 
 use crate::errors::coded_reason;
 use crate::graph::PythonSourceOutput;
+
+#[pyclass(name = "_OutputGeneration", frozen)]
+pub(crate) struct PythonOutputGeneration {
+    generation: OutputGeneration,
+}
+
+#[pymethods]
+impl PythonOutputGeneration {
+    #[getter]
+    fn id(&self) -> u64 {
+        self.generation.id().get()
+    }
+
+    #[getter]
+    fn active(&self) -> bool {
+        self.generation.is_active()
+    }
+
+    fn cancel(&self) {
+        let _ = self.generation.cancel();
+    }
+}
 
 #[pyclass(name = "_AudioInputObservations", frozen)]
 pub(crate) struct PythonAudioInputObservations {
@@ -46,6 +68,16 @@ impl PythonAudioInputObservations {
     #[getter]
     fn invalid_total(&self) -> u64 {
         self.observations.invalid_total
+    }
+
+    #[getter]
+    fn discarded_output_frames_total(&self) -> u64 {
+        self.observations.discarded_output_frames_total
+    }
+
+    #[getter]
+    fn inactive_output_writes_total(&self) -> u64 {
+        self.observations.inactive_output_writes_total
     }
 
     #[getter]
@@ -106,12 +138,27 @@ impl PythonAudioInput {
         })
     }
 
-    #[pyo3(signature = (samples, *, discontinuity=false))]
+    fn begin_output(&self) -> PyResult<PythonOutputGeneration> {
+        self.with_input(|input| {
+            input
+                .begin_output_generation()
+                .map(|generation| PythonOutputGeneration { generation })
+                .map_err(|error| {
+                    PyRuntimeError::new_err(coded_reason(
+                        "audio_input.output_generation_limit",
+                        error.to_string(),
+                    ))
+                })
+        })
+    }
+
+    #[pyo3(signature = (samples, *, discontinuity=false, generation=None))]
     fn try_write(
         &self,
         py: Python<'_>,
         samples: PyBuffer<f32>,
         discontinuity: bool,
+        generation: Option<PyRef<'_, PythonOutputGeneration>>,
     ) -> PyResult<()> {
         let source = samples.as_slice(py).ok_or_else(|| {
             PyValueError::new_err(coded_reason(
@@ -129,6 +176,9 @@ impl PythonAudioInput {
             }
             if discontinuity {
                 buffer.mark_discontinuity();
+            }
+            if let Some(generation) = generation.as_deref() {
+                buffer.set_output_generation(&generation.generation);
             }
             input.try_send(buffer).map_err(audio_input_write_error)
         })
@@ -170,6 +220,7 @@ fn audio_input_write_error(error: AudioInputWriteError) -> PyErr {
         AudioInputWriteErrorKind::Full => "audio_input.full",
         AudioInputWriteErrorKind::Closed => "audio_input.closed",
         AudioInputWriteErrorKind::Cancelled => "audio_input.cancelled",
+        AudioInputWriteErrorKind::OutputGenerationInactive(_) => "audio_input.output_inactive",
         AudioInputWriteErrorKind::InvalidBuffer(_) => "audio_input.invalid_buffer",
     };
     let message = error.to_string();
@@ -209,5 +260,6 @@ pub(crate) fn configuration(
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PythonAudioInput>()?;
     module.add_class::<PythonAudioInputObservations>()?;
+    module.add_class::<PythonOutputGeneration>()?;
     Ok(())
 }

@@ -8,6 +8,7 @@ from time import monotonic
 from ..audio_input import (
     AudioInputConfig,
     AudioInputObservations,
+    OutputGeneration,
 )
 from ..audio_input import (
     PcmSource as SyncPcmSource,
@@ -38,11 +39,15 @@ class PcmSource:
     def output(self) -> SourceOutput:
         return self._source.output
 
+    def begin_output(self) -> OutputGeneration:
+        return self._source.begin_output()
+
     async def try_write(
         self,
         samples: object,
         *,
         discontinuity: bool = False,
+        generation: OutputGeneration | None = None,
     ) -> None:
         """Attempt one immediate write into Core's finite preallocated pool.
 
@@ -51,7 +56,11 @@ class PcmSource:
         buffer, so dispatching every write through the thread pool would add
         scheduling overhead without making the operation more asynchronous.
         """
-        self._source.try_write(samples, discontinuity=discontinuity)
+        self._source.try_write(
+            samples,
+            discontinuity=discontinuity,
+            generation=generation,
+        )
 
     async def close(self) -> None:
         """Close the native input immediately after its accepted frames drain."""
@@ -70,6 +79,7 @@ class AudioInput(PcmSource):
         samples: object,
         *,
         discontinuity: bool = False,
+        generation: OutputGeneration | None = None,
         timeout_s: float = 1.0,
     ) -> None:
         """Wait finitely for one native buffer without growing a Python queue."""
@@ -81,7 +91,11 @@ class AudioInput(PcmSource):
         wait_s = 0.000_25
         while True:
             try:
-                await self.try_write(samples, discontinuity=discontinuity)
+                await self.try_write(
+                    samples,
+                    discontinuity=discontinuity,
+                    generation=generation,
+                )
                 return
             except AudioInputFullError:
                 remaining = deadline - monotonic()

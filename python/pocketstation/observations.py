@@ -341,6 +341,7 @@ class PolledAudioMetrics:
     frames_delivered_total: int
     queue_full_drops_total: int
     invalid_ownership_drops_total: int
+    discarded_output_frames_total: int
     lease_capacity_count: int
     outstanding_leases: int
     lease_exhausted_total: int
@@ -385,6 +386,7 @@ class EdgeMetrics:
     source_timestamp_to_receive: LatencyHistogram
     worker_failures_total: int
     shutdown_discarded_total: int
+    discarded_output_frames_total: int
 
     @classmethod
     def _from_native(cls, value: _NativeEdgeMetrics) -> EdgeMetrics:
@@ -430,6 +432,7 @@ class EdgeMetrics:
             ),
             worker_failures_total=value.worker_failures_total,
             shutdown_discarded_total=value.shutdown_discarded_total,
+            discarded_output_frames_total=value.discarded_output_frames_total,
         )
 
 
@@ -754,6 +757,7 @@ class SessionMetrics:
                 frames_delivered_total=value.audio_frames_delivered_total,
                 queue_full_drops_total=value.audio_queue_full_drops_total,
                 invalid_ownership_drops_total=value.audio_invalid_ownership_drops_total,
+                discarded_output_frames_total=value.audio_discarded_output_frames_total,
                 lease_capacity_count=value.audio_lease_capacity_count,
                 outstanding_leases=value.audio_outstanding_leases,
                 lease_exhausted_total=value.audio_lease_exhausted_total,

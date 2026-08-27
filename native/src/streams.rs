@@ -83,6 +83,8 @@ pub(crate) struct PythonAudioFrame {
     #[pyo3(get)]
     permission_epoch: u64,
     #[pyo3(get)]
+    output_generation_id: Option<u64>,
+    #[pyo3(get)]
     endpoint_id: u64,
     #[pyo3(get)]
     connector_id: Option<u64>,
@@ -192,6 +194,7 @@ pub(crate) struct OwnedAudioFrame {
     pub(crate) source_generation: u32,
     pub(crate) discontinuity_epoch: u64,
     pub(crate) permission_epoch: u64,
+    pub(crate) output_generation_id: Option<u64>,
     pub(crate) endpoint_id: u64,
     pub(crate) connector_id: Option<u64>,
     pub(crate) route_id: u64,
@@ -264,6 +267,7 @@ fn copy_polled_audio_batch(
             source_generation: lineage.source_generation(),
             discontinuity_epoch: lineage.discontinuity_epoch(),
             permission_epoch: lineage.permission_epoch(),
+            output_generation_id: frame.output_generation_id().map(|id| id.get()),
             endpoint_id: frame.endpoint_id().get(),
             connector_id: Some(frame.connector_id().get()),
             route_id: frame.route_id().get(),
@@ -340,6 +344,7 @@ pub(crate) fn owned_endpoint_audio_frame_for_route(
         source_generation: lineage.source_generation(),
         discontinuity_epoch: lineage.discontinuity_epoch(),
         permission_epoch: lineage.permission_epoch(),
+        output_generation_id: frame.output_generation_id().map(|id| id.get()),
         endpoint_id,
         connector_id,
         route_id,
@@ -367,6 +372,7 @@ pub(crate) fn python_audio_frame(py: Python<'_>, frame: OwnedAudioFrame) -> Pyth
         source_generation: frame.source_generation,
         discontinuity_epoch: frame.discontinuity_epoch,
         permission_epoch: frame.permission_epoch,
+        output_generation_id: frame.output_generation_id,
         endpoint_id: frame.endpoint_id,
         connector_id: frame.connector_id,
         route_id: frame.route_id,

@@ -733,17 +733,26 @@ class OperatorInstance:
 
 
 class _RoutableStream:
-    __slots__ = ("_destination",)
+    __slots__ = ("_destination", "_endpoint_ids", "_route_ids")
 
     _native: _NativeStem | _NativeDerivedStream | _NativeSourceOutput
     _destination: _DestinationResolver
+    _endpoint_ids: set[int]
+    _route_ids: set[int]
 
     def send(self, endpoint: Endpoint, *, input_port: str | None = None) -> RouteId:
-        if input_port is None:
-            return RouteId(_native_call(lambda: self._native.send(endpoint._native)))
-        return RouteId(
-            _native_call(lambda: self._native.send_to(endpoint._native, input_port))
+        route_id = RouteId(
+            _native_call(
+                lambda: (
+                    self._native.send(endpoint._native)
+                    if input_port is None
+                    else self._native.send_to(endpoint._native, input_port)
+                )
+            )
         )
+        self._route_ids.add(int(route_id))
+        self._endpoint_ids.add(int(endpoint.id))
+        return route_id
 
     def send_to(
         self,
@@ -764,7 +773,13 @@ class _RoutableStream:
         )
 
     def connect(self, input: OperatorInput) -> RouteId:
-        return RouteId(_native_call(lambda: self._native.connect(input._native)))
+        route_id = RouteId(_native_call(lambda: self._native.connect(input._native)))
+        self._route_ids.add(int(route_id))
+        return route_id
+
+    def _delivery_targets(self) -> tuple[frozenset[int], frozenset[int]]:
+        """Return declarations needed for a finite delivery-completion wait."""
+        return frozenset(self._route_ids), frozenset(self._endpoint_ids)
 
     def through(
         self,
@@ -795,6 +810,8 @@ class Stem(_RoutableStream):
     def __init__(self, native: _NativeStem, destination: _DestinationResolver) -> None:
         self._native = native
         self._destination = destination
+        self._route_ids = set()
+        self._endpoint_ids = set()
 
     @property
     def id(self) -> StemId:
@@ -805,7 +822,9 @@ class Stem(_RoutableStream):
         return RuntimeSessionId(self._native.session_id)
 
     def record(self, stem_name: str) -> Endpoint:
-        return _native_call(lambda: Endpoint(self._native.record(stem_name)))
+        endpoint = _native_call(lambda: Endpoint(self._native.record(stem_name)))
+        self._endpoint_ids.add(int(endpoint.id))
+        return endpoint
 
     def publish(self, publisher: RelayPublisher, bus_id: str) -> RelayRoute:
         """Publish this stem as one named bus through the Rust connector."""
@@ -814,6 +833,7 @@ class Stem(_RoutableStream):
         if not isinstance(publisher, RelayPublisher):
             raise TypeError("publisher must be a RelayPublisher")
         route_id = _native_call(lambda: self._native.publish(publisher._native, bus_id))
+        self._route_ids.add(route_id)
         return RelayRoute(bus_id=bus_id, route_id=RouteId(route_id))
 
 
@@ -830,6 +850,8 @@ class DerivedStream(_RoutableStream):
     ) -> None:
         self._native = native
         self._destination = destination
+        self._route_ids = set()
+        self._endpoint_ids = set()
 
     @property
     def session_id(self) -> RuntimeSessionId:
@@ -899,6 +921,8 @@ class SourceOutput(_RoutableStream):
     ) -> None:
         self._native = native
         self._destination = destination
+        self._route_ids = set()
+        self._endpoint_ids = set()
 
     @property
     def session_id(self) -> RuntimeSessionId:
@@ -921,7 +945,9 @@ class SourceOutput(_RoutableStream):
         return self._native.output_port
 
     def record(self, stem_name: str) -> Endpoint:
-        return _native_call(lambda: Endpoint(self._native.record(stem_name)))
+        endpoint = _native_call(lambda: Endpoint(self._native.record(stem_name)))
+        self._endpoint_ids.add(int(endpoint.id))
+        return endpoint
 
     def publish(self, publisher: RelayPublisher, bus_id: str) -> RelayRoute:
         """Publish this source output as one named Relay AudioBus."""
@@ -930,6 +956,7 @@ class SourceOutput(_RoutableStream):
         if not isinstance(publisher, RelayPublisher):
             raise TypeError("publisher must be a RelayPublisher")
         route_id = _native_call(lambda: self._native.publish(publisher._native, bus_id))
+        self._route_ids.add(route_id)
         return RelayRoute(bus_id=bus_id, route_id=RouteId(route_id))
 
 

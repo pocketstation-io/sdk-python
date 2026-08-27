@@ -8,6 +8,7 @@ from time import monotonic, sleep
 
 from ._native import _AudioInput as _NativeAudioInput
 from ._native import _AudioInputObservations as _NativeAudioInputObservations
+from ._native import _OutputGeneration as _NativeOutputGeneration
 from .errors import AudioInputBufferError, AudioInputFullError, _native_call
 from .graph import Endpoint, SourceOutput
 from .identity import SourceId, StreamId
@@ -38,6 +39,8 @@ class AudioInputObservations:
     accepted_total: int
     full_total: int
     invalid_total: int
+    discarded_output_frames_total: int
+    inactive_output_writes_total: int
     cancelled: bool
     closed: bool
 
@@ -53,9 +56,30 @@ class AudioInputObservations:
             accepted_total=native.accepted_total,
             full_total=native.full_total,
             invalid_total=native.invalid_total,
+            discarded_output_frames_total=native.discarded_output_frames_total,
+            inactive_output_writes_total=native.inactive_output_writes_total,
             cancelled=native.cancelled,
             closed=native.closed,
         )
+
+
+class OutputGeneration:
+    """Keeps replaceable PCM attached to one output operation."""
+
+    def __init__(self, native: _NativeOutputGeneration) -> None:
+        self._native = native
+
+    @property
+    def id(self) -> int:
+        return self._native.id
+
+    @property
+    def active(self) -> bool:
+        return self._native.active
+
+    def cancel(self) -> None:
+        """Cancel pending PCM without stopping capture or the Session."""
+        _native_call(self._native.cancel)
 
 
 class PcmSource:
@@ -87,11 +111,24 @@ class PcmSource:
     def output(self) -> SourceOutput:
         return self._output
 
-    def try_write(self, samples: object, *, discontinuity: bool = False) -> None:
+    def begin_output(self) -> OutputGeneration:
+        return OutputGeneration(_native_call(self._native.begin_output))
+
+    def try_write(
+        self,
+        samples: object,
+        *,
+        discontinuity: bool = False,
+        generation: OutputGeneration | None = None,
+    ) -> None:
         """Copy one C-contiguous float32 frame into a preallocated Core buffer."""
         try:
             _native_call(
-                lambda: self._native.try_write(samples, discontinuity=discontinuity)
+                lambda: self._native.try_write(
+                    samples,
+                    discontinuity=discontinuity,
+                    generation=None if generation is None else generation._native,
+                )
             )
         except BufferError as error:
             # PyO3 rejects an incompatible buffer format before entering the
@@ -120,6 +157,7 @@ class AudioInput(PcmSource):
         samples: object,
         *,
         discontinuity: bool = False,
+        generation: OutputGeneration | None = None,
         timeout_s: float = 1.0,
     ) -> None:
         """Wait finitely for one preallocated native buffer.
@@ -131,6 +169,7 @@ class AudioInput(PcmSource):
             self,
             samples,
             discontinuity=discontinuity,
+            generation=generation,
             timeout_s=timeout_s,
         )
 
@@ -140,6 +179,7 @@ def _write_with_timeout(
     samples: object,
     *,
     discontinuity: bool,
+    generation: OutputGeneration | None,
     timeout_s: float,
 ) -> None:
     if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)):
@@ -150,7 +190,11 @@ def _write_with_timeout(
     wait_s = 0.000_25
     while True:
         try:
-            source.try_write(samples, discontinuity=discontinuity)
+            source.try_write(
+                samples,
+                discontinuity=discontinuity,
+                generation=generation,
+            )
             return
         except AudioInputFullError:
             remaining = deadline - monotonic()
@@ -164,5 +208,6 @@ __all__ = [
     "AudioInput",
     "AudioInputConfig",
     "AudioInputObservations",
+    "OutputGeneration",
     "PcmSource",
 ]

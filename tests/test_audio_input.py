@@ -10,6 +10,7 @@ from pocketstation._api import (
     AudioInputCancelledError,
     AudioInputClosedError,
     AudioInputConfig,
+    AudioInputError,
     AudioInputFullError,
     Session,
     SourceId,
@@ -121,4 +122,35 @@ def test_audio_input_recovers_its_exact_preallocated_slot_after_delivery() -> No
     assert second is not None
     assert second.sequence_number == frame.sequence_number + 1
     assert second.discontinuity_epoch == frame.discontinuity_epoch
+    assert running.stop().success
+
+
+def test_given_replaced_output_when_read_then_only_active_pcm_is_returned() -> None:
+    session = Session()
+    output = session.audio_input(
+        "generated",
+        capacity_frames=4,
+        frame_samples_per_channel=4,
+    )
+    output.output.send(session.polled_audio())
+    running = session.start()
+    first = output.begin_output()
+
+    output.try_write(array("f", [-0.5] * 4), generation=first)
+    output.try_write(array("f", [-0.25] * 4), generation=first)
+    first.cancel()
+    assert not first.active
+    with pytest.raises(AudioInputError) as inactive:
+        output.try_write(array("f", [-0.75] * 4), generation=first)
+    assert inactive.value.code == "audio_input.output_inactive"
+
+    replacement = output.begin_output()
+    output.try_write(array("f", [0.5] * 4), generation=replacement)
+    frame = running.audio.read(timeout_s=1.0)
+
+    assert frame is not None
+    assert frame.output_generation_id == replacement.id
+    assert memoryview(frame.samples).cast("f")[0] == pytest.approx(0.5)
+    assert running.audio.read(timeout_s=0.01) is None
+    assert output.observations().inactive_output_writes_total == 1
     assert running.stop().success

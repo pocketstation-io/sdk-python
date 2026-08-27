@@ -523,6 +523,7 @@ class AudioFrame:
     source_generation: int
     discontinuity_epoch: int
     permission_epoch: int
+    output_generation_id: int | None
     endpoint_id: EndpointId
     connector_id: ConnectorId | None
     route_id: RouteId
@@ -696,6 +697,7 @@ class _EdgeMetrics:
     source_timestamp_to_receive_max_ns: int
     worker_failures_total: int
     shutdown_discarded_total: int
+    discarded_output_frames_total: int
 
 class RouteMetrics:
     route_id: int
@@ -736,6 +738,7 @@ class RouteMetrics:
     source_timestamp_to_receive_max_ns: int
     worker_failures_total: int
     shutdown_discarded_total: int
+    discarded_output_frames_total: int
     endpoint_frames_received_total: int
     endpoint_frames_delivered_total: int
     endpoint_frames_dropped_total: int
@@ -882,6 +885,7 @@ class SessionMetrics:
     audio_frames_delivered_total: int
     audio_queue_full_drops_total: int
     audio_invalid_ownership_drops_total: int
+    audio_discarded_output_frames_total: int
     audio_lease_capacity_count: int
     audio_outstanding_leases: int
     audio_lease_exhausted_total: int
@@ -1028,18 +1032,27 @@ class _AudioInputObservations:
     accepted_total: int
     full_total: int
     invalid_total: int
+    discarded_output_frames_total: int
+    inactive_output_writes_total: int
     cancelled: bool
     closed: bool
+
+class _OutputGeneration:
+    id: int
+    active: bool
+    def cancel(self) -> None: ...
 
 class _AudioInput:
     source_id: SourceId
     stream_id: StreamId
     output: SourceOutput
+    def begin_output(self) -> _OutputGeneration: ...
     def try_write(
         self,
         samples: object,
         *,
         discontinuity: bool = False,
+        generation: _OutputGeneration | None = None,
     ) -> None: ...
     def close(self) -> None: ...
     def observations(self) -> _AudioInputObservations: ...

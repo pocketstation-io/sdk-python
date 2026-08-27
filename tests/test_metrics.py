@@ -84,6 +84,7 @@ def test_metrics_count_mismatch_is_rejected_instead_of_hidden() -> None:
         audio_frames_delivered_total = 0
         audio_queue_full_drops_total = 0
         audio_invalid_ownership_drops_total = 0
+        audio_discarded_output_frames_total = 0
         audio_lease_capacity_count = 0
         audio_outstanding_leases = 0
         audio_lease_exhausted_total = 0

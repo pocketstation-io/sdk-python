@@ -563,6 +563,8 @@ pub(crate) struct PythonEdgeMetrics {
     worker_failures_total: u64,
     #[pyo3(get)]
     shutdown_discarded_total: u64,
+    #[pyo3(get)]
+    discarded_output_frames_total: u64,
 }
 
 #[pyclass(name = "SessionMetrics", frozen)]
@@ -607,6 +609,8 @@ pub(crate) struct PythonSessionMetrics {
     audio_queue_full_drops_total: u64,
     #[pyo3(get)]
     audio_invalid_ownership_drops_total: u64,
+    #[pyo3(get)]
+    audio_discarded_output_frames_total: u64,
     #[pyo3(get)]
     audio_lease_capacity_count: u64,
     #[pyo3(get)]
@@ -721,6 +725,8 @@ pub(crate) struct PythonRouteMetrics {
     worker_failures_total: u64,
     #[pyo3(get)]
     shutdown_discarded_total: u64,
+    #[pyo3(get)]
+    discarded_output_frames_total: u64,
     #[pyo3(get)]
     endpoint_frames_received_total: u64,
     #[pyo3(get)]
@@ -995,6 +1001,7 @@ pub(crate) struct OwnedSessionMetrics {
     audio_frames_delivered_total: u64,
     audio_queue_full_drops_total: u64,
     audio_invalid_ownership_drops_total: u64,
+    audio_discarded_output_frames_total: u64,
     audio_lease_capacity_count: u64,
     audio_outstanding_leases: u64,
     audio_lease_exhausted_total: u64,
@@ -1053,6 +1060,7 @@ pub(crate) struct OwnedRouteMetrics {
     source_timestamp_to_receive_max_ns: u64,
     worker_failures_total: u64,
     shutdown_discarded_total: u64,
+    discarded_output_frames_total: u64,
     pub(crate) endpoint_frames_received_total: u64,
     endpoint_frames_delivered_total: u64,
     endpoint_frames_dropped_total: u64,
@@ -1208,6 +1216,7 @@ pub(crate) fn copy_metrics(
                 source_timestamp_to_receive_max_ns: route.edge.source_timestamp_to_receive_max_ns,
                 worker_failures_total: route.edge.worker_failures_total,
                 shutdown_discarded_total: route.edge.shutdown_discarded_total,
+                discarded_output_frames_total: route.edge.discarded_output_frames_total,
                 endpoint_frames_received_total: endpoint.frames_received_total,
                 endpoint_frames_delivered_total: endpoint.frames_delivered_total,
                 endpoint_frames_dropped_total: endpoint.frames_dropped_total,
@@ -1246,6 +1255,7 @@ pub(crate) fn copy_metrics(
         audio_frames_delivered_total: audio.frames_delivered_total,
         audio_queue_full_drops_total: audio.queue_full_drops_total,
         audio_invalid_ownership_drops_total: audio.invalid_ownership_drops_total,
+        audio_discarded_output_frames_total: audio.discarded_output_frames_total,
         audio_lease_capacity_count: audio.lease_capacity_count,
         audio_outstanding_leases: audio.outstanding_leases,
         audio_lease_exhausted_total: audio.lease_exhausted_total,
@@ -1698,6 +1708,7 @@ impl From<pocketstation::EdgeObservations> for PythonEdgeMetrics {
             source_timestamp_to_receive_max_ns: edge.source_timestamp_to_receive_max_ns,
             worker_failures_total: edge.worker_failures_total,
             shutdown_discarded_total: edge.shutdown_discarded_total,
+            discarded_output_frames_total: edge.discarded_output_frames_total,
         }
     }
 }
@@ -2109,6 +2120,7 @@ pub(crate) fn python_session_metrics(
                     source_timestamp_to_receive_max_ns: route.source_timestamp_to_receive_max_ns,
                     worker_failures_total: route.worker_failures_total,
                     shutdown_discarded_total: route.shutdown_discarded_total,
+                    discarded_output_frames_total: route.discarded_output_frames_total,
                     endpoint_frames_received_total: route.endpoint_frames_received_total,
                     endpoint_frames_delivered_total: route.endpoint_frames_delivered_total,
                     endpoint_frames_dropped_total: route.endpoint_frames_dropped_total,
@@ -2147,6 +2159,7 @@ pub(crate) fn python_session_metrics(
         audio_frames_delivered_total: metrics.audio_frames_delivered_total,
         audio_queue_full_drops_total: metrics.audio_queue_full_drops_total,
         audio_invalid_ownership_drops_total: metrics.audio_invalid_ownership_drops_total,
+        audio_discarded_output_frames_total: metrics.audio_discarded_output_frames_total,
         audio_lease_capacity_count: metrics.audio_lease_capacity_count,
         audio_outstanding_leases: metrics.audio_outstanding_leases,
         audio_lease_exhausted_total: metrics.audio_lease_exhausted_total,
