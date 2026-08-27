@@ -43,6 +43,10 @@ pub(crate) struct PythonRelayPublishOutcome {
     #[pyo3(get)]
     publisher_stale_drops_total: u64,
     #[pyo3(get)]
+    cancelled_output_frames_total: u64,
+    #[pyo3(get)]
+    cancelled_output_samples_total: u64,
+    #[pyo3(get)]
     failures_total: u64,
     #[pyo3(get)]
     error: Option<String>,
@@ -57,6 +61,8 @@ pub(crate) struct OwnedRelayPublishOutcome {
     pub(crate) rtp_payload_bytes_sent_total: u64,
     pub(crate) ingress_queue_drops_total: u64,
     pub(crate) publisher_stale_drops_total: u64,
+    pub(crate) cancelled_output_frames_total: u64,
+    pub(crate) cancelled_output_samples_total: u64,
     pub(crate) failures_total: u64,
     pub(crate) error: Option<String>,
 }
@@ -79,6 +85,8 @@ pub(crate) fn owned_relay_outcomes(relay: Option<&RelayRuntime>) -> Vec<OwnedRel
                     rtp_payload_bytes_sent_total: 0,
                     ingress_queue_drops_total: 0,
                     publisher_stale_drops_total: 0,
+                    cancelled_output_frames_total: 0,
+                    cancelled_output_samples_total: 0,
                     failures_total: 1,
                     error: Some("relay publication result is unavailable".to_owned()),
                 },
@@ -91,6 +99,12 @@ pub(crate) fn owned_relay_outcomes(relay: Option<&RelayRuntime>) -> Vec<OwnedRel
                     rtp_payload_bytes_sent_total: result.statistics.rtp_payload_bytes_sent_total,
                     ingress_queue_drops_total: result.statistics.ingress_queue_drops_total,
                     publisher_stale_drops_total: result.statistics.publisher_stale_drops_total,
+                    cancelled_output_frames_total: result
+                        .statistics
+                        .cancelled_output_frames_total,
+                    cancelled_output_samples_total: result
+                        .statistics
+                        .cancelled_output_samples_total,
                     failures_total: u64::from(result.error.is_some()),
                     error: result.error.map(|error| error.to_string()),
                 },
@@ -114,6 +128,8 @@ pub(crate) fn python_relay_outcome(
             rtp_payload_bytes_sent_total: outcome.rtp_payload_bytes_sent_total,
             ingress_queue_drops_total: outcome.ingress_queue_drops_total,
             publisher_stale_drops_total: outcome.publisher_stale_drops_total,
+            cancelled_output_frames_total: outcome.cancelled_output_frames_total,
+            cancelled_output_samples_total: outcome.cancelled_output_samples_total,
             failures_total: outcome.failures_total,
             error: outcome.error,
         },

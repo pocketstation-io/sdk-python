@@ -610,6 +610,8 @@ class RelayPublishOutcome:
     rtp_payload_bytes_sent_total: int
     ingress_queue_drops_total: int
     publisher_stale_drops_total: int
+    cancelled_output_frames_total: int
+    cancelled_output_samples_total: int
     failures_total: int
     error: str | None
 

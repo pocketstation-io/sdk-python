@@ -434,6 +434,10 @@ def main() -> int:
                 "rtp_payload_bytes_sent_total": outcome.rtp_payload_bytes_sent_total,
                 "ingress_queue_drops_total": outcome.ingress_queue_drops_total,
                 "publisher_stale_drops_total": outcome.publisher_stale_drops_total,
+                "cancelled_output_frames_total": outcome.cancelled_output_frames_total,
+                "cancelled_output_samples_total": (
+                    outcome.cancelled_output_samples_total
+                ),
                 "failures_total": outcome.failures_total,
                 "error": outcome.error,
             }
