@@ -20,6 +20,9 @@ pocketstation-demo = "pocketstation_examples:main"
 transcription = [
     "faster-whisper>=1.2.1,<2.0",
 ]
+voice-agent-debug = [
+    "websockets>=17.0,<18",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

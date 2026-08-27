@@ -188,8 +188,11 @@ class SignalSpec(Generic[_PayloadT_co]):
         *,
         role: str | None = None,
         schema: str | None = None,
-    ) -> SignalSpec[object]:
-        return cls(SignalKind.EVENT, format, role=role, schema=schema)
+    ) -> SignalSpec[bytes]:
+        return cast(
+            SignalSpec[bytes],
+            cls(SignalKind.EVENT, format, role=role, schema=schema),
+        )
 
     @classmethod
     def metrics(

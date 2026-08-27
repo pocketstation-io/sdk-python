@@ -1,4 +1,5 @@
 """Stable exception contract tests."""
+
 import pytest
 from pocketstation._api import PocketStationError
 

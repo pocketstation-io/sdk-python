@@ -64,6 +64,7 @@ from .endpoint_authoring import (
     RegisteredEndpoint,
     RunningEndpointDriver,
 )
+from .event_input import EventInput, EventInputObservations
 from .extensions import (
     ExtensionAbiVersion,
     ExtensionDescriptor,
@@ -171,6 +172,8 @@ __all__ = [
     "EndpointReceiver",
     "EndpointShutdownMode",
     "EndpointStartGate",
+    "EventInput",
+    "EventInputObservations",
     "EventStream",
     "ExtensionAbiVersion",
     "ExtensionDescriptor",

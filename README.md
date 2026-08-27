@@ -36,6 +36,16 @@ Add `microphone=True` when you need the default microphone as a second
 independent stem. Add `record_to="recordings"` when you want each selected stem
 recorded. Both behaviors are off by default.
 
+## Find where a voice agent lost time
+
+[`examples/debug_voice_ai.py`](examples/debug_voice_ai.py) sends a physical
+microphone to OpenAI Realtime without another voice framework. PocketStation
+keeps the microphone, generated assistant audio, and the selected browser's
+output as independent recorded stems. It also records provider lifecycle and
+interruption events on the same monotonic timeline.
+
+See the [voice-agent debugger instructions](examples/README.md#debug-a-voice-agent-interruption-from-the-media-boundary).
+
 ## Transcribe both sides of a voice application
 
 The transcription example requires:

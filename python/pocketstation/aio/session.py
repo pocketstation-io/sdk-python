@@ -32,6 +32,7 @@ from ..extensions import NativeExtensionLibrary
 from ..graph import (
     EdgeContract,
     Endpoint,
+    SignalSpec,
     Stem,
     _GraphSessionDeclarations,
 )
@@ -63,6 +64,7 @@ from ..sources import Source
 from .audio_input import AudioInput, PcmSource
 from .connector import Connector, RegisteredConnector
 from .endpoint_authoring import EndpointProvider, RegisteredEndpoint
+from .event_input import EventInput
 from .observations import EventStream
 from .operator_authoring import OperatorProvider
 from .sidecar import SidecarConnection
@@ -369,6 +371,23 @@ class Session(_GraphSessionDeclarations):
             )
         )
         return AudioInput(SyncPcmSource(native, config, self._destination_for_stream))
+
+    def event_input(
+        self,
+        name: str,
+        *,
+        signal: SignalSpec[bytes] | None = None,
+        capacity_events: int = 256,
+        maximum_event_bytes: int = 16_384,
+    ) -> EventInput:
+        """Open bounded JSON event ingress for an asyncio framework."""
+        return EventInput(
+            self,
+            name,
+            signal=signal or SignalSpec.event(role=name),
+            capacity_events=capacity_events,
+            maximum_event_bytes=maximum_event_bytes,
+        )
 
     def pcm_source(self, config: AudioInputConfig) -> PcmSource:
         native = _native_call(

@@ -149,6 +149,18 @@ class AudioInputBufferError(AudioInputError, ValueError):
     """The supplied object is not one exact contiguous float32 frame."""
 
 
+class EventInputError(PocketStationError):
+    """Base error for bounded typed-event ingress."""
+
+
+class EventInputFullError(EventInputError, BufferError):
+    """The bounded event input has no free capacity."""
+
+
+class EventInputClosedError(EventInputError):
+    """The event input no longer accepts writes."""
+
+
 def _native_call(operation: Callable[[], _Result]) -> _Result:
     """Execute one synchronous native call through the shared error policy."""
     try:
@@ -297,6 +309,9 @@ __all__ = [
     "AudioInputFullError",
     "CaptureError",
     "ConnectorRuntimeError",
+    "EventInputClosedError",
+    "EventInputError",
+    "EventInputFullError",
     "ExtensionError",
     "GraphError",
     "OperatorError",
