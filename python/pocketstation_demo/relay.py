@@ -1,4 +1,4 @@
-"""Connect an example to the small shared PocketStation Relay service."""
+"""Connect a demo to the small shared PocketStation Relay service."""
 
 import os
 from collections.abc import Sequence

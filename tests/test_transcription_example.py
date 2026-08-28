@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import pocketstation.aio as pks_aio
 import pytest
-from pocketstation_examples import (
+from pocketstation_demo import (
     FasterWhisper,
     FasterWhisperConfiguration,
 )

@@ -1,4 +1,4 @@
-"""Run the installed application-and-microphone product demo."""
+"""Run the installed application-and-microphone PocketStation demo."""
 
 import asyncio
 import webbrowser

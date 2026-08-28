@@ -72,11 +72,19 @@ from .source_authoring import SourceProvider
 from .streams import AudioStream, SignalStream
 
 if TYPE_CHECKING:
-    from ..conversation import ConversationConfig, TranscriptUpdate
     from ..relay import RelayPublisher
     from ..signal import SignalEnvelope
-    from .conversation import (
+    from ..voice import (
         Conversation,
+        ConversationConfig,
+        DuplexVoiceModel,
+        ResponseModel,
+        SpeechDetector,
+        SpeechSynthesizer,
+        StreamingTranscriber,
+        TranscriptUpdate,
+    )
+    from ..voice.conversation import (
         ResponseHandler,
         SynthesisHandler,
     )
@@ -534,10 +542,16 @@ class Session(_GraphSessionDeclarations):
     def conversation(
         self,
         *,
-        transcripts: BusSubscription[str],
-        respond: ResponseHandler,
-        synthesize: SynthesisHandler,
+        input: object | None = None,
         output: AudioInput,
+        voice_model: DuplexVoiceModel | None = None,
+        stt: StreamingTranscriber | None = None,
+        llm: ResponseModel | None = None,
+        tts: SpeechSynthesizer | None = None,
+        vad: SpeechDetector | None = None,
+        transcripts: BusSubscription[str] | None = None,
+        respond: ResponseHandler | None = None,
+        synthesize: SynthesisHandler | None = None,
         config: ConversationConfig | None = None,
         decode_transcript: Callable[[SignalEnvelope[str]], TranscriptUpdate | None]
         | None = None,
@@ -549,7 +563,73 @@ class Session(_GraphSessionDeclarations):
         object owns only bounded turn, provider, history, and interruption
         orchestration.
         """
-        from .conversation import Conversation
+        from ..voice import Conversation
+        from ..voice.errors import VoiceConfigurationError
+
+        provider_components = (stt, llm, tts, vad)
+        low_level_components = (transcripts, respond, synthesize)
+        if voice_model is not None:
+            if input is None:
+                raise VoiceConfigurationError(
+                    "input is required with voice_model",
+                    stage="configuration",
+                    next_action="pass a SourceOutput or Stem as input",
+                )
+            if any(
+                value is not None
+                for value in (*provider_components, *low_level_components)
+            ):
+                raise VoiceConfigurationError(
+                    "voice_model cannot be combined with stt, llm, tts, vad, "
+                    "transcripts, respond, or synthesize",
+                    stage="configuration",
+                    next_action="choose one duplex model or separate voice components",
+                )
+            return Conversation.from_duplex(
+                session=self,
+                input=input,
+                output=output,
+                voice_model=voice_model,
+                config=config,
+            )
+
+        if any(value is not None for value in provider_components):
+            if input is None or stt is None or llm is None or tts is None:
+                raise VoiceConfigurationError(
+                    "input, stt, llm, and tts are required for component "
+                    "voice composition",
+                    stage="configuration",
+                    next_action="provide all four required component arguments",
+                )
+            if any(value is not None for value in low_level_components):
+                raise VoiceConfigurationError(
+                    "stt, llm, and tts cannot be combined with low-level "
+                    "transcript callbacks",
+                    stage="configuration",
+                    next_action=(
+                        "choose provider components or the low-level callback API"
+                    ),
+                )
+            return Conversation.from_components(
+                session=self,
+                input=input,
+                output=output,
+                stt=stt,
+                llm=llm,
+                tts=tts,
+                vad=vad,
+                config=config,
+            )
+
+        if transcripts is None or respond is None or synthesize is None:
+            raise VoiceConfigurationError(
+                "transcripts, respond, and synthesize are required by the "
+                "low-level callback API",
+                stage="configuration",
+                next_action=(
+                    "provide the three callback arguments or use voice providers"
+                ),
+            )
 
         return Conversation(
             transcripts=transcripts,

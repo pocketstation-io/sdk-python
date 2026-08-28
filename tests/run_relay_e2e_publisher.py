@@ -15,6 +15,7 @@ from time import sleep
 from typing import TYPE_CHECKING, Any, cast
 
 import pocketstation._api as pks
+import pocketstation._native as native
 
 if TYPE_CHECKING:
     from tests.transcription.wav_input import WavInput
@@ -115,7 +116,7 @@ def _collect_transcripts(
 
 
 def main() -> int:
-    from pocketstation_examples import (
+    from pocketstation_demo import (
         TRANSCRIPT_SIGNAL,
         FasterWhisper,
         FasterWhisperConfiguration,
@@ -159,7 +160,7 @@ def main() -> int:
         arguments.application_name is None
         and arguments.application_process_id is None
         and not use_application_audio_inputs
-        and not hasattr(pks._native.Session, "conformance")
+        and not hasattr(native.Session, "conformance")
     ):
         emit("failure", code="relay.conformance_fixture_unavailable")
         return 2
@@ -243,7 +244,7 @@ def main() -> int:
             and arguments.application_process_id is None
         ):
             session = pks.Session._from_native(
-                pks._native.Session.conformance(arguments.recording_root)
+                native.Session.conformance(arguments.recording_root)
             )
             application_source = pks.Source.application("PocketStation Python Fixture")
             source_mode = "conformance-fixture"

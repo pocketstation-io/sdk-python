@@ -22,11 +22,11 @@ import pocketstation.aio as pks_aio
 SDK_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SDK_ROOT))
 
-from pocketstation_examples import (  # noqa: E402
+from pocketstation_demo import (  # noqa: E402
     FasterWhisper,
     FasterWhisperConfiguration,
 )
-from pocketstation_examples.faster_whisper import (  # noqa: E402
+from pocketstation_demo.faster_whisper import (  # noqa: E402
     WhisperInfo,
     WhisperSegment,
 )

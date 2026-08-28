@@ -11,7 +11,7 @@ from time import monotonic
 import pocketstation._api as pocketstation
 import pocketstation.aio as pks_aio
 import pytest
-from pocketstation_examples import FasterWhisper, FasterWhisperConfiguration
+from pocketstation_demo import FasterWhisper, FasterWhisperConfiguration
 
 from tests.transcription.run_source_aware import transcribe_sources
 from tests.transcription.wav_input import read_pcm16_wav

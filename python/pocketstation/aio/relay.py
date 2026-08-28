@@ -157,6 +157,7 @@ class RelaySession:
     async def wait_for_publisher_and_invitation(
         self,
         *,
+        bus_id: str = "mix",
         timeout_seconds: float = 10.0,
         poll_interval_seconds: float = 0.1,
     ) -> ReceiverInvitation:
@@ -164,7 +165,7 @@ class RelaySession:
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
         )
-        return await self.create_receiver_invitation()
+        return await self.create_receiver_invitation(bus_id=bus_id)
 
     async def wait_for_receiver(
         self,

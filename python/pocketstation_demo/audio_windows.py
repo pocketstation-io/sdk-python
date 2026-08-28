@@ -1,4 +1,4 @@
-"""Finite source-aware PCM windows for the example transcription provider."""
+"""Finite source-aware PCM windows for demo transcription adapters."""
 
 from __future__ import annotations
 

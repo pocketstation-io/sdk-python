@@ -1,4 +1,4 @@
-"""Typed transcript values emitted by the example transcription provider."""
+"""Typed transcript values emitted by demo transcription adapters."""
 
 from __future__ import annotations
 

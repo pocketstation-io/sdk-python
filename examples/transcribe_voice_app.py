@@ -3,7 +3,7 @@
 import asyncio
 
 import pocketstation.aio as pks
-from pocketstation_examples import FasterWhisper
+from pocketstation_demo import FasterWhisper
 
 
 async def main() -> None:

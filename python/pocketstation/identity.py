@@ -17,11 +17,11 @@ ClockDomainKind: TypeAlias = Literal[
 ClockDomainOrigin: TypeAlias = Literal[
     "unspecified", "process-start", "provider-defined"
 ]
+RouteId = NewType("RouteId", int)
+SidecarId = NewType("SidecarId", int)
 EndpointId = NewType("EndpointId", int)
 ConnectorId = NewType("ConnectorId", int)
-RouteId = NewType("RouteId", int)
 OperatorInstanceId = NewType("OperatorInstanceId", int)
-SidecarId = NewType("SidecarId", int)
 
 __all__ = [
     "ClockDomainId",

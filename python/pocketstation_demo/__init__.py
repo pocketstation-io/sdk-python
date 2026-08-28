@@ -1,4 +1,4 @@
-"""Example-owned provider integrations over the installed PocketStation SDK."""
+"""Runnable PocketStation demos and their replaceable provider adapters."""
 
 from .demo import main
 from .faster_whisper import FasterWhisper, FasterWhisperConfiguration

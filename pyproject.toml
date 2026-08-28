@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pocketstation-demo = "pocketstation_examples:main"
+pocketstation-demo = "pocketstation_demo:main"
 
 [project.optional-dependencies]
 transcription = [
@@ -35,7 +35,7 @@ asyncio_mode = "auto"
 pythonpath = ["."]
 
 [tool.mypy]
-packages = ["pocketstation", "pocketstation_examples"]
+packages = ["pocketstation", "pocketstation_demo"]
 mypy_path = "python"
 python_version = "3.11"
 strict = true
@@ -49,6 +49,6 @@ select = ["B", "E", "F", "I", "RUF", "UP"]
 [tool.maturin]
 manifest-path = "native/Cargo.toml"
 python-source = "python"
-python-packages = ["pocketstation", "pocketstation_examples"]
+python-packages = ["pocketstation", "pocketstation_demo"]
 module-name = "pocketstation._native"
 exclude = ["**/__pycache__/**", "**/*.pyc", "**/*.pyo"]

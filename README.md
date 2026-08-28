@@ -99,7 +99,7 @@ audio.
 
 The example uses PocketStation's small rate-limited demo service unless you set
 `POCKETSTATION_CONTROL_URL` and `POCKETSTATION_RELAY_URL` to services you
-operate. The shared URLs live in `pocketstation_examples`; application code does
+operate. The shared URLs live in `pocketstation_demo`; application code does
 not contain service credentials.
 
 ## Read application and microphone audio

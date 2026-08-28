@@ -4,7 +4,7 @@ import asyncio
 import webbrowser
 
 import pocketstation.aio as pks
-from pocketstation_examples import demo_relay_session
+from pocketstation_demo import demo_relay_session
 
 
 async def main() -> None:

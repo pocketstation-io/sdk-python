@@ -11,7 +11,7 @@ from typing import cast
 
 import pocketstation._api as pocketstation
 import pocketstation.aio as pks_aio
-from pocketstation_examples import (
+from pocketstation_demo import (
     FasterWhisper,
     FasterWhisperConfiguration,
 )

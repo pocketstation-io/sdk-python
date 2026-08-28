@@ -1,4 +1,4 @@
-"""Transcribe source-aware example audio with faster-whisper."""
+"""Transcribe source-aware demo audio with faster-whisper."""
 
 from __future__ import annotations
 
