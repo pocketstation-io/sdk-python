@@ -1413,9 +1413,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "pocketstation"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f53262a88999cacefba43c5d8cfbf6ff257a86acf2f1827bb05c237664d1febf"
+version = "1.1.3"
 dependencies = [
  "alsa",
  "cc",
@@ -1447,9 +1445,7 @@ dependencies = [
 
 [[package]]
 name = "pocketstation-relay"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9855d9850057ec6020001c4bd9487c42c08d99a53eab47a1ca69c54dcffdb6f0"
+version = "0.1.2"
 dependencies = [
  "base64",
  "pocketstation",

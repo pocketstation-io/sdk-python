@@ -11,8 +11,8 @@ Relay media transport.
 
 > **Status: preview.** The package is not published to PyPI. The macOS wheel has
 > been tested with the workflow below. Linux and Windows wheels, plus WAN and
-> TURN testing, are still in progress. The source distribution builds against
-> PocketStation Core `1.1.2` and Relay `0.1.1`.
+> TURN testing, are still in progress. The current candidate requires
+> PocketStation Core `1.1.3` and Relay Connector `0.1.2`.
 
 ## Capture a desktop application
 
@@ -201,12 +201,12 @@ does not have the same execution cost as Rust.
 | Linux wheel | Not yet tested externally |
 | Windows wheel | Not yet tested externally |
 | Receiver over WAN or TURN | Not yet tested externally |
-| Standalone source distribution | Builds from the published Core 1.1.2 dependency |
+| Standalone source distribution | Pending the Relay Connector 0.1.2 registry release |
 | PyPI release | Not published |
 
-The native binding pins published Core `1.1.2` and the shared Relay connector
-`0.1.1`. Wheel and source-distribution builds resolve those immutable registry
-artifacts without a sibling repository checkout.
+The native binding pins Core `1.1.3` and the shared Relay Connector `0.1.2`.
+Core `1.1.3` is published. Relay Connector `0.1.2` must pass its release gate
+and reach crates.io before the Python source distribution can be released.
 
 The Rust-to-Python audio read currently copies native samples into Python-owned
 bytes before exposing a `memoryview`. The view avoids another Python-side copy;
