@@ -42,7 +42,8 @@ _OUTPUT_FRAME_SAMPLES = 480
 _OUTPUT_FRAME_DURATION_S = _OUTPUT_FRAME_SAMPLES / _SESSION_SAMPLE_RATE_HZ
 _MAX_EVENT_BYTES = 262_144
 _MAX_INPUT_QUEUE_FRAMES = 64
-_MAX_OUTPUT_QUEUE_CHUNKS = 32
+_MAX_OUTPUT_QUEUE_CHUNKS = 1_024
+_MAX_BUFFERED_OUTPUT_S = 30.0
 _MAX_RETAINED_VOICED_FRAMES = 12_000
 
 
@@ -53,7 +54,7 @@ class RealtimeVoiceConfig:
     model: str = "gpt-realtime-2.1"
     voice: str = "marin"
     instructions: str = (
-        "Answer clearly and in enough detail that the user can interrupt you."
+        "Answer clearly in under 20 seconds so the user can interrupt you."
     )
     connect_timeout_s: float = 10.0
     close_timeout_s: float = 5.0
@@ -61,18 +62,19 @@ class RealtimeVoiceConfig:
     maximum_output_tokens: int = 512
     input_queue_frames: int = _MAX_INPUT_QUEUE_FRAMES
     output_queue_chunks: int = _MAX_OUTPUT_QUEUE_CHUNKS
+    maximum_buffered_output_s: float = _MAX_BUFFERED_OUTPUT_S
 
     def __post_init__(self) -> None:
         if not self.model.strip() or not self.voice.strip():
             raise ValueError("model and voice must not be empty")
         if not self.instructions.strip():
             raise ValueError("instructions must not be empty")
-        for name, value in (
-            ("connect_timeout_s", self.connect_timeout_s),
-            ("close_timeout_s", self.close_timeout_s),
-            ("maximum_session_s", self.maximum_session_s),
+        for name, value, maximum in (
+            ("connect_timeout_s", self.connect_timeout_s, 60),
+            ("close_timeout_s", self.close_timeout_s, 60),
+            ("maximum_session_s", self.maximum_session_s, 3_600),
+            ("maximum_buffered_output_s", self.maximum_buffered_output_s, 300),
         ):
-            maximum = 3_600 if name == "maximum_session_s" else 60
             if isinstance(value, bool) or not 0 < value <= maximum:
                 raise ValueError(f"{name} must be greater than 0 and at most {maximum}")
         if (
@@ -100,7 +102,10 @@ class RealtimeVoiceObservations:
     input_frames_dropped: int
     output_chunks_received: int
     output_chunks_dropped: int
+    output_chunks_cancelled: int
+    output_chunks_rejected: int
     output_frames_written: int
+    output_frames_rejected: int
     output_generations_cancelled: int
     provider_errors: int
     media_worker_errors: int
@@ -126,6 +131,57 @@ class _OutputChunk:
     generation: OutputGeneration
     pcm16le: bytes
     done: bool = False
+
+
+class _OutputBuffer:
+    """Retain a finite amount of provider audio without blocking event intake."""
+
+    def __init__(self, *, maximum_chunks: int, maximum_bytes: int) -> None:
+        self._maximum_chunks = maximum_chunks
+        self._maximum_bytes = maximum_bytes
+        self._chunks: deque[_OutputChunk] = deque()
+        self._buffered_bytes = 0
+        self._ready = asyncio.Event()
+
+    def try_push(self, chunk: _OutputChunk) -> bool:
+        chunk_bytes = len(chunk.pcm16le)
+        if (
+            len(self._chunks) >= self._maximum_chunks
+            or self._buffered_bytes + chunk_bytes > self._maximum_bytes
+        ):
+            return False
+        self._chunks.append(chunk)
+        self._buffered_bytes += chunk_bytes
+        self._ready.set()
+        return True
+
+    async def pop(self) -> _OutputChunk:
+        while not self._chunks:
+            self._ready.clear()
+            if self._chunks:
+                break
+            await self._ready.wait()
+        chunk = self._chunks.popleft()
+        self._buffered_bytes -= len(chunk.pcm16le)
+        if not self._chunks:
+            self._ready.clear()
+        return chunk
+
+    def discard(self, generation_id: int) -> int:
+        retained: deque[_OutputChunk] = deque()
+        discarded = 0
+        buffered_bytes = 0
+        for chunk in self._chunks:
+            if chunk.generation.id == generation_id:
+                discarded += int(bool(chunk.pcm16le))
+                continue
+            retained.append(chunk)
+            buffered_bytes += len(chunk.pcm16le)
+        self._chunks = retained
+        self._buffered_bytes = buffered_bytes
+        if not self._chunks:
+            self._ready.clear()
+        return discarded
 
 
 @dataclass(slots=True)
@@ -331,8 +387,11 @@ class _OpenAIRealtimeVoice:
         self._input_queue: asyncio.Queue[str | None] = asyncio.Queue(
             self._config.input_queue_frames
         )
-        self._output_queue: asyncio.Queue[_OutputChunk | None] = asyncio.Queue(
-            self._config.output_queue_chunks
+        self._output_buffer = _OutputBuffer(
+            maximum_chunks=self._config.output_queue_chunks,
+            maximum_bytes=int(
+                self._config.maximum_buffered_output_s * _MODEL_SAMPLE_RATE_HZ * 2
+            ),
         )
         self._input_enabled = asyncio.Event()
         self._ready = asyncio.Event()
@@ -350,7 +409,10 @@ class _OpenAIRealtimeVoice:
         self._input_frames_dropped = 0
         self._output_chunks_received = 0
         self._output_chunks_dropped = 0
+        self._output_chunks_cancelled = 0
+        self._output_chunks_rejected = 0
         self._output_frames_written = 0
+        self._output_frames_rejected = 0
         self._output_generations_cancelled = 0
         self._provider_errors = 0
         self._media_worker_errors = 0
@@ -367,7 +429,10 @@ class _OpenAIRealtimeVoice:
             input_frames_dropped=self._input_frames_dropped,
             output_chunks_received=self._output_chunks_received,
             output_chunks_dropped=self._output_chunks_dropped,
+            output_chunks_cancelled=self._output_chunks_cancelled,
+            output_chunks_rejected=self._output_chunks_rejected,
             output_frames_written=self._output_frames_written,
+            output_frames_rejected=self._output_frames_rejected,
             output_generations_cancelled=self._output_generations_cancelled,
             provider_errors=self._provider_errors,
             media_worker_errors=self._media_worker_errors,
@@ -788,82 +853,72 @@ class _OpenAIRealtimeVoice:
 
     def _queue_output(self, chunk: _OutputChunk) -> None:
         if not chunk.generation.active:
-            self._output_chunks_dropped += 1
+            if chunk.pcm16le:
+                self._output_chunks_dropped += 1
+                self._output_chunks_cancelled += 1
             return
-        try:
-            self._output_queue.put_nowait(chunk)
-        except asyncio.QueueFull:
-            self._output_chunks_dropped += 1
-            if chunk.generation.active:
-                chunk.generation.cancel()
-                self._output_generations_cancelled += 1
-            self._event(
-                "pocketstation.provider_output.full",
-                response_id=chunk.response_id,
-                output_generation_id=chunk.generation.id,
-            )
+        if self._output_buffer.try_push(chunk):
+            return
+        self._output_chunks_dropped += 1
+        self._output_chunks_rejected += 1
+        raise RuntimeError(
+            "OpenAI Realtime output exceeded the configured buffered duration"
+        )
 
     async def _write_output(self) -> None:
         converters: dict[int, _Pcm24To48] = {}
         next_frame_at_s: dict[int, float] = {}
         discontinuity = False
         while True:
-            chunk = await self._output_queue.get()
-            try:
-                if chunk is None:
-                    return
+            chunk = await self._output_buffer.pop()
+            if not chunk.generation.active:
+                converters.pop(chunk.generation.id, None)
+                next_frame_at_s.pop(chunk.generation.id, None)
+                if chunk.pcm16le:
+                    self._output_chunks_dropped += 1
+                    self._output_chunks_cancelled += 1
+                discontinuity = True
+                continue
+            converter = converters.setdefault(chunk.generation.id, _Pcm24To48())
+            frames = (
+                converter.finish() if chunk.done else converter.append(chunk.pcm16le)
+            )
+            for samples in frames:
+                frame_at_s = max(
+                    next_frame_at_s.get(chunk.generation.id, monotonic()),
+                    monotonic(),
+                )
+                delay_s = frame_at_s - monotonic()
+                if delay_s > 0:
+                    await asyncio.sleep(delay_s)
                 if not chunk.generation.active:
                     converters.pop(chunk.generation.id, None)
                     next_frame_at_s.pop(chunk.generation.id, None)
-                    self._output_chunks_dropped += 1
+                    if chunk.pcm16le:
+                        self._output_chunks_dropped += 1
+                        self._output_chunks_cancelled += 1
                     discontinuity = True
-                    continue
-                converter = converters.setdefault(chunk.generation.id, _Pcm24To48())
-                frames = (
-                    converter.finish()
-                    if chunk.done
-                    else converter.append(chunk.pcm16le)
+                    break
+                try:
+                    await self._output.write(
+                        samples,
+                        discontinuity=discontinuity,
+                        generation=chunk.generation,
+                        timeout_s=1.0,
+                    )
+                except AudioInputFullError:
+                    self._output_frames_rejected += 1
+                    raise RuntimeError(
+                        "generated-audio input remained full for one second"
+                    ) from None
+                discontinuity = False
+                self._output_frames_written += 1
+                next_frame_at_s[chunk.generation.id] = (
+                    monotonic() + _OUTPUT_FRAME_DURATION_S
                 )
-                for samples in frames:
-                    frame_at_s = max(
-                        next_frame_at_s.get(chunk.generation.id, monotonic()),
-                        monotonic(),
-                    )
-                    delay_s = frame_at_s - monotonic()
-                    if delay_s > 0:
-                        await asyncio.sleep(delay_s)
-                    if not chunk.generation.active:
-                        converters.pop(chunk.generation.id, None)
-                        next_frame_at_s.pop(chunk.generation.id, None)
-                        self._output_chunks_dropped += 1
-                        discontinuity = True
-                        break
-                    try:
-                        await self._output.write(
-                            samples,
-                            discontinuity=discontinuity,
-                            generation=chunk.generation,
-                            timeout_s=1.0,
-                        )
-                    except AudioInputFullError:
-                        self._output_chunks_dropped += 1
-                        discontinuity = True
-                        self._event(
-                            "pocketstation.output.full",
-                            response_id=chunk.response_id,
-                            output_generation_id=chunk.generation.id,
-                        )
-                    else:
-                        discontinuity = False
-                        self._output_frames_written += 1
-                    next_frame_at_s[chunk.generation.id] = (
-                        monotonic() + _OUTPUT_FRAME_DURATION_S
-                    )
-                if chunk.done:
-                    converters.pop(chunk.generation.id, None)
-                    next_frame_at_s.pop(chunk.generation.id, None)
-            finally:
-                self._output_queue.task_done()
+            if chunk.done:
+                converters.pop(chunk.generation.id, None)
+                next_frame_at_s.pop(chunk.generation.id, None)
 
     async def _read_events(
         self,
@@ -911,6 +966,9 @@ class _OpenAIRealtimeVoice:
         )
         response.generation.cancel()
         self._output_generations_cancelled += 1
+        discarded = self._output_buffer.discard(response.generation.id)
+        self._output_chunks_cancelled += discarded
+        self._output_chunks_dropped += discarded
         self._event(
             "pocketstation.output.cancelled",
             response_id=response.response_id,
