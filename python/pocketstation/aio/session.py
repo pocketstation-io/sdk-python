@@ -300,17 +300,22 @@ class Session(_GraphSessionDeclarations):
         trace: SessionTraceConfiguration | None = None,
         sample_rate_hz: int = 48_000,
         channels: int = 1,
+        frame_duration_ms: int = 20,
     ) -> None:
         root = None if recording_root is None else Path(recording_root)
-        self._native = _NativeSession(
-            recording_root=root,
-            trace_path=None if trace is None else trace.path,
-            trace_capacity_records=256 if trace is None else trace.capacity_records,
-            sample_rate_hz=sample_rate_hz,
-            channels=channels,
+        self._native = _native_call(
+            lambda: _NativeSession(
+                recording_root=root,
+                trace_path=None if trace is None else trace.path,
+                trace_capacity_records=256 if trace is None else trace.capacity_records,
+                sample_rate_hz=sample_rate_hz,
+                channels=channels,
+                frame_duration_ms=frame_duration_ms,
+            )
         )
         self._sample_rate_hz = sample_rate_hz
         self._channels = channels
+        self._frame_duration_ms = frame_duration_ms
         self._connector_registrations: dict[
             int,
             tuple[
@@ -335,6 +340,7 @@ class Session(_GraphSessionDeclarations):
         session._native = native
         session._sample_rate_hz = 48_000
         session._channels = 1
+        session._frame_duration_ms = 20
         session._connector_registrations = {}
         session._endpoint_registrations = {}
         return session

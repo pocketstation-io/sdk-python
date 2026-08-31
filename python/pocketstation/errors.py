@@ -243,6 +243,7 @@ def _normalize_native_error(error: Exception) -> PocketStationError:
             "session.no_routes",
             "session.no_source_outputs",
             "session.invalid_selector",
+            "session.invalid_frame_duration",
             "session.invalid_endpoint",
             "session.invalid_operator",
             "session.invalid_route",

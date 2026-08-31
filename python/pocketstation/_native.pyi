@@ -1215,6 +1215,7 @@ class Session:
         trace_capacity_records: int = 256,
         sample_rate_hz: int = 48_000,
         channels: int = 1,
+        frame_duration_ms: int = 20,
     ) -> None: ...
     @staticmethod
     def conformance(

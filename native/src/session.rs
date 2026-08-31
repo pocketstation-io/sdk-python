@@ -148,13 +148,14 @@ impl PythonSessionStartCancellation {
 #[pymethods]
 impl PythonSession {
     #[new]
-    #[pyo3(signature = (*, recording_root=None, trace_path=None, trace_capacity_records=256, sample_rate_hz=48_000, channels=1))]
+    #[pyo3(signature = (*, recording_root=None, trace_path=None, trace_capacity_records=256, sample_rate_hz=48_000, channels=1, frame_duration_ms=20))]
     fn new(
         recording_root: Option<PathBuf>,
         trace_path: Option<PathBuf>,
         trace_capacity_records: usize,
         sample_rate_hz: u32,
         channels: u8,
+        frame_duration_ms: u16,
     ) -> PyResult<Self> {
         if trace_path.is_some() && trace_capacity_records == 0 {
             return Err(PyValueError::new_err(coded_reason(
@@ -168,12 +169,23 @@ impl PythonSession {
                 "sample_rate_hz must be non-zero and channels must be 1 or 2",
             )));
         }
-        let mut builder =
-            pocketstation::Session::builder().sample_spec(pocketstation::SampleSpec::new(
+        let audio_frame_duration = match frame_duration_ms {
+            10 => pocketstation::AudioFrameDuration::Ms10,
+            20 => pocketstation::AudioFrameDuration::Ms20,
+            _ => {
+                return Err(PyValueError::new_err(coded_reason(
+                    "session.invalid_frame_duration",
+                    "frame_duration_ms must be 10 or 20",
+                )))
+            }
+        };
+        let mut builder = pocketstation::Session::builder()
+            .sample_spec(pocketstation::SampleSpec::new(
                 sample_rate_hz,
                 channels,
                 pocketstation::SampleFormat::F32Interleaved,
-            ));
+            ))
+            .audio_frame_duration(audio_frame_duration);
         if let Some(root) = recording_root {
             builder = builder.recording_root(root);
         }

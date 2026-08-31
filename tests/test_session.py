@@ -28,6 +28,19 @@ def test_given_app_and_mic_when_routed_then_native_session_owns_routes(tmp_path)
     assert application_route != microphone_route
 
 
+@pytest.mark.parametrize("frame_duration_ms", [10, 20])
+def test_given_supported_frame_duration_when_session_declared_then_it_is_accepted(
+    frame_duration_ms: int,
+) -> None:
+    assert Session(frame_duration_ms=frame_duration_ms)
+
+
+def test_given_unsupported_frame_duration_when_declared_then_it_is_rejected() -> None:
+    with pytest.raises(PocketStationError, match="must be 10 or 20") as failure:
+        Session(frame_duration_ms=15)
+    assert failure.value.code == "session.invalid_frame_duration"
+
+
 @pytest.mark.parametrize("name", ["", " ", "\t"])
 def test_given_empty_application_name_when_declared_then_rejected(name):
     with pytest.raises(PocketStationError, match="must not be empty") as failure:
