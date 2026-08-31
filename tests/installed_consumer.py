@@ -11,6 +11,8 @@ from time import sleep
 
 import pocketstation._api as pocketstation
 
+_VOICE_FRAME_SAMPLES = 480
+
 
 class InstalledSource(pocketstation.SourceDriver):
     def __init__(
@@ -336,11 +338,12 @@ def _exercise_operator_pcm_reentry() -> None:
     media = pocketstation.MediaCaps.audio(
         pocketstation.AudioCaps(
             sample_rate_hz=48_000,
-            frame_samples=4,
+            frame_samples=_VOICE_FRAME_SAMPLES,
             channel_layout=pocketstation.ChannelLayout.MONO,
         )
     )
-    emitted = array("f", [0.25, -0.25, 0.5, -0.5])
+    emitted = array("f", [0.0]) * _VOICE_FRAME_SAMPLES
+    emitted[:4] = array("f", [0.25, -0.25, 0.5, -0.5])
     closed = Event()
 
     class InstalledPcmOperator(pocketstation.OperatorNode):
@@ -367,14 +370,16 @@ def _exercise_operator_pcm_reentry() -> None:
         ),
         InstalledPcmFactory(),
     )
-    session = pocketstation.Session()
-    source = session.audio_input("installed-pcm", frame_samples_per_channel=4)
+    session = pocketstation.Session(frame_duration_ms=10)
+    source = session.audio_input(
+        "installed-pcm", frame_samples_per_channel=_VOICE_FRAME_SAMPLES
+    )
     operator = session.register_operator(provider).declare()
     source.output.connect(operator.input("input"))
     operator.output("output").reenter_audio().send(session.polled_audio())
 
     running = session.start()
-    source.write(array("f", [0.0, 0.0, 0.0, 0.0]))
+    source.write(array("f", [0.0]) * _VOICE_FRAME_SAMPLES)
     frame = running.audio.read(timeout_s=1.0)
     result = running.stop()
     if frame is None or list(frame.samples.cast("f")) != list(emitted):

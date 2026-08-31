@@ -204,6 +204,8 @@ uv run mypy python tests/qualification/typing_contract.py examples
 
 ## Reference
 
+- [`RELEASE_NOTES.md`](RELEASE_NOTES.md) — user-visible changes and upgrade
+  guidance.
 - [`examples/README.md`](examples/README.md) — runnable examples and
   prerequisites.
 - `pocketstation.capture` — concise application and microphone capture.

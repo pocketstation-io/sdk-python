@@ -1,0 +1,191 @@
+name: release-python
+
+'on':
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version-matched release tag to resume
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
+
+      - name: Validate the release tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          version="$(
+            python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'
+          )"
+          expected_tag="pocketstation-v${version}"
+          if [[ "${RELEASE_TAG}" != "${expected_tag}" ]]; then
+            echo "release tag ${RELEASE_TAG} must equal ${expected_tag}" >&2
+            exit 1
+          fi
+          tag_commit="$(git rev-list -n 1 "${RELEASE_TAG}")"
+          git fetch origin main
+          if ! git merge-base --is-ancestor "${tag_commit}" origin/main; then
+            echo "release commit is not contained in origin/main" >&2
+            exit 1
+          fi
+          if [[ "${EVENT_NAME}" == "release" && "${tag_commit}" != "${GITHUB_SHA}" ]]; then
+            echo "release tag does not resolve to the checked-out commit" >&2
+            exit 1
+          fi
+
+  wheels:
+    needs: validate
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64 wheel
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+            before_script: dnf install -y alsa-lib-devel pipewire-devel clang cmake ninja-build
+          - name: Linux ARM64 wheel
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2_28"
+            before_script: dnf install -y alsa-lib-devel pipewire-devel clang cmake ninja-build
+          - name: macOS Apple silicon wheel
+            os: macos-15
+            target: aarch64-apple-darwin
+            manylinux: "off"
+            before_script: ""
+          - name: macOS Intel wheel
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            manylinux: "off"
+            before_script: ""
+          - name: Windows x86-64 wheel
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: "off"
+            before_script: ""
+          - name: Windows ARM64 wheel
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            manylinux: "off"
+            before_script: ""
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.13"
+
+      - name: Build the wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b
+        with:
+          command: build
+          maturin-version: v1.13.0
+          rust-toolchain: 1.95.0
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          before-script-linux: ${{ matrix.before_script }}
+          args: --release --locked --compatibility pypi --out dist
+
+      - name: Test the installed wheel
+        run: >-
+          python tests/run_artifact_consumer.py
+          --artifact-kind wheel
+          --artifact-dir dist
+
+      - name: Upload the wheel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wheel-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.13"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libasound2-dev libpipewire-0.3-dev
+          python -m pip install --disable-pip-version-check "maturin==1.13.0"
+
+      - name: Build and test the source distribution
+        run: |
+          maturin sdist --manifest-path native/Cargo.toml --out dist
+          python tests/run_artifact_consumer.py \
+            --artifact-kind sdist \
+            --artifact-dir dist
+
+      - name: Upload the source distribution
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: source-distribution
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pocketstation
+    permissions:
+      id-token: write
+    steps:
+      - name: Download wheels
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Download the source distribution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: source-distribution
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e
