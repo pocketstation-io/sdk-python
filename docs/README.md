@@ -23,5 +23,5 @@ need the lower-level API.
   and [`pocketstation.connector`](../python/pocketstation/connector.py) are the
   open provider boundaries.
 
-For package status and current qualification limits, read the
-[repository README](../README.md#current-package-status).
+For supported platforms and current qualification limits, read the
+[repository README](../README.md#platform-support).

@@ -4,11 +4,9 @@ import webbrowser
 from array import array
 
 import pocketstation.aio as pks
-from pocketstation.graph import SourceOutput, Stem
+from pocketstation import Source
 from pocketstation_demo import demo_relay_session
 from pocketstation_demo.openai_realtime import OpenAIRealtime
-
-from pocketstation import Source
 
 
 async def main() -> None:
@@ -25,10 +23,12 @@ async def main() -> None:
         int(assistant.output.send(observed)): "assistant-output",
     }
     publisher = remote.publisher(session)
-    for bus, output in zip(buses, (application, mic, assistant.output), strict=True):
-        assert isinstance(output, (Stem, SourceOutput))
-        output.record(bus)
-        output.publish(publisher, bus)
+    application.record("application")
+    application.publish(publisher, "application")
+    mic.record("microphone")
+    mic.publish(publisher, "microphone")
+    assistant.output.record("assistant")
+    assistant.output.publish(publisher, "assistant")
     model = OpenAIRealtime(api_key=os.environ["OPENAI_API_KEY"], route_labels=labels)
     conversation = session.conversation(input=mic, output=assistant, voice_model=model)
     async with remote, await session.start() as running:

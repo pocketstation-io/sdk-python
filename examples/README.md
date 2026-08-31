@@ -24,7 +24,7 @@ provider logs as media evidence.
 Install the optional dependencies and provide an OpenAI API key:
 
 ```bash
-python -m pip install 'pocketstation[voice-agent-debug] @ file:///absolute/path/to/pocketstation.whl'
+python -m pip install 'pocketstation[voice-agent-debug]'
 export OPENAI_API_KEY='...'
 ```
 
@@ -40,12 +40,11 @@ Speak, interrupt the assistant while it is replying, then press `Ctrl-C`. Use
 headphones for this run: the example does not provide acoustic echo
 cancellation.
 
-The final report includes source continuity, bounded queue drops, routing
-delay, the speech-start event, and PocketStation's output-cancellation time.
-It reports browser playout position as unavailable because the receiver does
-not yet return a played-sample acknowledgement to the publisher. Therefore the
-example does not claim that the model conversation was truncated to the exact
-sample a person heard.
+The final report includes source continuity, bounded queue drops, provider
+events, and PocketStation's output-cancellation events. The receiver reports
+WebRTC statistics, but it does not acknowledge the exact sample played through
+the loudspeaker. The example therefore reports acoustic hearing and exact
+provider-history truncation as unavailable.
 
 The installed examples use the small shared demo service by default. It has
 strict admission limits. Set `POCKETSTATION_CONTROL_URL` and
@@ -67,7 +66,7 @@ explicit in the source, and no recording or cloud service starts.
 Install the optional model dependency before the first run:
 
 ```bash
-python -m pip install 'pocketstation[transcription] @ file:///absolute/path/to/pocketstation-0.1.0-cp311-abi3-macosx_11_0_arm64.whl'
+python -m pip install 'pocketstation[transcription]'
 ```
 
 The first run may download the configured faster-whisper model. Model work runs
@@ -91,11 +90,11 @@ To use services you operate, set `POCKETSTATION_CONTROL_URL` and
 `POCKETSTATION_RELAY_URL` before running the command. No shared secret belongs
 in application code.
 
-## Run capture, transcription, browser audio, and recording together
+## Run the complete demo
 
 The installed `pocketstation-demo` command combines independent application and
 microphone capture, faster-whisper transcripts, two Relay/browser AudioBuses,
 and a finalized two-stem recording.
 
-The current browser test runs on the same host as the publisher. WAN and TURN
-behavior have not been verified yet.
+The current physical voice proof runs the browser on the publisher host through
+the deployed Relay. WAN and TURN behavior have not been qualified yet.

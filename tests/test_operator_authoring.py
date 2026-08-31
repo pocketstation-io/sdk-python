@@ -27,8 +27,10 @@ from pocketstation._api import (
     SourceProvider,
 )
 
+_VOICE_FRAME_SAMPLES = 480
 
-def _pcm_media(*, frame_samples: int = 4) -> MediaCaps:
+
+def _pcm_media(*, frame_samples: int = _VOICE_FRAME_SAMPLES) -> MediaCaps:
     return MediaCaps.audio(
         AudioCaps(
             sample_rate_hz=48_000,
@@ -41,7 +43,7 @@ def _pcm_media(*, frame_samples: int = 4) -> MediaCaps:
 def _pcm_operator(
     *,
     samples: array[float],
-    frame_samples: int = 4,
+    frame_samples: int = _VOICE_FRAME_SAMPLES,
 ) -> tuple[OperatorProvider, Event]:
     input_signal = SignalSpec.audio(role="audio.input")
     output_signal = SignalSpec.audio(role="audio.generated")
@@ -284,7 +286,9 @@ async def test_async_operator_runs_on_owning_loop() -> None:
 
 
 def test_python_operator_emits_pcm_into_core_reentry_and_recording(tmp_path) -> None:
-    provider, closed = _pcm_operator(samples=array("f", [0.25, -0.25, 0.5, -0.5]))
+    generated_samples = array("f", [0.0]) * _VOICE_FRAME_SAMPLES
+    generated_samples[:4] = array("f", [0.25, -0.25, 0.5, -0.5])
+    provider, closed = _pcm_operator(samples=generated_samples)
     delivered = Event()
     connector_frames = []
 
@@ -298,8 +302,10 @@ def test_python_operator_emits_pcm_into_core_reentry_and_recording(tmp_path) -> 
         deliver,
         package_version="1.0.0",
     )
-    session = Session(recording_root=tmp_path)
-    source = session.audio_input("operator-input", frame_samples_per_channel=4)
+    session = Session(recording_root=tmp_path, frame_duration_ms=10)
+    source = session.audio_input(
+        "operator-input", frame_samples_per_channel=_VOICE_FRAME_SAMPLES
+    )
     operator = session.register_operator(provider).declare()
     source.output.connect(operator.input("input"))
     generated = operator.output("output").reenter_audio()
@@ -308,13 +314,15 @@ def test_python_operator_emits_pcm_into_core_reentry_and_recording(tmp_path) -> 
     generated.record("generated")
 
     running = session.start()
-    source.write(array("f", [0.0, 0.0, 0.0, 0.0]))
+    source.write(array("f", [0.0]) * _VOICE_FRAME_SAMPLES)
     frame = running.audio.read(timeout_s=1.0)
     assert delivered.wait(1.0)
     stop = running.stop()
 
     assert frame is not None
-    assert list(frame.samples.cast("f")) == pytest.approx([0.25, -0.25, 0.5, -0.5])
+    values = list(frame.samples.cast("f"))
+    assert len(values) == _VOICE_FRAME_SAMPLES
+    assert values[:4] == pytest.approx([0.25, -0.25, 0.5, -0.5])
     assert frame.sample_rate_hz == 48_000
     assert frame.channel_count == 1
     assert frame.sequence_number == 0
@@ -332,22 +340,26 @@ def test_python_operator_emits_pcm_into_core_reentry_and_recording(tmp_path) -> 
 
 
 def test_python_operator_rejects_wrong_pcm_frame_size() -> None:
-    provider, closed = _pcm_operator(samples=array("f", [0.0, 0.0, 0.0]))
-    session = Session()
-    source = session.audio_input("operator-input", frame_samples_per_channel=4)
+    provider, closed = _pcm_operator(
+        samples=array("f", [0.0]) * (_VOICE_FRAME_SAMPLES - 1)
+    )
+    session = Session(frame_duration_ms=10)
+    source = session.audio_input(
+        "operator-input", frame_samples_per_channel=_VOICE_FRAME_SAMPLES
+    )
     operator = session.register_operator(provider).declare()
     source.output.connect(operator.input("input"))
     operator.output("output").reenter_audio().send(session.polled_audio())
 
     running = session.start()
-    source.write(array("f", [0.0, 0.0, 0.0, 0.0]))
+    source.write(array("f", [0.0]) * _VOICE_FRAME_SAMPLES)
     assert running.audio.read(timeout_s=0.2) is None
     stop = running.stop()
 
     assert not stop.success
     assert stop.terminal_event is not None
     assert any(
-        "expected 4"
+        "expected 480"
         in " ".join(
             value
             for value in (
@@ -427,7 +439,7 @@ def test_pcm_emission_rejects_non_contiguous_input() -> None:
 
 def test_pcm_operator_fails_explicitly_when_its_native_pool_is_saturated() -> None:
     signal = SignalSpec.audio(role="audio.generated")
-    samples = array("f", [0.0, 0.0, 0.0, 0.0])
+    samples = array("f", [0.0]) * _VOICE_FRAME_SAMPLES
 
     class EmitBeyondCapacity(OperatorNode):
         def process(self, _input_port, _envelope):
@@ -449,8 +461,10 @@ def test_pcm_operator_fails_explicitly_when_its_native_pool_is_saturated() -> No
         ),
         Factory(),
     )
-    session = Session()
-    source = session.audio_input("operator-input", frame_samples_per_channel=4)
+    session = Session(frame_duration_ms=10)
+    source = session.audio_input(
+        "operator-input", frame_samples_per_channel=_VOICE_FRAME_SAMPLES
+    )
     operator = session.register_operator(provider).declare()
     source.output.connect(operator.input("input"))
     operator.output("output").reenter_audio().send(session.polled_audio())
@@ -479,9 +493,13 @@ def test_pcm_operator_fails_explicitly_when_its_native_pool_is_saturated() -> No
 
 @pytest.mark.asyncio
 async def test_async_operator_pcm_uses_the_same_core_reentry(tmp_path) -> None:
-    provider, closed = _pcm_operator(samples=array("f", [0.1, 0.2, 0.3, 0.4]))
-    session = pks_aio.Session(recording_root=tmp_path)
-    source = session.audio_input("operator-input", frame_samples_per_channel=4)
+    generated_samples = array("f", [0.0]) * _VOICE_FRAME_SAMPLES
+    generated_samples[:4] = array("f", [0.1, 0.2, 0.3, 0.4])
+    provider, closed = _pcm_operator(samples=generated_samples)
+    session = pks_aio.Session(recording_root=tmp_path, frame_duration_ms=10)
+    source = session.audio_input(
+        "operator-input", frame_samples_per_channel=_VOICE_FRAME_SAMPLES
+    )
     operator = session.register_operator(provider).declare()
     source.output.connect(operator.input("input"))
     generated = operator.output("output").reenter_audio()
@@ -489,12 +507,14 @@ async def test_async_operator_pcm_uses_the_same_core_reentry(tmp_path) -> None:
     generated.record("generated")
 
     running = await session.start()
-    await source.write(array("f", [0.0, 0.0, 0.0, 0.0]))
+    await source.write(array("f", [0.0]) * _VOICE_FRAME_SAMPLES)
     frame = await running.audio.read(timeout_s=1.0)
     stop = await running.stop()
 
     assert frame is not None
-    assert list(frame.samples.cast("f")) == pytest.approx([0.1, 0.2, 0.3, 0.4])
+    values = list(frame.samples.cast("f"))
+    assert len(values) == _VOICE_FRAME_SAMPLES
+    assert values[:4] == pytest.approx([0.1, 0.2, 0.3, 0.4])
     assert stop.success
     assert stop.recording is not None
     assert stop.recording.complete

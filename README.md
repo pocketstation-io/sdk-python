@@ -1,25 +1,20 @@
-# PocketStation Python SDK
+# PocketStation for Python
 
-PocketStation lets Python applications capture one desktop application and an
-optional microphone as separate live audio stems. One native Session can route
-those stems to Python model code, Relay, and recording without mixing their
-source identities.
+PocketStation captures one desktop application and an optional microphone as
+separate live audio stems. A single native Session can send those stems to
+Python model code, a remote browser, and a multistem recording without mixing
+their source identities.
 
-The Python SDK uses the PocketStation Rust engine. Python owns application and
-model logic; it does not reimplement capture, routing, timing, recording, or
-Relay media transport.
-
-> **Status: preview.** The package is not published to PyPI. The macOS wheel has
-> been tested with the workflow below. Linux and Windows wheels, plus WAN and
-> TURN testing, are still in progress. The current candidate requires
-> PocketStation Core `1.1.3` and Relay Connector `0.1.2`.
+The Python package uses the PocketStation Rust engine for capture, routing,
+timing, recording, and Relay transport. Your Python code owns the model and
+application logic.
 
 ## Capture a desktop application
 
-Install a development wheel:
+Install PocketStation:
 
 ```bash
-python -m pip install 'pocketstation @ file:///absolute/path/to/pocketstation-0.1.0-cp311-abi3-macosx_11_0_arm64.whl'
+python -m pip install pocketstation
 ```
 
 Capture one application without opening a microphone or writing files:
@@ -36,30 +31,23 @@ Add `microphone=True` when you need the default microphone as a second
 independent stem. Add `record_to="recordings"` when you want each selected stem
 recorded. Both behaviors are off by default.
 
-## Find where a voice agent lost time
+## Debug a voice interruption
 
 [`examples/debug_voice_ai.py`](examples/debug_voice_ai.py) sends a physical
 microphone to OpenAI Realtime without another voice framework. PocketStation
-keeps the microphone, generated assistant audio, and the selected browser's
-output as independent recorded stems. It also records provider lifecycle and
-interruption events on the same monotonic timeline.
+keeps microphone input, generated assistant audio, and the selected browser's
+output as independent recorded stems. Provider events and media events share
+one monotonic timeline, so you can see whether delay occurred before the model,
+inside the provider, in local output, or after Relay delivery.
 
 See the [voice-agent debugger instructions](examples/README.md#debug-a-voice-agent-interruption-from-the-media-boundary).
 
 ## Transcribe both sides of a voice application
 
-The transcription example requires:
-
-- macOS with Screen Recording and Microphone permission;
-- Python 3.11 or newer;
-- a PocketStation development wheel built for your Python and macOS target;
-- internet access on the first run to download the default faster-whisper
-  model.
-
 Install the transcription extra, then run the example:
 
 ```bash
-python -m pip install 'pocketstation[transcription] @ file:///absolute/path/to/pocketstation-0.1.0-cp311-abi3-macosx_11_0_arm64.whl'
+python -m pip install 'pocketstation[transcription]'
 python examples/transcribe_voice_app.py
 ```
 
@@ -77,9 +65,9 @@ physical microphone┘
 ```
 
 The complete composition is visible in
-[`examples/transcribe_voice_app.py`](examples/transcribe_voice_app.py). The example-owned
-adapter imports `faster_whisper.WhisperModel` when the Operator starts; it is
-not built into the `pocketstation` SDK namespace.
+[`examples/transcribe_voice_app.py`](examples/transcribe_voice_app.py). The
+example adapter imports `faster_whisper.WhisperModel` when the Operator starts;
+the provider is not part of the `pocketstation` namespace.
 
 This example does not debug turn handling, interruption, agent latency, or
 browser playout. PocketStation does not receive those events in this program.
@@ -97,7 +85,7 @@ that application as one named AudioBus, waits for Relay readiness, and prints a
 single-use word code and browser URL. It does not open the microphone or record
 audio.
 
-The example uses PocketStation's small rate-limited demo service unless you set
+The example uses PocketStation's small, rate-limited demo service unless you set
 `POCKETSTATION_CONTROL_URL` and `POCKETSTATION_RELAY_URL` to services you
 operate. The shared URLs live in `pocketstation_demo`; application code does
 not contain service credentials.
@@ -140,7 +128,7 @@ with session.start():
 The input uses finite preallocated Core buffers. Writes report full, closed,
 cancelled, and invalid-buffer outcomes explicitly.
 
-## Choose the right extension point
+## Build an integration
 
 PocketStation uses four open boundaries:
 
@@ -151,8 +139,7 @@ PocketStation uses four open boundaries:
 | `Connector` | Media or signals leave for an external system. |
 | `Endpoint` | You need the lower-level outbound execution contract. |
 
-Import advanced contracts from their owning module so application code shows
-which boundary it uses:
+Import an authoring contract from the module that owns that boundary:
 
 ```python
 from pocketstation.connector import Connector, ConnectorManifest
@@ -160,9 +147,8 @@ from pocketstation.operator_authoring import OperatorProvider
 from pocketstation.source_authoring import SourceProvider
 ```
 
-The package root contains only the common Session, capture, audio-input, and
-error contracts. Advanced imports name the boundary they use; there is no
-second flat compatibility API.
+The package root contains the common Session, capture, audio-input, and error
+contracts. Provider authoring stays in explicit modules.
 
 Python provider callbacks execute on bounded off-realtime workers. They cannot
 be used as native capture callbacks. Compiled native extensions remain the path
@@ -189,30 +175,24 @@ Python callbacks still cross the interpreter boundary. Capture, routing,
 recording, and Relay transport remain native-speed; arbitrary Python model code
 does not have the same execution cost as Rust.
 
-## Current package status
+## Platform support
 
-| Area | Current status |
+| Area | Support |
 |---|---|
-| Native Rust, Python, Ruff, and MyPy checks | Pass locally |
-| Installed macOS wheel | Tested |
-| Real faster-whisper inference | Tested |
-| Relay and Chromium receiver | Tested on the publisher host only |
-| Physical application and microphone | Tested on the recorded macOS host |
-| Linux wheel | Not yet tested externally |
-| Windows wheel | Not yet tested externally |
-| Receiver over WAN or TURN | Not yet tested externally |
-| Standalone source distribution | Pending the Relay Connector 0.1.2 registry release |
-| PyPI release | Not published |
+| Python | 3.11 and newer |
+| macOS Apple silicon | Installed wheel, application capture, physical microphone, 10 ms voice path, Relay, Chromium, and multistem recording tested |
+| Linux | Core application selection and 10 ms capture tested; installed Python distribution qualification in progress |
+| Windows 11 ARM64 | Core application selection and 10 ms capture tested in a VM; installed Python distribution and physical-device qualification in progress |
+| WAN and TURN | Not yet qualified |
 
-The native binding pins Core `1.1.3` and the shared Relay Connector `0.1.2`.
-Core `1.1.3` is published. Relay Connector `0.1.2` must pass its release gate
-and reach crates.io before the Python source distribution can be released.
+The native binding uses PocketStation Core `1.1.4` and the shared Relay
+Connector `0.1.2`.
 
 The Rust-to-Python audio read currently copies native samples into Python-owned
 bytes before exposing a `memoryview`. The view avoids another Python-side copy;
 the complete boundary is not zero-copy.
 
-## Verify a local change
+## Develop the SDK
 
 ```bash
 uv sync --extra transcription
