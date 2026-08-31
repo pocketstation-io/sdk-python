@@ -13,6 +13,9 @@ name: release-python
 permissions:
   contents: read
 
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
 concurrency:
   group: pypi-publish
   cancel-in-progress: false
