@@ -31,14 +31,7 @@ def native_extension_library(
     )
     prefix = "" if sys.platform == "win32" else "lib"
     library = directory / f"{prefix}pks_python_fixture{suffix}"
-    source = (
-        Path(__file__).resolve().parents[1]
-        / ".."
-        / "pocketstation"
-        / "tests"
-        / "fixtures"
-        / "native_extension_plugin.rs"
-    ).resolve()
+    source = Path(__file__).with_name("fixtures") / "native_extension_plugin.rs"
     environment = os.environ.copy()
     environment["PKS_FIXTURE_MARKER"] = str(marker)
     subprocess.run(

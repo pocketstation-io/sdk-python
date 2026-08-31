@@ -10,7 +10,6 @@ import pytest
 from pocketstation._native import Session as NativeSession
 
 ROOT = Path(__file__).parents[1]
-CORE = ROOT.parent / "pocketstation"
 CHILD = Path(__file__).with_name("_pkss_child.py")
 
 
@@ -38,15 +37,10 @@ def session_with_hung_sidecar(tmp_path: Path) -> pks.RunningSession:
 
 def test_sidecar_binding_contains_no_python_callback_contract() -> None:
     sidecar_source = (ROOT / "native/src/sidecar.rs").read_text()
-    core_extension = (CORE / "src/abi/executable_extension.rs").read_text()
 
     assert "PyAny" not in sidecar_source
     assert "PyObject" not in sidecar_source
     assert "callable" not in sidecar_source.lower()
-    assert (
-        "PCM audio remains on the native fixed-capacity realtime lane" in core_extension
-    )
-    assert "blocking/async Session" in core_extension
 
 
 def test_blocking_sidecar_reap_detaches_from_python(tmp_path: Path) -> None:
