@@ -8,7 +8,7 @@ from time import monotonic
 from types import TracebackType
 from typing import TYPE_CHECKING
 
-from ..control import SessionCredentials, SessionId, SessionSnapshot
+from ..control import ControlPlaneError, SessionCredentials, SessionId, SessionSnapshot
 from ..errors import _native_call
 from ..relay import (
     PublisherActivation,
@@ -240,14 +240,22 @@ class RelaySession:
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise RelayTimeoutError(timeout_message, timeout_code)
-            snapshot = await self._control.session(
-                self.session_id,
-                self.credentials.source_token,
-                timeout_seconds=_bounded_request_timeout(
-                    remaining,
-                    self._request_timeout_seconds,
-                ),
-            )
+            try:
+                snapshot = await self._control.session(
+                    self.session_id,
+                    self.credentials.source_token,
+                    timeout_seconds=_bounded_request_timeout(
+                        remaining,
+                        self._request_timeout_seconds,
+                    ),
+                )
+            except ControlPlaneError as error:
+                if error.code != "control.request":
+                    raise
+                await asyncio.sleep(
+                    min(poll_interval_seconds, max(0.0, deadline - monotonic()))
+                )
+                continue
             if predicate(snapshot):
                 return snapshot
             await asyncio.sleep(

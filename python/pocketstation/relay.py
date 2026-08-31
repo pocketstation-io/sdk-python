@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 from ._native import RelayPublisher as _NativeRelayPublisher
 from .control import (
     ControlClient,
+    ControlPlaneError,
     SessionCredentials,
     SessionId,
     SessionSnapshot,
@@ -306,11 +307,17 @@ class RelaySession:
                 remaining,
                 self._request_timeout_seconds,
             )
-            snapshot = self._control.session(
-                self.session_id,
-                self.credentials.source_token,
-                timeout_seconds=request_timeout,
-            )
+            try:
+                snapshot = self._control.session(
+                    self.session_id,
+                    self.credentials.source_token,
+                    timeout_seconds=request_timeout,
+                )
+            except ControlPlaneError as error:
+                if error.code != "control.request":
+                    raise
+                sleep(min(poll_interval_seconds, max(0.0, deadline - monotonic())))
+                continue
             if predicate(snapshot):
                 return snapshot
             sleep(min(poll_interval_seconds, max(0.0, deadline - monotonic())))

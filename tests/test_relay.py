@@ -151,6 +151,38 @@ def test_relay_wait_uses_a_single_bounded_deadline() -> None:
         remote.close()
 
 
+def test_relay_wait_retries_transient_control_transport_failure() -> None:
+    get_calls = 0
+
+    def control_handler(request: httpx.Request) -> httpx.Response:
+        nonlocal get_calls
+        if request.method == "POST":
+            return httpx.Response(201, json=CREATE_RESPONSE)
+        if request.method == "GET":
+            get_calls += 1
+            if get_calls == 1:
+                raise httpx.ReadTimeout("temporary read timeout", request=request)
+            return httpx.Response(200, json=_snapshot(ready=True, subscription_count=0))
+        return httpx.Response(204)
+
+    with httpx.Client(transport=httpx.MockTransport(control_handler)) as control_http:
+        control = ControlClient("https://control.example", http_client=control_http)
+        remote = RelaySession.create(
+            control_plane_url="https://control.example",
+            relay_url="https://relay.example",
+            control_client=control,
+        )
+
+        activation = remote.wait_for_publisher(
+            timeout_seconds=0.1,
+            poll_interval_seconds=0.001,
+        )
+
+        assert activation.snapshot.ready is True
+        assert get_calls == 2
+        remote.close()
+
+
 @pytest.mark.parametrize(
     "join_url",
     [
