@@ -1,4 +1,4 @@
-"""Exact typed graph declarations owned by the canonical Rust Session."""
+"""Typed graph declarations owned by the Rust Session."""
 
 from __future__ import annotations
 

@@ -178,7 +178,7 @@ class CapturePermissionTransition:
 
 
 class CapturePermissionLifecycle:
-    """Canonical control-plane permission epoch owner.
+    """Track host-reported capture permission changes for one epoch.
 
     The host supplies authoritative platform observations. Equal observations
     produce no transition; PocketStation never converts generic backend errors

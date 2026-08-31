@@ -5,23 +5,41 @@ need the lower-level API.
 
 ## Get started
 
-- [Capture one desktop application](../README.md#capture-a-desktop-application)
+- [Capture one desktop application](getting-started/capture.md)
 - [Transcribe both sides of a voice application](../README.md#transcribe-both-sides-of-a-voice-application)
 - [Stream any application audio to a browser](../README.md#stream-any-application-audio-to-a-browser)
 - [Browse the runnable examples](../examples/README.md)
 
 ## Build an integration
 
-- [`pocketstation.session`](../python/pocketstation/session.py) owns synchronous
+- [Compose a bounded voice workflow](guides/voice.md)
+- [Publish a named AudioBus through Relay](guides/relay.md)
+- [Build a Source, Operator, Connector, or Endpoint](guides/integrations.md)
+
+## Understand the system
+
+- [Session ownership, bounds, and shutdown](concepts/session-and-bounds.md)
+
+## Operate and upgrade
+
+- [Prepare and qualify each platform](operations/platform-support.md)
+- [Troubleshoot capture, delivery, and shutdown](troubleshooting.md)
+- [Read the release notes](../RELEASE_NOTES.md)
+
+## Reference
+
+- [`pocketstation.session`](../python/pocketstation/session.py) — synchronous
   Session declaration and lifecycle.
-- [`pocketstation.aio`](../python/pocketstation/aio/__init__.py) provides the
-  asyncio projection of the same native Session.
-- [`pocketstation.graph`](../python/pocketstation/graph.py) declares stems,
-  routes, ports, and typed signals.
-- [`pocketstation.source_authoring`](../python/pocketstation/source_authoring.py),
-  [`pocketstation.operator_authoring`](../python/pocketstation/operator_authoring.py),
-  and [`pocketstation.connector`](../python/pocketstation/connector.py) are the
-  open provider boundaries.
+- [`pocketstation.aio`](../python/pocketstation/aio/__init__.py) — asyncio over
+  the same native Session.
+- [`pocketstation.voice`](../python/pocketstation/voice/__init__.py) —
+  provider-neutral voice composition contracts.
+- [`pocketstation.graph`](../python/pocketstation/graph.py) — stems, routes,
+  ports, and signals.
+- [`pocketstation.observations`](../python/pocketstation/observations.py) —
+  runtime metrics and outcomes.
+- [Python API map](reference/api-map.md) — public entry points and advanced
+  modules by task.
 
 For supported platforms and current qualification limits, read the
 [repository README](../README.md#platform-support).

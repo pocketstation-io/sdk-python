@@ -150,7 +150,7 @@ class PcmSource:
 
 
 class AudioInput(PcmSource):
-    """Intent-first input for audio already owned by the embedding application."""
+    """Feed application-owned audio into a Session through bounded native buffers."""
 
     def write(
         self,

@@ -389,7 +389,7 @@ class Session(_GraphSessionDeclarations):
     ) -> Endpoint:
         """Declare one Connector destination using an idempotent registration.
 
-        This is the intent-first form for the common one-destination case.
+        Use this form for the common one-destination case.
         :meth:`register_connector` remains available when one implementation
         must declare several independently configured Endpoints.
         """

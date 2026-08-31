@@ -1,11 +1,15 @@
 # PocketStation for Python release notes
 
-## 0.1.0 — Capture, inspect, and route live desktop audio
+## 0.1.0 — 2026-08-31
+
+Capture, inspect, and route live desktop audio.
 
 PocketStation for Python captures one desktop application and an optional
 microphone as independent live stems. A single native Session can send those
 stems to Python model code, PocketStation Relay, and a multistem recording
 without mixing their source identities.
+
+### Added
 
 The first release includes:
 
@@ -35,7 +39,7 @@ The current receiver does not acknowledge the exact sample played through a
 loudspeaker. PocketStation therefore reports acoustic hearing and exact
 provider-history truncation as unavailable instead of inferring them.
 
-### Platform support
+### Supported and qualified environments
 
 - macOS Apple silicon has installed-wheel evidence for application capture,
   physical microphone input, the 10 ms voice path, Relay, Chromium, and
@@ -45,4 +49,10 @@ provider-history truncation as unavailable instead of inferring them.
   workflow.
 - WAN and TURN behavior are not yet qualified.
 
+### Compatibility and upgrade
+
 This is the first public Python release. There is no earlier package migration.
+
+```console
+python -m pip install pocketstation==0.1.0
+```
