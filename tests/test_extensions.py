@@ -171,7 +171,7 @@ def test_native_library_receipt_is_typed_and_immutable(
     library, _ = native_extension_library
     receipt = pks.Session().load_native_extension_library(library)
 
-    assert receipt.canonical_path == library.resolve()
+    assert receipt.canonical_path.samefile(library)
     assert receipt.registrations == (
         pks.NativeExtensionRegistration(SOURCE_ID, pks.ExtensionKind.SOURCE, 1, 1),
         pks.NativeExtensionRegistration(
@@ -232,7 +232,7 @@ def test_async_session_uses_the_same_native_library_declaration(
     library, _ = native_extension_library
     receipt = aio.Session().load_native_extension_library(library)
 
-    assert receipt.canonical_path == library.resolve()
+    assert receipt.canonical_path.samefile(library)
     assert [registration.kind for registration in receipt.registrations] == [
         pks.ExtensionKind.SOURCE,
         pks.ExtensionKind.OPERATOR,

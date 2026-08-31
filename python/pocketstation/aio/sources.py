@@ -31,8 +31,8 @@ async def application_capture_available() -> bool:
 
 
 async def microphone_permission_observation() -> PermissionObservation:
-    """Read non-prompting native microphone authorization off the event loop."""
-    return await asyncio.to_thread(_microphone_permission_observation)
+    """Read the current microphone authorization without prompting."""
+    return _microphone_permission_observation()
 
 
 __all__ = [
