@@ -71,7 +71,7 @@ async def test_faster_whisper_is_the_concise_source_aware_python_path() -> None:
     try:
         for _ in range(10):
             await audio.write(array("f", [0.0] * 480))
-            await asyncio.sleep(0.001)
+            await asyncio.sleep(0.01)
         envelope = await asyncio.wait_for(
             anext(running.signals(transcripts).__aiter__()),
             timeout=5.0,
