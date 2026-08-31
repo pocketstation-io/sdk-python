@@ -215,6 +215,10 @@ uv run mypy python tests/qualification/typing_contract.py examples
   guidance.
 - [`docs/README.md`](docs/README.md) — task guides, concepts, operations, and
   API ownership.
+- [Write application-owned audio](docs/guides/application-audio.md) — bounded
+  PCM input and selective output cancellation.
+- [Record and observe a Session](docs/guides/record-and-observe.md) — multistem
+  outcomes, route metrics, and lifecycle events.
 - [`examples/README.md`](examples/README.md) — runnable examples and
   prerequisites.
 - `pocketstation.capture` — concise application and microphone capture.

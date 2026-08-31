@@ -12,6 +12,8 @@ need the lower-level API.
 
 ## Build an integration
 
+- [Write application-owned audio into a Session](guides/application-audio.md)
+- [Record stems and inspect Session delivery](guides/record-and-observe.md)
 - [Compose a bounded voice workflow](guides/voice.md)
 - [Publish a named AudioBus through Relay](guides/relay.md)
 - [Build a Source, Operator, Connector, or Endpoint](guides/integrations.md)
