@@ -167,6 +167,7 @@ async def test_given_queued_output_when_interrupted_then_only_replacement_is_rea
         frame_samples_per_channel=480,
     )
     output.output.send(session.polled_audio())
+
     async def respond(
         update: TranscriptUpdate,
         _context: ConversationContext,
