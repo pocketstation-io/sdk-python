@@ -577,6 +577,14 @@ fn python_application_capture_available() -> bool {
 
 #[pyfunction(name = "microphone_permission_observation")]
 fn python_microphone_permission_observation() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        // Core 1.1.4 can invalidate cached WinRT state after a repeated
+        // non-prompting query in an embedded host. Until the corrected Core
+        // patch is published, fail closed instead of risking process failure.
+        return permission_observation_name(PermissionObservation::NotObservable);
+    }
+    #[cfg(not(target_os = "windows"))]
     permission_observation_name(pocketstation::microphone_permission_observation())
 }
 

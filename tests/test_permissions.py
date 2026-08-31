@@ -65,6 +65,15 @@ def test_linux_truth_is_not_reinterpreted_as_allowed_or_denied() -> None:
     )
 
 
+def test_windows_binding_fails_closed_until_safe_core_query_is_available() -> None:
+    if sys.platform != "win32":
+        pytest.skip("Windows-specific platform contract")
+    assert (
+        pocketstation.microphone_permission_observation()
+        is PermissionObservation.NOT_OBSERVABLE
+    )
+
+
 @pytest.mark.asyncio
 async def test_async_permission_observation_shares_native_policy() -> None:
     assert (

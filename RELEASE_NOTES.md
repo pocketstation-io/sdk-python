@@ -47,6 +47,9 @@ provider-history truncation as unavailable instead of inferring them.
 - Linux and Windows have Core application-selection and 10 ms capture evidence.
   Installed Python distributions are qualified separately by the release
   workflow.
+- Python reports Windows microphone permission as `NOT_OBSERVABLE` before
+  capture. Opening the microphone remains authoritative and returns its real
+  startup outcome. This avoids an unsafe repeated WinRT query in Core 1.1.4.
 - WAN and TURN behavior are not yet qualified.
 
 ### Compatibility and upgrade

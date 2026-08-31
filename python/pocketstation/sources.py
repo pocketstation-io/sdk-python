@@ -586,9 +586,9 @@ def application_capture_available() -> bool:
 def microphone_permission_observation() -> PermissionObservation:
     """Read microphone authorization without prompting.
 
-    Linux and any backend without an authoritative query return
-    :attr:`PermissionObservation.NOT_OBSERVABLE`; callers must not reinterpret
-    it as allowed or denied.
+    Linux, Python hosts on Windows with Core 1.1.4, and any backend without an
+    authoritative query return :attr:`PermissionObservation.NOT_OBSERVABLE`;
+    callers must not reinterpret it as allowed or denied.
     """
     observation = _native_call(_native_microphone_permission_observation)
     return PermissionObservation(observation)
