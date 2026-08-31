@@ -4,6 +4,7 @@ import asyncio
 from array import array
 from collections.abc import AsyncIterator
 from pathlib import Path
+from threading import Event
 
 import pocketstation.aio as pocketstation
 import pytest
@@ -11,6 +12,7 @@ from conversation_support import (
     TRANSCRIPT_SIGNAL,
     transcript_operator,
     transcript_source,
+    transcript_source_after,
 )
 from pocketstation.conversation import (
     ConversationConfig,
@@ -149,7 +151,10 @@ async def test_given_queued_output_when_interrupted_then_only_replacement_is_rea
     tmp_path: Path,
 ) -> None:
     session = pocketstation.Session(recording_root=tmp_path)
-    source = session.register_source(transcript_source("old", "new")).declare()
+    old_frame_queued = Event()
+    source = session.register_source(
+        transcript_source_after("old", "new", ready=old_frame_queued)
+    ).declare()
     operator = session.register_operator(transcript_operator()).declare()
     source.output("transcript").connect(operator.input("transcript"))
     transcripts = session.subscribe(
@@ -162,8 +167,6 @@ async def test_given_queued_output_when_interrupted_then_only_replacement_is_rea
         frame_samples_per_channel=480,
     )
     output.output.send(session.polled_audio())
-    old_frame_queued = asyncio.Event()
-
     async def respond(
         update: TranscriptUpdate,
         _context: ConversationContext,
