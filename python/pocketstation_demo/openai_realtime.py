@@ -95,6 +95,7 @@ class RealtimeVoiceConfig:
 class RealtimeVoiceObservations:
     """Finite provider and PocketStation boundary counters."""
 
+    input_ready: bool
     input_frames_sent: int
     input_frames_dropped: int
     output_chunks_received: int
@@ -272,8 +273,9 @@ class _OpenAIRealtimeConnection:
     async def start(self, running: object) -> None:
         if not isinstance(running, pks.RunningSession):
             raise TypeError("running must be a pocketstation.aio.RunningSession")
+        await self._voice.start_observers(running, self._event_log)
         await self._voice.connect()
-        await self._voice.start(running, self._event_log)
+        self._voice.start_provider_io()
         self._voice.enable_input()
         self._started = True
 
@@ -337,6 +339,7 @@ class _OpenAIRealtimeVoice:
         self._stop_requested = asyncio.Event()
         self._socket: ClientConnection | None = None
         self._tasks: list[asyncio.Task[None]] = []
+        self._receive_task: asyncio.Task[None] | None = None
         self._response: _ResponseOutput | None = None
         self._failure: BaseException | None = None
         self._timelines: dict[int, _RouteTimeline] = {}
@@ -353,11 +356,13 @@ class _OpenAIRealtimeVoice:
         self._media_worker_errors = 0
         self._event_input_drops = 0
         self._started = False
+        self._provider_io_started = False
         self._closed = False
 
     @property
     def observations(self) -> RealtimeVoiceObservations:
         return RealtimeVoiceObservations(
+            input_ready=self._input_enabled.is_set(),
             input_frames_sent=self._input_frames_sent,
             input_frames_dropped=self._input_frames_dropped,
             output_chunks_received=self._output_chunks_received,
@@ -390,7 +395,7 @@ class _OpenAIRealtimeVoice:
             max_queue=16,
             write_limit=32_768,
         )
-        self._spawn(self._receive(), "pks-openai-receive")
+        self._receive_task = self._spawn(self._receive(), "pks-openai-receive")
         await self._send(
             {
                 "type": "session.update",
@@ -431,28 +436,41 @@ class _OpenAIRealtimeVoice:
         if self._failure is not None:
             raise RuntimeError("OpenAI Realtime setup failed") from self._failure
 
-    async def start(
+    async def start_observers(
         self,
         running: pks.RunningSession,
         event_log: BusSubscription[bytes],
     ) -> None:
-        """Start bounded media and event workers for one running Session."""
-        if self._socket is None:
-            raise RuntimeError("connect() must complete before start()")
+        """Drain Session media while the provider connection is starting."""
         if self._started:
-            raise RuntimeError("OpenAI Realtime media workers already started")
+            raise RuntimeError("OpenAI Realtime observers already started")
         if int(running.session_id) != event_log.session_id:
             raise ValueError("event_log and running must belong to one Session")
         self._started = True
         self._spawn(self._read_audio(running), "pks-openai-media")
-        self._spawn(self._send_audio(), "pks-openai-input")
-        self._spawn(self._write_output(), "pks-openai-output")
         self._spawn(self._read_events(running, event_log), "pks-openai-events")
 
-    def _spawn(self, worker: Coroutine[Any, Any, None], name: str) -> None:
+    def start_provider_io(self) -> None:
+        """Start provider input and output workers after authentication."""
+        if not self._started:
+            raise RuntimeError("start_observers() must complete before provider I/O")
+        if self._socket is None:
+            raise RuntimeError("connect() must complete before provider I/O")
+        if self._provider_io_started:
+            raise RuntimeError("OpenAI Realtime provider workers already started")
+        self._provider_io_started = True
+        self._spawn(self._send_audio(), "pks-openai-input")
+        self._spawn(self._write_output(), "pks-openai-output")
+
+    def _spawn(
+        self,
+        worker: Coroutine[Any, Any, None],
+        name: str,
+    ) -> asyncio.Task[None]:
         task = asyncio.create_task(worker, name=name)
         task.add_done_callback(self._worker_finished)
         self._tasks.append(task)
+        return task
 
     def _worker_finished(self, task: asyncio.Task[None]) -> None:
         if task.cancelled():
@@ -479,12 +497,13 @@ class _OpenAIRealtimeVoice:
 
     async def wait(self) -> None:
         """Wait until the provider connection closes or fails."""
-        if not self._tasks:
+        receive_task = self._receive_task
+        if receive_task is None:
             raise RuntimeError("connect() must complete before wait()")
         stop_task = asyncio.create_task(self._stop_requested.wait())
         try:
             done, _ = await asyncio.wait(
-                {self._tasks[0], stop_task},
+                {receive_task, stop_task},
                 timeout=self._config.maximum_session_s,
                 return_when=asyncio.FIRST_COMPLETED,
             )
@@ -495,8 +514,8 @@ class _OpenAIRealtimeVoice:
                 )
                 self.request_stop()
                 return
-            if self._tasks[0] in done:
-                await self._tasks[0]
+            if receive_task in done:
+                await receive_task
         finally:
             stop_task.cancel()
             await asyncio.gather(stop_task, return_exceptions=True)
