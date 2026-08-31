@@ -49,7 +49,7 @@ def test_application_and_microphone_record_as_independent_stems(tmp_path) -> Non
         stop.recording.session_directory / "manifest.json"
     )
     assert stop.recording.manifest_path.is_file()
-    assert stop.recording.manifest_schema_version == 1
+    assert stop.recording.manifest_schema_version == 2
     outcomes = {stem.stem_name: stem for stem in stop.recording.stems}
     assert set(outcomes) == {"application", "microphone"}
     assert all(stem.frames_written_total > 0 for stem in outcomes.values())
