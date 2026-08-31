@@ -37,7 +37,7 @@ from websockets.asyncio.client import ClientConnection, connect
 
 _MODEL_SAMPLE_RATE_HZ = 24_000
 _SESSION_SAMPLE_RATE_HZ = 48_000
-_MICROPHONE_FRAME_SAMPLES = 960
+_MICROPHONE_FRAME_SAMPLE_COUNTS = (480, 960)
 _OUTPUT_FRAME_SAMPLES = 480
 _OUTPUT_FRAME_DURATION_S = _OUTPUT_FRAME_SAMPLES / _SESSION_SAMPLE_RATE_HZ
 _MAX_EVENT_BYTES = 262_144
@@ -191,6 +191,12 @@ class _ResponseOutput:
     item_id: str | None = None
 
 
+@dataclass(slots=True)
+class _TranscriptProgress:
+    text: str = ""
+    revision: int = 0
+
+
 class _Pcm24To48:
     def __init__(self) -> None:
         self._previous: float | None = None
@@ -248,7 +254,7 @@ class OpenAIRealtime:
     @property
     def capabilities(self) -> DuplexVoiceCapabilities:
         return DuplexVoiceCapabilities(
-            transcript_revisions=False,
+            transcript_revisions=True,
             stable_prefix=False,
             provider_speech_detection=True,
             interruption=True,
@@ -405,6 +411,7 @@ class _OpenAIRealtimeVoice:
         self._event_records: deque[dict[str, Any]] = deque(
             maxlen=self._conversation_config.event_capacity
         )
+        self._transcripts: dict[str, _TranscriptProgress] = {}
         self._input_frames_sent = 0
         self._input_frames_dropped = 0
         self._output_chunks_received = 0
@@ -1003,7 +1010,16 @@ class _OpenAIRealtimeVoice:
         if not isinstance(text, str):
             text = event.get("transcript")
         values: dict[str, object] = {}
-        if isinstance(text, str):
+        if event_type.startswith("conversation.item.input_audio_transcription."):
+            values.update(
+                _transcript_event_values(
+                    self._transcripts,
+                    event_type,
+                    event,
+                    text,
+                )
+            )
+        elif isinstance(text, str):
             values["text"] = text[:8_192]
         for name in ("item_id", "response_id"):
             value = event.get(name)
@@ -1030,8 +1046,8 @@ def _encode_microphone_frame(frame: Any) -> str:
     if frame.sample_rate_hz != _SESSION_SAMPLE_RATE_HZ or frame.channel_count != 1:
         raise ValueError("the OpenAI example requires 48 kHz mono Session audio")
     samples = _f32le(frame.samples_f32le)
-    if len(samples) != _MICROPHONE_FRAME_SAMPLES:
-        raise ValueError("the OpenAI example requires exact 20 ms Session frames")
+    if len(samples) not in _MICROPHONE_FRAME_SAMPLE_COUNTS:
+        raise ValueError("the OpenAI example requires 10 ms or 20 ms Session frames")
     pcm = array(
         "h",
         (
@@ -1042,6 +1058,38 @@ def _encode_microphone_frame(frame: Any) -> str:
     if sys.byteorder != "little":
         pcm.byteswap()
     return base64.b64encode(pcm.tobytes()).decode("ascii")
+
+
+def _transcript_event_values(
+    transcripts: dict[str, _TranscriptProgress],
+    event_type: str,
+    event: Mapping[str, Any],
+    text: object,
+) -> dict[str, object]:
+    item_id = _required_string(event, "item_id")
+    progress = transcripts.setdefault(item_id, _TranscriptProgress())
+    progress.revision += 1
+    if event_type.endswith(".delta"):
+        if not isinstance(text, str):
+            raise ValueError("OpenAI Realtime transcript delta is missing text")
+        progress.text = (progress.text + text)[:8_192]
+        return {
+            "text": progress.text,
+            "stable_prefix": "",
+            "utterance_id": item_id,
+            "transcript_revision": progress.revision,
+            "final": False,
+        }
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("OpenAI Realtime final transcript is missing text")
+    progress.text = text[:8_192]
+    return {
+        "text": progress.text,
+        "stable_prefix": progress.text,
+        "utterance_id": item_id,
+        "transcript_revision": progress.revision,
+        "final": True,
+    }
 
 
 def _pcm16(value: float) -> int:
@@ -1094,6 +1142,12 @@ def _voice_event(record: Mapping[str, Any]) -> VoiceEvent:
         timestamp_ns=timestamp_ns,
         stage=("pocketstation" if kind.startswith("pocketstation.") else "provider"),
         provider_id="openai-realtime",
+        utterance_id=_optional_mapping_string(record, "utterance_id"),
+        transcript_revision=(
+            int(record["transcript_revision"])
+            if isinstance(record.get("transcript_revision"), int)
+            else None
+        ),
         response_id=_optional_mapping_string(record, "response_id"),
         output_generation_id=(
             int(output_generation) if isinstance(output_generation, int) else None
