@@ -68,3 +68,9 @@ python-source = "python"
 python-packages = ["pocketstation", "pocketstation_demo"]
 module-name = "pocketstation._native"
 exclude = ["**/__pycache__/**", "**/*.pyc", "**/*.pyo"]
+include = [
+    { path = "RELEASE_NOTES.md", format = "sdist" },
+    { path = "docs/**/*.md", format = "sdist" },
+    { path = "examples/*.py", format = "sdist" },
+    { path = "examples/README.md", format = "sdist" },
+]

@@ -1,6 +1,8 @@
 # Python examples
 
 Each example is a complete Python program. Start with the task you want to try.
+Run these files from a repository checkout or from the source archive. Use
+`pocketstation-demo` when you want the installed command.
 
 ## Debug a voice-agent interruption from the media boundary
 
@@ -95,6 +97,11 @@ in application code.
 The installed `pocketstation-demo` command combines independent application and
 microphone capture, faster-whisper transcripts, two Relay/browser AudioBuses,
 and a finalized two-stem recording.
+
+```bash
+python -m pip install 'pocketstation[transcription]'
+pocketstation-demo
+```
 
 The current physical voice proof runs the browser on the publisher host through
 the deployed Relay. WAN and TURN behavior have not been qualified yet.

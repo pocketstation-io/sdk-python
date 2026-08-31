@@ -41,6 +41,13 @@ one monotonic timeline, so you can see whether delay occurred before the model,
 inside the provider, in local output, or after Relay delivery.
 
 See the [voice-agent debugger instructions](examples/README.md#debug-a-voice-agent-interruption-from-the-media-boundary).
+Run repository examples from a source checkout or source archive. The installed
+`pocketstation-demo` command is the packaged application-and-microphone demo.
+
+```bash
+python -m pip install 'pocketstation[transcription]'
+pocketstation-demo
+```
 
 ## Transcribe both sides of a voice application
 
