@@ -10,13 +10,13 @@ need the lower-level API.
 - [Stream any application audio to a browser](../README.md#stream-any-application-audio-to-a-browser)
 - [Browse the runnable examples](../examples/README.md)
 
-## Build an integration
+## Create an integration
 
 - [Write application-owned audio into a Session](guides/application-audio.md)
 - [Record stems and inspect Session delivery](guides/record-and-observe.md)
 - [Compose a bounded voice workflow](guides/voice.md)
 - [Publish a named AudioBus through Relay](guides/relay.md)
-- [Build a Source, Operator, Connector, or Endpoint](guides/integrations.md)
+- [Create a Source, Operator, Connector, or Endpoint](guides/integrations.md)
 
 ## Understand the system
 

@@ -16,6 +16,24 @@ recording, and receiver playout as separate observations.
 
 Do not treat an empty iterator as proof of silence when source opening failed.
 
+If the application restarted, do not reuse its old process ID. Stop the current
+Session, discover the source again, and create a new Session with
+`Source.from_discovered()`. PocketStation reports
+`EXPLICIT_REDISCOVERY_AND_NEW_SESSION` instead of silently selecting another
+process or device.
+
+## Permission changes are not reflected
+
+`microphone_permission_observation()` never prompts. Treat `NOT_OBSERVABLE` as
+unknown and use the typed Source open result. On macOS, restart the Python host
+after changing screen-recording or microphone consent. On Windows and Linux,
+verify that the current desktop user or service can access the selected audio
+session and device.
+
+Do not fall back from denied application capture to system mix or the default
+microphone without a visible user choice. The fallback changes what audio the
+application receives.
+
 ## Python misses frames
 
 Inspect route capacity, queue depth, delivered frames, drops, and

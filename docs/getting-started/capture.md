@@ -30,6 +30,11 @@ Replace `Spotify` with a display name or application identifier. Pass a
 positive integer, such as `application=1234`, when you already have a process
 ID. Selection must resolve one running application before the Session starts.
 
+A process ID lasts only for that process instance. If the application restarts,
+discover it again. For a saved selection, use
+`pocketstation.discover_sources()` and `Source.from_discovered()` as described
+in [Persist a source at its supported scope](../operations/platform-support.md#persist-a-source-at-its-supported-scope).
+
 The context manager starts one native Session and joins it when the block
 exits. The iterator reads a finite native Endpoint; it does not create an
 unbounded Python audio queue.
