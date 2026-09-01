@@ -9,9 +9,29 @@ from pathlib import Path
 from threading import Event, Thread
 from time import sleep
 
+import pocketstation as public_pocketstation
 import pocketstation._api as pocketstation
 
 _VOICE_FRAME_SAMPLES = 480
+
+
+class InstalledClassConnector(public_pocketstation.Connector):
+    def __init__(self) -> None:
+        self.started_total = 0
+        self.stopped_total = 0
+        self.source_ids: set[object] = set()
+        self.delivered = Event()
+
+    def start(self) -> None:
+        self.started_total += 1
+
+    def send(self, frame: public_pocketstation.AudioFrame) -> None:
+        self.source_ids.add(frame.source_id)
+        if len(self.source_ids) == 2:
+            self.delivered.set()
+
+    def stop(self) -> None:
+        self.stopped_total += 1
 
 
 class InstalledSource(pocketstation.SourceDriver):
@@ -274,6 +294,50 @@ def _exercise_saturation() -> None:
     raise RuntimeError("installed AudioInput did not expose finite saturation")
 
 
+def _exercise_class_connector() -> None:
+    destination = InstalledClassConnector()
+    session = public_pocketstation.Session()
+    application = session.audio_input("application", frame_samples_per_channel=4)
+    microphone = session.audio_input("microphone", frame_samples_per_channel=4)
+    application.output.send_to(destination)
+    microphone.output.send_to(destination)
+    running = session.start()
+    application.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+    microphone.write(array("f", [0.5, 0.6, 0.7, 0.8]))
+    if not destination.delivered.wait(1.0):
+        raise RuntimeError("installed class Connector did not receive both stems")
+    result = running.stop()
+    if not result.success:
+        raise RuntimeError("installed class Connector did not stop successfully")
+    if destination.started_total != 1 or destination.stopped_total != 1:
+        raise RuntimeError("installed class Connector did not use one lifecycle")
+
+
+def _exercise_function_connector() -> None:
+    delivered = Event()
+    stopped_total = 0
+
+    def send(frame: public_pocketstation.AudioFrame) -> None:
+        if frame.samples:
+            delivered.set()
+
+    def stop() -> None:
+        nonlocal stopped_total
+        stopped_total += 1
+
+    destination = public_pocketstation.Connector(send=send, stop=stop)
+    session = public_pocketstation.Session()
+    audio = session.audio_input("function", frame_samples_per_channel=4)
+    audio.output.send_to(destination)
+    running = session.start()
+    audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+    if not delivered.wait(1.0):
+        raise RuntimeError("installed function Connector did not receive audio")
+    result = running.stop()
+    if not result.success or stopped_total != 1:
+        raise RuntimeError("installed function Connector did not close once")
+
+
 def _exercise_abort() -> None:
     delivered = Event()
     stopped = Event()
@@ -391,6 +455,8 @@ def _exercise_operator_pcm_reentry() -> None:
 def main() -> None:
     provider = _exercise_complete_provider_path()
     _exercise_saturation()
+    _exercise_class_connector()
+    _exercise_function_connector()
     _exercise_abort()
     _exercise_structured_failure()
     _exercise_operator_pcm_reentry()

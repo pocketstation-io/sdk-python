@@ -4,6 +4,22 @@ Each example is a complete Python program. Start with the task you want to try.
 Run these files from a repository checkout or from the source archive. Use
 `pocketstation-demo` when you want the installed command.
 
+## Send audio to your own provider
+
+[`send_audio_to_websocket.py`](send_audio_to_websocket.py) creates a Connector
+from one async delivery function. Set `AUDIO_WEBSOCKET_URL` and
+`AUDIO_WEBSOCKET_TOKEN`, then
+run:
+
+```bash
+python -m pip install 'pocketstation[voice-agent-debug]'
+python examples/send_audio_to_websocket.py
+```
+
+The example asks which running application to capture. PocketStation owns the
+bounded route and shutdown; the surrounding WebSocket context owns its
+connection.
+
 ## Debug a voice-agent interruption from the media boundary
 
 [`debug_voice_ai.py`](debug_voice_ai.py) connects PocketStation directly to

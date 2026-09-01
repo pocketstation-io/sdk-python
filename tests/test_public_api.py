@@ -13,10 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_root_exports_are_a_small_intentional_entry_point() -> None:
     assert set(pocketstation.__all__) == {
         "RUNTIME_COMPATIBILITY",
+        "AudioFrame",
         "AudioInput",
         "AudioInputConfig",
         "Capture",
         "CaptureError",
+        "Connector",
         "PcmSource",
         "PocketStationError",
         "RecordingOutcome",
@@ -33,7 +35,8 @@ def test_root_exports_are_a_small_intentional_entry_point() -> None:
 
 
 def test_advanced_contracts_are_not_duplicated_at_the_package_root() -> None:
-    assert not hasattr(pocketstation, "Connector")
+    assert hasattr(pocketstation, "Connector")
+    assert not hasattr(pocketstation, "ConnectorManifest")
     assert not hasattr(pocketstation, "OperatorProvider")
 
 
@@ -41,6 +44,8 @@ def test_async_namespace_is_concise() -> None:
     assert set(pocketstation.aio.__all__) == {
         "AudioInput",
         "Capture",
+        "Connector",
+        "ConnectorDeadlines",
         "PcmSource",
         "RelaySession",
         "RunningSession",
@@ -48,7 +53,8 @@ def test_async_namespace_is_concise() -> None:
         "capture",
         "discover_sources",
     }
-    assert not hasattr(pocketstation.aio, "Connector")
+    assert hasattr(pocketstation.aio, "Connector")
+    assert not hasattr(pocketstation.aio, "ConnectorManifest")
 
 
 def test_private_native_runtime_and_stub_export_the_same_classes() -> None:

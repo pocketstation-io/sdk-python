@@ -146,16 +146,50 @@ PocketStation uses four open boundaries:
 | `Connector` | Media or signals leave for an external system. |
 | `Endpoint` | You need the lower-level outbound execution contract. |
 
-Import an authoring contract from the module that owns that boundary:
+Pass one function when the destination is already open:
 
 ```python
-from pocketstation.connector import Connector, ConnectorManifest
-from pocketstation.operator_authoring import OperatorProvider
-from pocketstation.source_authoring import SourceProvider
+import pocketstation as pks
+import pocketstation.aio as pks_aio
+
+async def send_audio(frame: pks.AudioFrame) -> None:
+    await socket.send(frame.samples)
+
+destination = pks_aio.Connector(send=send_audio)
+application.send_to(destination)
 ```
 
-The package root contains the common Session, capture, audio-input, and error
-contracts. Provider authoring stays in explicit modules.
+Subclass the synchronous or asyncio contract when the provider opens and
+closes resources. The provider class owns its connection; the Session owns
+bounded delivery, lineage, observations, drain, abort, and joined shutdown:
+
+```python
+class WebSocketConnector(pks_aio.Connector):
+    def __init__(self, url, token):
+        self.url, self.token = url, token
+
+    async def start(self):
+        self.socket = await connect(self.url, token=self.token)
+
+    async def send(self, frame: pks.AudioFrame):
+        await self.socket.send(frame.samples)
+
+    async def stop(self):
+        await self.socket.close()
+```
+
+Attach one configured object to one or more stems:
+
+```python
+destination = WebSocketConnector(url, token)
+application.send_to(destination)
+microphone.send_to(destination)
+```
+
+PocketStation calls `start()` once, interleaves both source-aware stems through
+`send()`, and calls `stop()` once. A second Connector object creates a separate
+destination. See [Build an integration](docs/guides/integrations.md) for
+deadlines, failures, and the advanced SPI.
 
 Python provider callbacks execute on bounded off-realtime workers. They cannot
 be used as native capture callbacks. Compiled native extensions remain the path

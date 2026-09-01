@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -882,32 +885,137 @@ class _WorkerFactoryAdapter:
         return cast(str | None, group(route_id, configuration))
 
 
-@dataclass(frozen=True, slots=True)
 class Connector:
-    """A reusable Python provider implementation registered into one Session."""
+    """Send source-aware audio through one configured provider lifecycle.
 
-    manifest: ConnectorManifest
-    factory: (
+    Pass ``send=`` for one function, or subclass this type and implement
+    :meth:`send`. Network providers should use
+    :class:`pocketstation.aio.Connector` so PocketStation can apply a finite
+    deadline to each asynchronous provider call.
+    """
+
+    def __init__(
+        self,
+        manifest: ConnectorManifest | None = None,
+        factory: (
+            ConnectorDriverFactory
+            | ConnectorDriverBuilder
+            | ConnectorFactory
+            | ConnectorWorkerBuilder
+            | None
+        ) = None,
+        maximum_batch_items: int | None = None,
+        *,
+        start: Callable[[], None] | None = None,
+        send: Callable[[AudioFrame], None] | None = None,
+        stop: Callable[[], None] | None = None,
+    ) -> None:
+        callbacks = (start, send, stop)
+        if any(callback is not None for callback in callbacks):
+            if (
+                manifest is not None
+                or factory is not None
+                or maximum_batch_items is not None
+            ):
+                raise TypeError(
+                    "lifecycle callbacks cannot be combined with the advanced SPI"
+                )
+            if send is None:
+                raise TypeError(
+                    "send is required when lifecycle callbacks are provided"
+                )
+            if not all(
+                callback is None or callable(callback) for callback in callbacks
+            ):
+                raise TypeError("start, send, and stop must be callable")
+            self._manifest = None
+            self._factory = None
+            self._native_factory = None
+            self.maximum_batch_items = None
+            self._start_callback = start
+            self._send_callback = send
+            self._stop_callback = stop
+            return
+        if manifest is None and factory is None:
+            self._manifest = None
+            self._factory = None
+            self._native_factory = None
+            self.maximum_batch_items = None
+            return
+        if manifest is None or factory is None:
+            raise TypeError("manifest and factory must be provided together")
+        if maximum_batch_items is not None and not 1 <= maximum_batch_items <= 1_024:
+            raise ValueError("maximum_batch_items must be between 1 and 1024")
+        self._manifest = manifest
+        self._factory = factory
+        self.maximum_batch_items = maximum_batch_items
+        self._native_factory = (
+            _FactoryAdapter(factory)  # type: ignore[arg-type]
+            if maximum_batch_items is None
+            else _WorkerFactoryAdapter(factory)  # type: ignore[arg-type]
+        )
+
+    def start(self) -> None:
+        """Open provider resources before the first frame is delivered."""
+        callback = getattr(self, "_start_callback", None)
+        if callback is not None:
+            callback()
+
+    def send(self, frame: AudioFrame) -> None:
+        """Deliver one source-aware frame outside realtime execution."""
+        callback = getattr(self, "_send_callback", None)
+        if callback is not None:
+            callback(frame)
+            return
+        raise NotImplementedError
+
+    def stop(self) -> None:
+        """Close provider resources after accepted frames drain or abort."""
+        callback = getattr(self, "_stop_callback", None)
+        if callback is not None:
+            callback()
+
+    @property
+    def manifest(self) -> ConnectorManifest:
+        manifest = getattr(self, "_manifest", None)
+        if manifest is None:
+            raise AttributeError(
+                "concise Connectors receive an internal manifest "
+                "during Session registration"
+            )
+        return cast(ConnectorManifest, manifest)
+
+    @property
+    def factory(
+        self,
+    ) -> (
         ConnectorDriverFactory
         | ConnectorDriverBuilder
         | ConnectorFactory
         | ConnectorWorkerBuilder
-    )
-    maximum_batch_items: int | None = field(default=None, repr=False)
-    _native_factory: _FactoryAdapter | _WorkerFactoryAdapter = field(
-        init=False, repr=False, compare=False
-    )
-
-    def __post_init__(self) -> None:
-        if self.maximum_batch_items is None:
-            adapter: _FactoryAdapter | _WorkerFactoryAdapter = _FactoryAdapter(
-                self.factory  # type: ignore[arg-type]
+    ):
+        factory = getattr(self, "_factory", None)
+        if factory is None:
+            raise AttributeError(
+                "concise Connectors receive an internal factory "
+                "during Session registration"
             )
-        else:
-            if not 1 <= self.maximum_batch_items <= 1_024:
-                raise ValueError("maximum_batch_items must be between 1 and 1024")
-            adapter = _WorkerFactoryAdapter(self.factory)  # type: ignore[arg-type]
-        object.__setattr__(self, "_native_factory", adapter)
+        return cast(
+            ConnectorDriverFactory
+            | ConnectorDriverBuilder
+            | ConnectorFactory
+            | ConnectorWorkerBuilder,
+            factory,
+        )
+
+    def _definition(self) -> Connector:
+        if getattr(self, "_manifest", None) is not None:
+            return self
+        manifest, preparation_group = _provider_manifest(self)
+        return Connector.with_driver(
+            manifest,
+            _ProviderFactory(self, preparation_group),
+        )
 
     @classmethod
     def with_driver(
@@ -968,6 +1076,135 @@ class Connector:
             ),
             deliver,
         )
+
+
+class _ProviderDriver(ConnectorDriver):
+    __slots__ = ("_provider", "_stopped")
+
+    def __init__(self, provider: Connector) -> None:
+        self._provider = provider
+        self._stopped = False
+
+    def start(self, context: ConnectorContext) -> None:
+        try:
+            self._provider.start()
+        except BaseException as error:
+            self._close_after_start_failure(error)
+            raise
+        context.set_ready()
+
+    def deliver(
+        self, item: ConnectorItem, context: ConnectorContext
+    ) -> ConnectorDeliveryOutcome | None:
+        del context
+        frame = item.audio
+        if frame is None:
+            raise ConnectorError(
+                "audio Connector received a non-audio item",
+                code="connector.delivery.signal_mismatch",
+                stage=ConnectorErrorStage.DELIVERY,
+            )
+        try:
+            self._provider.send(frame)
+        except BaseException as error:
+            self._close_after_failure(error)
+            raise
+        return ConnectorDeliveryOutcome.DELIVERED
+
+    def shutdown(self, mode: ConnectorShutdownMode, context: ConnectorContext) -> None:
+        del mode, context
+        self._close()
+
+    def _close_after_start_failure(self, error: BaseException) -> None:
+        self._close_after_failure(error)
+
+    def _close_after_failure(self, error: BaseException) -> None:
+        try:
+            self._close()
+        except BaseException as cleanup_error:
+            error.add_note(f"Connector cleanup also failed: {cleanup_error}")
+
+    def _close(self) -> None:
+        if self._stopped:
+            return
+        self._stopped = True
+        self._provider.stop()
+
+
+class _ProviderFactory:
+    __slots__ = ("_preparation_group", "_provider")
+
+    def __init__(self, provider: Connector, preparation_group: str) -> None:
+        self._provider = provider
+        self._preparation_group = preparation_group
+
+    def prepare(self, inputs: Sequence[ConnectorInputDescriptor]) -> ConnectorDriver:
+        if not inputs:
+            raise ConnectorError(
+                "Connector requires at least one routed input",
+                code="connector.prepare.missing_input",
+                stage=ConnectorErrorStage.PREPARE,
+            )
+        return _ProviderDriver(self._provider)
+
+    def preparation_group(
+        self,
+        route_id: int,
+        configuration: Mapping[str, ConnectorConfigurationValue],
+    ) -> str:
+        del route_id, configuration
+        return self._preparation_group
+
+
+def _provider_manifest(provider: object) -> tuple[ConnectorManifest, str]:
+    provider_type = type(provider)
+    distribution, package_version = _provider_distribution(provider_type)
+    node_type_id = _provider_node_type_id(provider_type, distribution)
+    instance_token = f"{id(provider):x}"
+    operator_id = _bounded_identifier(f"{node_type_id}.instance-{instance_token}")
+    preparation_group = _bounded_identifier(
+        f"{node_type_id}.destination-{instance_token}"
+    )
+    return (
+        ConnectorManifest.audio(
+            operator_id,
+            package_version=package_version,
+            multiplicity=Multiplicity.MANY,
+        ),
+        preparation_group,
+    )
+
+
+def _provider_distribution(provider_type: type[object]) -> tuple[str, str]:
+    top_level_package = provider_type.__module__.partition(".")[0]
+    distributions = importlib.metadata.packages_distributions().get(
+        top_level_package, ()
+    )
+    if distributions:
+        distribution = sorted(distributions)[0]
+        return distribution, importlib.metadata.version(distribution)
+    return "local", "0+local"
+
+
+def _provider_node_type_id(provider_type: type[object], distribution: str) -> str:
+    class_name = f"{provider_type.__module__}.{provider_type.__qualname__}"
+    raw = f"python.{distribution}.{class_name}.v1"
+    segments = (_identifier_segment(segment) for segment in raw.split("."))
+    return _bounded_identifier(".".join(segments))
+
+
+def _identifier_segment(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return normalized or "local"
+
+
+def _bounded_identifier(value: str) -> str:
+    maximum_bytes = 255
+    if len(value.encode("ascii")) <= maximum_bytes:
+        return value
+    digest = hashlib.sha256(value.encode()).hexdigest()[:16]
+    prefix_bytes = maximum_bytes - len(digest) - 1
+    return f"{value[:prefix_bytes].rstrip('-_.')}.{digest}"
 
 
 class RegisteredConnector:

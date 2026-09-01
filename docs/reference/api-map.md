@@ -33,7 +33,9 @@ observations. Both paths use the same Rust engine.
 | Task | Module |
 |---|---|
 | Publish through Relay | `pocketstation.relay` or `pocketstation.aio.relay` |
-| Author an outbound Connector | `pocketstation.connector` |
+| Send audio with one function | `Connector(send=...)` |
+| Author a reusable audio Connector | subclass `pocketstation.Connector` or `pocketstation.aio.Connector` |
+| Use the advanced Connector SPI | `pocketstation.connector` |
 | Author a computation | `pocketstation.operator_authoring` |
 | Author an inbound Source | `pocketstation.source_authoring` |
 | Author a lower-level Endpoint | `pocketstation.endpoint_authoring` |

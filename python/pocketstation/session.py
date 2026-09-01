@@ -280,7 +280,7 @@ class Session(_GraphSessionDeclarations):
         self._channels = channels
         self._frame_duration_ms = frame_duration_ms
         self._connector_registrations: dict[
-            int, tuple[Connector, _NativeRegisteredConnector]
+            int, tuple[Connector, Connector, _NativeRegisteredConnector]
         ] = {}
         self._endpoint_registrations: dict[
             int, tuple[EndpointProvider, _NativeRegisteredEndpoint]
@@ -361,24 +361,25 @@ class Session(_GraphSessionDeclarations):
         identity = id(connector)
         cached = self._connector_registrations.get(identity)
         if cached is not None and cached[0] is connector:
-            return RegisteredConnector(self, connector, cached[1])
-        maximum_batch_items = connector.maximum_batch_items
+            return RegisteredConnector(self, cached[1], cached[2])
+        definition = connector._definition()
+        maximum_batch_items = definition.maximum_batch_items
         if maximum_batch_items is None:
             native = _native_call(
                 lambda: self._native.register_connector(
-                    connector.manifest._native, connector._native_factory
+                    definition.manifest._native, definition._native_factory
                 )
             )
         else:
             native = _native_call(
                 lambda: self._native.register_connector_worker(
-                    connector.manifest._native,
-                    connector._native_factory,
+                    definition.manifest._native,
+                    definition._native_factory,
                     maximum_batch_items,
                 )
             )
-        self._connector_registrations[identity] = (connector, native)
-        return RegisteredConnector(self, connector, native)
+        self._connector_registrations[identity] = (connector, definition, native)
+        return RegisteredConnector(self, definition, native)
 
     def destination(
         self,

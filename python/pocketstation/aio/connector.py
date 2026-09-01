@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Coroutine, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
-from typing import Any, Protocol, TypeAlias, TypeVar, runtime_checkable
+from typing import Any, Protocol, TypeAlias, TypeVar, cast, runtime_checkable
 
 from .._native import AudioFrame
 from ..connector import (
@@ -42,6 +42,7 @@ from ..connector import (
     ConnectorRuntimeObservations,
     ConnectorServiceStatus,
     ConnectorShutdownMode,
+    _provider_manifest,
 )
 from ..connector import (
     ConnectorDriver as SyncConnectorDriver,
@@ -382,19 +383,123 @@ class _WorkerFactoryAdapter:
         return None if group is None else group(route_id, configuration)
 
 
-@dataclass(frozen=True, slots=True)
 class Connector:
-    """Reusable asyncio provider implementation bound at Session registration."""
+    """Send source-aware audio through one asynchronous provider lifecycle.
 
-    manifest: ConnectorManifest
-    factory: (
+    Pass ``send=`` for one function, or subclass this type and implement
+    :meth:`send` for a reusable provider.
+    """
+
+    def __init__(
+        self,
+        manifest: ConnectorManifest | None = None,
+        factory: (
+            ConnectorDriverFactory
+            | ConnectorDriverBuilder
+            | ConnectorFactory
+            | ConnectorWorkerBuilder
+            | None
+        ) = None,
+        deadlines: ConnectorDeadlines | None = None,
+        maximum_batch_items: int | None = None,
+        *,
+        start: Callable[[], Awaitable[None]] | None = None,
+        send: Callable[[AudioFrame], Awaitable[None]] | None = None,
+        stop: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        callbacks = (start, send, stop)
+        if any(callback is not None for callback in callbacks):
+            if (
+                manifest is not None
+                or factory is not None
+                or maximum_batch_items is not None
+            ):
+                raise TypeError(
+                    "lifecycle callbacks cannot be combined with the advanced SPI"
+                )
+            if send is None:
+                raise TypeError(
+                    "send is required when lifecycle callbacks are provided"
+                )
+            if not all(
+                callback is None or callable(callback) for callback in callbacks
+            ):
+                raise TypeError("start, send, and stop must be callable")
+            self._manifest = None
+            self._factory = None
+            self.deadlines = deadlines or ConnectorDeadlines()
+            self.maximum_batch_items = None
+            self._start_callback = start
+            self._send_callback = send
+            self._stop_callback = stop
+            return
+        if manifest is None and factory is None:
+            self._manifest = None
+            self._factory = None
+            self.deadlines = deadlines or ConnectorDeadlines()
+            self.maximum_batch_items = None
+            return
+        if manifest is None or factory is None:
+            raise TypeError("manifest and factory must be provided together")
+        if maximum_batch_items is not None and not 1 <= maximum_batch_items <= 1_024:
+            raise ValueError("maximum_batch_items must be between 1 and 1024")
+        self._manifest = manifest
+        self._factory = factory
+        self.deadlines = deadlines or ConnectorDeadlines()
+        self.maximum_batch_items = maximum_batch_items
+
+    async def start(self) -> None:
+        """Open provider resources before the first frame is delivered."""
+        callback = getattr(self, "_start_callback", None)
+        if callback is not None:
+            await callback()
+
+    async def send(self, frame: AudioFrame) -> None:
+        """Deliver one source-aware frame outside realtime execution."""
+        callback = getattr(self, "_send_callback", None)
+        if callback is not None:
+            await callback(frame)
+            return
+        raise NotImplementedError
+
+    async def stop(self) -> None:
+        """Close provider resources after accepted frames drain or abort."""
+        callback = getattr(self, "_stop_callback", None)
+        if callback is not None:
+            await callback()
+
+    @property
+    def manifest(self) -> ConnectorManifest:
+        manifest = getattr(self, "_manifest", None)
+        if manifest is None:
+            raise AttributeError(
+                "concise Connectors receive an internal manifest "
+                "during Session registration"
+            )
+        return cast(ConnectorManifest, manifest)
+
+    @property
+    def factory(
+        self,
+    ) -> (
         ConnectorDriverFactory
         | ConnectorDriverBuilder
         | ConnectorFactory
         | ConnectorWorkerBuilder
-    )
-    deadlines: ConnectorDeadlines = ConnectorDeadlines()
-    maximum_batch_items: int | None = None
+    ):
+        factory = getattr(self, "_factory", None)
+        if factory is None:
+            raise AttributeError(
+                "concise Connectors receive an internal factory "
+                "during Session registration"
+            )
+        return cast(
+            ConnectorDriverFactory
+            | ConnectorDriverBuilder
+            | ConnectorFactory
+            | ConnectorWorkerBuilder,
+            factory,
+        )
 
     @classmethod
     def with_driver(
@@ -476,6 +581,17 @@ class Connector:
     def _bind(self, loop: asyncio.AbstractEventLoop) -> SyncConnector:
         if not loop.is_running():
             raise RuntimeError("async Connector requires a running event loop")
+        if getattr(self, "_manifest", None) is None:
+            manifest, preparation_group = _provider_manifest(self)
+            deadlines = getattr(self, "deadlines", ConnectorDeadlines())
+            return SyncConnector.with_driver(
+                manifest,
+                _FactoryAdapter(
+                    _ProviderFactory(self, preparation_group),
+                    loop,
+                    deadlines,
+                ),
+            )
         if self.maximum_batch_items is None:
             return SyncConnector.with_driver(
                 self.manifest,
@@ -494,6 +610,88 @@ class Connector:
             ),
             maximum_batch_items=self.maximum_batch_items,
         )
+
+
+class _ProviderDriver(ConnectorDriver):
+    __slots__ = ("_provider", "_stopped")
+
+    def __init__(self, provider: Connector) -> None:
+        self._provider = provider
+        self._stopped = False
+
+    async def start(self, context: ConnectorContext) -> None:
+        try:
+            await self._provider.start()
+        except BaseException as error:
+            await self._close_after_start_failure(error)
+            raise
+        context.set_ready()
+
+    async def deliver(
+        self, item: ConnectorItem, context: ConnectorContext
+    ) -> ConnectorDeliveryOutcome | None:
+        del context
+        frame = item.audio
+        if frame is None:
+            raise ConnectorError(
+                "audio Connector received a non-audio item",
+                code="connector.delivery.signal_mismatch",
+                stage=ConnectorErrorStage.DELIVERY,
+            )
+        try:
+            await self._provider.send(frame)
+        except BaseException as error:
+            await self._close_after_failure(error)
+            raise
+        return ConnectorDeliveryOutcome.DELIVERED
+
+    async def shutdown(
+        self, mode: ConnectorShutdownMode, context: ConnectorContext
+    ) -> None:
+        del mode, context
+        await self._close()
+
+    async def _close_after_start_failure(self, error: BaseException) -> None:
+        await self._close_after_failure(error)
+
+    async def _close_after_failure(self, error: BaseException) -> None:
+        try:
+            await self._close()
+        except BaseException as cleanup_error:
+            error.add_note(f"Connector cleanup also failed: {cleanup_error}")
+
+    async def _close(self) -> None:
+        if self._stopped:
+            return
+        self._stopped = True
+        await self._provider.stop()
+
+
+class _ProviderFactory:
+    __slots__ = ("_preparation_group", "_provider")
+
+    def __init__(self, provider: Connector, preparation_group: str) -> None:
+        self._provider = provider
+        self._preparation_group = preparation_group
+
+    async def prepare(
+        self, inputs: Sequence[ConnectorInputDescriptor]
+    ) -> ConnectorDriver:
+        if not inputs:
+            raise ConnectorError(
+                "Connector requires at least one routed input",
+                code="connector.prepare.missing_input",
+                stage=ConnectorErrorStage.PREPARE,
+            )
+        return _ProviderDriver(self._provider)
+
+    def preparation_group(
+        self,
+        route_id: int,
+        configuration: Mapping[str, ConnectorConfigurationValue],
+    ) -> str:
+        del route_id, configuration
+        return self._preparation_group
 
 
 class RegisteredConnector:

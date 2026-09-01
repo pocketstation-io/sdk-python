@@ -6,7 +6,7 @@ follow the host operating system.
 
 ## Supported Python
 
-PocketStation 0.1.0 supports CPython 3.11 and newer through one ABI3 extension
+PocketStation 0.1.1 supports CPython 3.11 and newer through one ABI3 extension
 per operating system and architecture. Install the wheel that matches the host;
 do not rely on a sibling Rust checkout.
 

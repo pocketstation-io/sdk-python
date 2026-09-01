@@ -1,5 +1,82 @@
 # PocketStation for Python release notes
 
+## 0.1.1 — 2026-09-01
+
+Send audio to an external system with one function or one focused Python class.
+
+### Added
+
+Use `Connector(send=...)` when a destination is already open:
+
+```python
+async def send_audio(frame):
+    await socket.send(frame.samples)
+
+destination = pocketstation.aio.Connector(send=send_audio)
+application.send_to(destination)
+```
+
+Subclass `pocketstation.Connector` for finite synchronous integrations or
+`pocketstation.aio.Connector` for network providers. Implement `start()`,
+`send(frame)`, and `stop()`; PocketStation supplies the bounded Core routes,
+source and stem identity, delivery observations, drain, abort, and joined
+shutdown.
+
+```python
+class WebSocketConnector(pocketstation.aio.Connector):
+    def __init__(self, url, token):
+        self.url, self.token = url, token
+
+    async def start(self):
+        self.socket = await connect(
+            self.url,
+            additional_headers={"Authorization": f"Bearer {self.token}"},
+        )
+
+    async def send(self, frame):
+        await self.socket.send(frame.samples)
+
+    async def stop(self):
+        await self.socket.close()
+```
+
+One configured object can receive several stems through one provider
+lifecycle:
+
+```python
+destination = WebSocketConnector(url, token)
+application.send_to(destination)
+microphone.send_to(destination)
+```
+
+Two Connector objects remain separate destinations. Async provider calls use
+finite startup, delivery, and shutdown deadlines. Provider failures retain the
+lifecycle stage, stable error code, and retryability when supplied.
+
+### Changed
+
+`Connector`, `AudioFrame`, and their asyncio Connector entry points are now
+available from the concise package namespaces. The manifest, driver, worker,
+configuration-schema, and explicit Endpoint contracts remain in
+`pocketstation.connector` for integrations that need the advanced SPI.
+
+The callback form also accepts `start=` and `stop=` when a small integration
+needs lifecycle operations without a class. The existing
+`Connector.with_driver()`, `Connector.with_worker()`,
+`Connector.from_handler()`, and `Connector.from_audio_handler()` APIs remain
+available without migration.
+
+### Upgrade
+
+```console
+python -m pip install --upgrade pocketstation==0.1.1
+```
+
+Python Connectors run outside native realtime partitions, but each Python frame
+delivery crosses the interpreter boundary. Use the shared native Relay
+Connector or a native extension when provider-side Python execution is not
+appropriate for the workload.
+
 ## 0.1.0 — 2026-08-31
 
 Capture, inspect, and route live desktop audio.
