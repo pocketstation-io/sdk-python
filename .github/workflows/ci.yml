@@ -84,6 +84,8 @@ jobs:
 
       - name: Build wheel
         working-directory: sdk-python
+        env:
+          CARGO_TARGET_DIR: native/target-release
         run: maturin build --release --locked --out dist
 
       - name: Test isolated release wheel
