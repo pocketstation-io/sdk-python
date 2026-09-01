@@ -16,7 +16,7 @@ from .errors import CaptureError, PocketStationError, SessionError
 from .session import RecordingOutcome, RunningSession, Session, StopResult
 from .sources import Source, discover_sources
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "RUNTIME_COMPATIBILITY",

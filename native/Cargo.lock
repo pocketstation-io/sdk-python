@@ -1437,7 +1437,7 @@ dependencies = [
 
 [[package]]
 name = "pocketstation-python"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "pocketstation",
  "pocketstation-relay",

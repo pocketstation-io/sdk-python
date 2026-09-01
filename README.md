@@ -31,6 +31,21 @@ Add `microphone=True` when you need the default microphone as a second
 independent stem. Add `record_to="recordings"` when you want each selected stem
 recorded. Both behaviors are off by default.
 
+## Handle permissions and source changes
+
+PocketStation does not prompt during import or discovery. Check microphone
+permission without prompting, then let Source opening report the authoritative
+result. Application capture and microphone capture use separate permissions.
+
+When an application or device disappears, PocketStation reports the change and
+does not switch to another Source. Stop the current Session, discover again,
+confirm any changed selection, and create a new Session. Store a discovered
+identity only for its reported persistence scope. Keep fallback and provider
+retry policy explicit and finite.
+
+See [Prepare and qualify each Python platform](docs/operations/platform-support.md)
+for the permission states, persistence scopes, and recovery sequence.
+
 ## Debug a voice interruption
 
 [`examples/debug_voice_ai.py`](examples/debug_voice_ai.py) sends a physical
@@ -135,7 +150,7 @@ with session.start():
 The input uses finite preallocated Core buffers. Writes report full, closed,
 cancelled, and invalid-buffer outcomes explicitly.
 
-## Build an integration
+## Create an integration
 
 PocketStation uses four open boundaries:
 
@@ -188,7 +203,7 @@ microphone.send_to(destination)
 
 PocketStation calls `start()` once, interleaves both source-aware stems through
 `send()`, and calls `stop()` once. A second Connector object creates a separate
-destination. See [Build an integration](docs/guides/integrations.md) for
+destination. See [Create an integration](docs/guides/integrations.md) for
 deadlines, failures, and the advanced SPI.
 
 Python provider callbacks execute on bounded off-realtime workers. They cannot
@@ -253,6 +268,8 @@ uv run mypy python tests/qualification/typing_contract.py examples
   PCM input and selective output cancellation.
 - [Record and observe a Session](docs/guides/record-and-observe.md) — multistem
   outcomes, route metrics, and lifecycle events.
+- [Prepare each platform](docs/operations/platform-support.md) — permissions,
+  source persistence, explicit rediscovery, and fallback policy.
 - [`examples/README.md`](examples/README.md) — runnable examples and
   prerequisites.
 - `pocketstation.capture` — concise application and microphone capture.

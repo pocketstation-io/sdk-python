@@ -1,4 +1,4 @@
-# Build a Source, Operator, Connector, or Endpoint
+# Create a Source, Operator, Connector, or Endpoint
 
 Choose the boundary by the direction and ownership of the work. All four use
 the same Session compiler, finite queues, lifecycle, observations, and joined
@@ -20,7 +20,7 @@ owns Session lifecycle, route bounds, lineage, observations, and shutdown.
 Python integrations run off realtime. They must not capture audio again, create
 another Session, or hide an unbounded queue behind a provider callback.
 
-## What a Connector solves
+## Choose a Connector for outbound delivery
 
 A Connector is the outbound boundary between one PocketStation Session and an
 external system. Use it to publish source-aware audio to a WebSocket, call

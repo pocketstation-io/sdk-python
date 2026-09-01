@@ -18,7 +18,7 @@ class RuntimeCompatibility:
 
 
 RUNTIME_COMPATIBILITY = RuntimeCompatibility(
-    sdk_version="0.1.1",
+    sdk_version="0.1.2",
     core_version="1.1.4",
     relay_connector_version="0.1.2",
     python_requires=">=3.11",
