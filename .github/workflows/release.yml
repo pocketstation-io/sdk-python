@@ -68,12 +68,12 @@ jobs:
             os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             manylinux: "2_34"
-            before_script: dnf install -y alsa-lib-devel openssl-devel pipewire-devel clang cmake ninja-build
+            before_script: dnf install -y alsa-lib-devel openssl-devel opus-devel pipewire-devel clang cmake ninja-build
           - name: Linux ARM64 wheel
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             manylinux: "2_34"
-            before_script: dnf install -y alsa-lib-devel openssl-devel pipewire-devel clang cmake ninja-build
+            before_script: dnf install -y alsa-lib-devel openssl-devel opus-devel pipewire-devel clang cmake ninja-build
           - name: macOS Apple silicon wheel
             os: macos-15
             target: aarch64-apple-darwin
