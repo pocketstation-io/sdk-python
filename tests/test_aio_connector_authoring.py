@@ -118,3 +118,29 @@ async def test_given_async_callbacks_when_audio_sends_then_lifecycle_is_bounded(
     assert outcome.success
     assert started_total == stopped_total == 1
     assert len(received) == 1
+
+
+async def test_given_two_async_connectors_when_sending_then_they_are_independent() -> (
+    None
+):
+    primary = CollectingConnector()
+    backup = CollectingConnector()
+    session = pks_aio.Session()
+    audio = session.audio_input("application", frame_samples_per_channel=4)
+    audio.output.send_to(primary)
+    audio.output.send_to(backup)
+
+    running = await session.start()
+    await audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+    deadline = asyncio.get_running_loop().time() + 1.0
+    while (len(primary.received) < 1 or len(backup.received) < 1) and (
+        asyncio.get_running_loop().time() < deadline
+    ):
+        await asyncio.sleep(0.001)
+    outcome = await running.stop()
+
+    assert outcome.success
+    for destination in (primary, backup):
+        assert destination.started_total == 1
+        assert destination.stopped_total == 1
+        assert len(destination.received) == 1

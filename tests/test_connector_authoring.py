@@ -148,3 +148,38 @@ def test_given_lifecycle_callback_without_send_then_creation_fails() -> None:
         assert str(error) == "send is required when lifecycle callbacks are provided"
     else:
         raise AssertionError("Connector accepted lifecycle callbacks without send")
+
+
+def test_given_send_failure_when_audio_arrives_then_provider_is_closed_once() -> None:
+    class FailingConnector(pks.Connector):
+        def __init__(self) -> None:
+            self.send_started = Event()
+            self.stopped = Event()
+            self.stopped_total = 0
+
+        def send(self, frame: pks.AudioFrame) -> None:
+            del frame
+            self.send_started.set()
+            raise RuntimeError("provider delivery failed")
+
+        def stop(self) -> None:
+            self.stopped_total += 1
+            self.stopped.set()
+
+    destination = FailingConnector()
+    session = pks.Session()
+    audio = session.audio_input("application", frame_samples_per_channel=4)
+    audio.output.send_to(destination)
+    running = session.start()
+    audio.write(array("f", [0.1, 0.2, 0.3, 0.4]))
+
+    assert destination.send_started.wait(1.0)
+    assert destination.stopped.wait(1.0)
+    outcome = running.stop()
+
+    assert not outcome.success
+    assert destination.stopped_total == 1
+    assert outcome.terminal_event is not None
+    assert any(
+        failure.kind.value == "endpoint" for failure in outcome.terminal_event.failures
+    )
