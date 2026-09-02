@@ -28,7 +28,7 @@ class _SessionOwner(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class SourceManifest:
-    """Stable contract for one Python-authored typed Source implementation."""
+    """Interface for one Python-authored typed Source implementation."""
 
     source_type_id: str
     outputs: tuple[PortSpec, ...]
@@ -232,7 +232,7 @@ class _IterableFactory:
 
 @dataclass(frozen=True, slots=True)
 class SourceProvider:
-    """Reusable Python implementation of one Core Source contract."""
+    """Reusable Python implementation of one Core Source."""
 
     manifest: SourceManifest
     factory: SourceFactory

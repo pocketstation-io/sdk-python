@@ -1,6 +1,6 @@
 # Troubleshoot capture, delivery, and shutdown
 
-Start with the boundary that did not produce the expected result. PocketStation
+Start with the component that did not produce the expected result. PocketStation
 keeps source opening, bounded delivery, provider work, Relay delivery,
 recording, and receiver playout as separate observations.
 
@@ -24,7 +24,8 @@ process or device.
 
 ## Permission changes are not reflected
 
-`microphone_permission_observation()` never prompts. Treat `NOT_OBSERVABLE` as
+`pocketstation.sources.microphone_permission_observation()` never prompts.
+Treat `NOT_OBSERVABLE` as
 unknown and use the typed Source open result. On macOS, restart the Python host
 after changing screen-recording or microphone consent. On Windows and Linux,
 verify that the current desktop user or service can access the selected audio
@@ -54,7 +55,7 @@ as separate results. Neither result proves loudspeaker playout.
 
 ## Generated speech continues after interruption
 
-Check each boundary separately:
+Check each component separately:
 
 1. provider response cancellation;
 2. Core pending-output cancellation;
@@ -70,7 +71,7 @@ does not expose it.
 Use finite provider and network deadlines. Close application-owned inputs when
 no more frames will arrive. Request normal stop to drain accepted work, or
 cancel when active asynchronous work must abort. Then inspect the `StopResult`,
-provider outcome, and recording outcome for the boundary that did not join.
+provider outcome, and recording outcome for the component that did not stop.
 
 When reporting an issue, include the PocketStation versions, operating system,
 source selector, Session events, route metrics, and structured terminal error.

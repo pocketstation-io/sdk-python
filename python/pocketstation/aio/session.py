@@ -32,6 +32,7 @@ from ..extensions import NativeExtensionLibrary
 from ..graph import (
     EdgeContract,
     Endpoint,
+    RouteSettings,
     SignalSpec,
     Stem,
     _GraphSessionDeclarations,
@@ -456,10 +457,15 @@ class Session(_GraphSessionDeclarations):
         connector: Connector | SyncConnector,
         configuration: ConnectorConfigurationInput = (),
         *,
+        route_settings: RouteSettings | None = None,
         edge: EdgeContract | None = None,
     ) -> Endpoint:
         """Declare one Connector destination using an idempotent registration."""
-        return self.register_connector(connector).declare(configuration, edge=edge)
+        return self.register_connector(connector).declare(
+            configuration,
+            route_settings=route_settings,
+            edge=edge,
+        )
 
     def register_endpoint(
         self, endpoint: EndpointProvider | SyncEndpointProvider

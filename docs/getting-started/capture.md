@@ -16,7 +16,7 @@ Install the package:
 python -m pip install pocketstation
 ```
 
-## Run the shortest capture path
+## Capture an application
 
 ```python
 import pocketstation

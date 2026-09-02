@@ -34,8 +34,10 @@ recorded. Both behaviors are off by default.
 ## Handle permissions and source changes
 
 PocketStation does not prompt during import or discovery. Check microphone
-permission without prompting, then let Source opening report the authoritative
-result. Application capture and microphone capture use separate permissions.
+permission without prompting through
+`pocketstation.sources.microphone_permission_observation()`, then let Source
+opening report the authoritative result. Application capture and microphone
+capture use separate permissions.
 
 When an application or device disappears, PocketStation reports the change and
 does not switch to another Source. Stop the current Session, discover again,
@@ -55,7 +57,7 @@ output as independent recorded stems. Provider events and media events share
 one monotonic timeline, so you can see whether delay occurred before the model,
 inside the provider, in local output, or after Relay delivery.
 
-See the [voice-agent debugger instructions](examples/README.md#debug-a-voice-agent-interruption-from-the-media-boundary).
+See the [voice-agent debugger instructions](examples/README.md#debug-a-voice-agent-interruption).
 Run repository examples from a source checkout or source archive. The installed
 `pocketstation-demo` command is the packaged application-and-microphone demo.
 
@@ -78,7 +80,7 @@ faster-whisper Operator, connects both stems to its audio input, and prints each
 transcript with its original source identity. It does not start Relay or write a
 recording.
 
-The Session runs this path concurrently:
+The Session runs these jobs concurrently:
 
 ```text
 voice application ─┐
@@ -152,14 +154,14 @@ cancelled, and invalid-buffer outcomes explicitly.
 
 ## Create an integration
 
-PocketStation uses four open boundaries:
+PocketStation provides four integration APIs:
 
-| Boundary | Use it when |
+| API | Use it when |
 |---|---|
 | `Source` | Media or signals enter the Session. |
 | `Operator` | Work transforms media or emits typed signals. |
 | `Connector` | Media or signals leave for an external system. |
-| `Endpoint` | You need the lower-level outbound execution contract. |
+| `Endpoint` | You need direct control of an outbound worker. |
 
 Pass one function when the destination is already open:
 
@@ -174,7 +176,7 @@ destination = pks_aio.Connector(send=send_audio)
 application.send_to(destination)
 ```
 
-Subclass the synchronous or asyncio contract when the provider opens and
+Subclass the synchronous or asyncio Connector when the provider opens and
 closes resources. The provider class owns its connection; the Session owns
 bounded delivery, lineage, observations, drain, abort, and joined shutdown:
 
@@ -207,8 +209,8 @@ destination. See [Create an integration](docs/guides/integrations.md) for
 deadlines, failures, and the advanced SPI.
 
 Python provider callbacks execute on bounded off-realtime workers. They cannot
-be used as native capture callbacks. Compiled native extensions remain the path
-for native provider code, and process sidecars remain available when crash
+be used as native capture callbacks. Use compiled native extensions for native
+provider code, or a process sidecar when crash
 isolation is required.
 
 ## Use Relay from Python
@@ -227,7 +229,7 @@ redacted secrets, and matching synchronous and asyncio APIs.
 asyncio namespace provides awaitable lifecycle, stream, Relay, provider, and
 audio-input operations without creating another audio queue.
 
-Python callbacks still cross the interpreter boundary. Capture, routing,
+Python callbacks still enter the interpreter. Capture, routing,
 recording, and Relay transport remain native-speed; arbitrary Python model code
 does not have the same execution cost as Rust.
 
@@ -236,7 +238,7 @@ does not have the same execution cost as Rust.
 | Area | Support |
 |---|---|
 | Python | 3.11 and newer |
-| macOS Apple silicon | Installed wheel, application capture, physical microphone, 10 ms voice path, Relay, Chromium, and multistem recording tested |
+| macOS Apple silicon | Installed wheel, application capture, physical microphone, 10 ms voice capture, Relay, Chromium, and multistem recording tested |
 | Linux | Core application selection and 10 ms capture tested; installed Python distribution qualification in progress |
 | Windows 11 ARM64 | Core application selection and 10 ms capture tested in a VM; installed Python distribution and physical-device qualification in progress |
 | WAN and TURN | Not yet qualified |
@@ -246,7 +248,7 @@ Connector `0.1.2`.
 
 The Rust-to-Python audio read currently copies native samples into Python-owned
 bytes before exposing a `memoryview`. The view avoids another Python-side copy;
-the complete boundary is not zero-copy.
+the call into Python still copies samples and is not zero-copy.
 
 ## Develop the SDK
 
@@ -266,16 +268,22 @@ uv run mypy python tests/qualification/typing_contract.py examples
   API ownership.
 - [Write application-owned audio](docs/guides/application-audio.md) — bounded
   PCM input and selective output cancellation.
+- [Process audio and typed signals](docs/guides/process-audio-and-signals.md) —
+  Operators, named ports, generated audio, and finite model work.
 - [Record and observe a Session](docs/guides/record-and-observe.md) — multistem
   outcomes, route metrics, and lifecycle events.
+- [Keep each source identifiable](docs/concepts/source-identity-and-time.md) —
+  selection, persistence, timestamps, generations, and discontinuities.
+- [Read events, metrics, outcomes, and errors](docs/reference/events-and-errors.md)
+  — setup failure, live observations, and terminal results.
 - [Prepare each platform](docs/operations/platform-support.md) — permissions,
   source persistence, explicit rediscovery, and fallback policy.
 - [`examples/README.md`](examples/README.md) — runnable examples and
   prerequisites.
 - `pocketstation.capture` — concise application and microphone capture.
 - `pocketstation.session` — Session declarations and lifecycle.
-- `pocketstation.graph` — stems, ports, routes, and signal contracts.
+- `pocketstation.graph` — stems, ports, routes, and signal specifications.
 - `pocketstation.connector` — outbound provider authoring.
 - `pocketstation.operator_authoring` — computation authoring.
 - `pocketstation.source_authoring` — inbound provider authoring.
-- `pocketstation.aio` — asyncio projection of the same engine.
+- `pocketstation.aio` — asyncio APIs for the same engine.

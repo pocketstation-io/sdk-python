@@ -479,7 +479,7 @@ class Source:
         """Build the strongest supported Session declaration from discovery.
 
         Output devices and system mix remain discovery-only in the stable 1.1
-        Session declaration contract.
+        Session declaration requirements.
         """
         stable_id = source.stable_id
         if stable_id.kind is SourceKind.APPLICATION:

@@ -1,4 +1,4 @@
-"""Speech-activity events and detector integration contracts."""
+"""Speech-activity events and detector integration protocols."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ SpeechActivityKind = Literal[
 
 @dataclass(frozen=True, slots=True)
 class SpeechActivity:
-    """One speech boundary observed from a source-aware audio stream."""
+    """One speech-activity update observed from a source-aware audio stream."""
 
     kind: SpeechActivityKind
     source_id: SourceId

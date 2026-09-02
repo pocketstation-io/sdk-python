@@ -12,13 +12,13 @@ do not rely on a sibling Rust checkout.
 
 ## Check permission without prompting
 
-`pocketstation.microphone_permission_observation()` reads the current state
-without showing consent UI:
+`microphone_permission_observation()` reads the current state without showing
+consent UI:
 
 ```python
-import pocketstation as pks
+from pocketstation.sources import microphone_permission_observation
 
-permission = pks.microphone_permission_observation()
+permission = microphone_permission_observation()
 print(permission.value)
 ```
 
@@ -40,8 +40,9 @@ after a restart:
 
 ```python
 import pocketstation as pks
+from pocketstation.sources import SourceQuery
 
-matches = pks.discover_sources(pks.SourceQuery.application("Zoom"))
+matches = pks.discover_sources(SourceQuery.application("Zoom"))
 if len(matches) != 1:
     raise RuntimeError("Select one running Zoom source")
 
@@ -118,7 +119,7 @@ permissions explicitly.
 
 An installed import and component test establish package correctness. A device
 claim needs the physical device. A latency claim needs p50, p95, p99, and
-maximum measurements from the same frame definition and clock boundary.
+maximum measurements from the same frame definition and clock domain.
 
 The 10 ms profile sets PocketStation's frame cadence. It does not guarantee
 sub-10 ms capture-to-Python, network, browser, or acoustic latency. WAN and TURN

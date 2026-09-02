@@ -31,6 +31,7 @@ from .extensions import NativeExtensionLibrary
 from .graph import (
     EdgeContract,
     Endpoint,
+    RouteSettings,
     Stem,
     _GraphSessionDeclarations,
 )
@@ -386,6 +387,7 @@ class Session(_GraphSessionDeclarations):
         connector: Connector,
         configuration: ConnectorConfigurationInput = (),
         *,
+        route_settings: RouteSettings | None = None,
         edge: EdgeContract | None = None,
     ) -> Endpoint:
         """Declare one Connector destination using an idempotent registration.
@@ -394,7 +396,11 @@ class Session(_GraphSessionDeclarations):
         :meth:`register_connector` remains available when one implementation
         must declare several independently configured Endpoints.
         """
-        return self.register_connector(connector).declare(configuration, edge=edge)
+        return self.register_connector(connector).declare(
+            configuration,
+            route_settings=route_settings,
+            edge=edge,
+        )
 
     def register_endpoint(self, endpoint: EndpointProvider) -> RegisteredEndpoint:
         """Register one advanced Python implementation of Core's Endpoint SPI.

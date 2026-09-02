@@ -95,7 +95,7 @@ SignalFormat: TypeAlias = Codec | TextFormat | EventFormat | BinaryFormat
 
 @dataclass(frozen=True, slots=True)
 class SignalSpec(Generic[_PayloadT_co]):
-    """Stable language-neutral signal identity, role, and schema contract."""
+    """Stable language-neutral signal identity, role, and schema."""
 
     kind: SignalKind
     format: SignalFormat | None = None
@@ -348,7 +348,7 @@ class MediaCaps:
 
     @classmethod
     def for_signal(cls, signal: SignalSpec[object]) -> MediaCaps:
-        """Select the wildcard media contract for a signal."""
+        """Select wildcard media requirements for a signal."""
         if signal.kind is SignalKind.PCM_AUDIO:
             return cls.audio()
         if signal.kind is SignalKind.ENCODED_AUDIO:
@@ -374,7 +374,7 @@ class MediaCaps:
         return self._native.is_compatible_with(other._native)
 
     def negotiate(self, other: MediaCaps) -> MediaCaps | None:
-        """Return Core's narrow compatible media contract, if one exists."""
+        """Return Core's narrow compatible media requirements, if any."""
         native = self._native.negotiate(other._native)
         return None if native is None else type(self)._from_native(native)
 
@@ -427,7 +427,7 @@ class PortSpec:
         multiplicity: Multiplicity = Multiplicity.ONE,
         required: bool = True,
     ) -> PortSpec:
-        """Declare an input port, inferring the normal media contract."""
+        """Declare an input port and infer its normal media requirements."""
         return cls(
             name,
             PortDirection.INPUT,
@@ -447,7 +447,7 @@ class PortSpec:
         multiplicity: Multiplicity = Multiplicity.ONE,
         required: bool = True,
     ) -> PortSpec:
-        """Declare an output port, inferring the normal media contract."""
+        """Declare an output port and infer its normal media requirements."""
         return cls(
             name,
             PortDirection.OUTPUT,
@@ -495,7 +495,7 @@ class CopyPolicy(StrEnum):
     COPY_TO_BRANCH_POOL = "copy-to-branch-pool"
 
 
-class EdgeObservabilityLevel(StrEnum):
+class RouteObservability(StrEnum):
     OFF = "off"
     COUNTERS = "counters"
     FULL = "full"
@@ -503,24 +503,115 @@ class EdgeObservabilityLevel(StrEnum):
     @property
     def rank(self) -> int:
         return {
-            EdgeObservabilityLevel.OFF: 0,
-            EdgeObservabilityLevel.COUNTERS: 1,
-            EdgeObservabilityLevel.FULL: 2,
+            RouteObservability.OFF: 0,
+            RouteObservability.COUNTERS: 1,
+            RouteObservability.FULL: 2,
         }[self]
 
 
-@dataclass(frozen=True, slots=True)
-class EdgeContract:
-    """Configure a bounded edge with the public Rust policy modifiers."""
+EdgeObservabilityLevel = RouteObservability
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class DeliveryPolicy:
+    """Choose how a route behaves when delivery slows or fails."""
 
     _native: _NativeEdgeContract = field(repr=False, compare=False)
 
     @classmethod
-    def realtime_audio(cls) -> EdgeContract:
+    def realtime_audio(cls) -> DeliveryPolicy:
         return cls(_NativeEdgeContract.realtime_audio())
 
     @classmethod
-    def bounded_async(cls) -> EdgeContract:
+    def bounded_async(cls) -> DeliveryPolicy:
+        return cls(_NativeEdgeContract.bounded_async())
+
+    @property
+    def clock(self) -> ClockDomain:
+        return ClockDomain(self._native.clock)
+
+    @property
+    def latency_budget_ms(self) -> int | None:
+        return self._native.latency_budget_ms
+
+    @property
+    def jitter_budget_ms(self) -> int | None:
+        return self._native.jitter_budget_ms
+
+    @property
+    def backpressure(self) -> BackpressurePolicy:
+        return BackpressurePolicy(self._native.backpressure)
+
+    @property
+    def delivery(self) -> DeliverySemantics:
+        return DeliverySemantics(self._native.delivery)
+
+    @property
+    def loss(self) -> LossPolicy:
+        return LossPolicy(self._native.loss)
+
+    @property
+    def copy_policy(self) -> CopyPolicy:
+        return CopyPolicy(self._native.copy_policy)
+
+    @property
+    def observability(self) -> RouteObservability:
+        return RouteObservability(self._native.observability)
+
+    @property
+    def max_payload_bytes(self) -> int | None:
+        return self._native.max_payload_bytes
+
+    def with_backpressure(self, policy: BackpressurePolicy) -> DeliveryPolicy:
+        return type(self)(
+            _native_call(lambda: self._native.with_backpressure(policy.value))
+        )
+
+    def with_copy_policy(self, policy: CopyPolicy) -> DeliveryPolicy:
+        return type(self)(
+            _native_call(lambda: self._native.with_copy_policy(policy.value))
+        )
+
+    def with_jitter_budget_ms(self, budget_ms: int | None) -> DeliveryPolicy:
+        return type(self)(self._native.with_jitter_budget_ms(budget_ms))
+
+    def with_max_payload_bytes(self, maximum_bytes: int) -> DeliveryPolicy:
+        return type(self)(
+            _native_call(lambda: self._native.with_max_payload_bytes(maximum_bytes))
+        )
+
+    def _values(self) -> tuple[object, ...]:
+        return (
+            self.clock,
+            self.latency_budget_ms,
+            self.jitter_budget_ms,
+            self.backpressure,
+            self.delivery,
+            self.loss,
+            self.copy_policy,
+            self.observability,
+            self.max_payload_bytes,
+        )
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, DeliveryPolicy) and self._values() == other._values()
+
+    def __hash__(self) -> int:
+        return hash(self._values())
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class RouteSettings:
+    """Choose the media accepted by a route and how that route delivers it."""
+
+    _native: _NativeEdgeContract = field(repr=False, compare=False)
+
+    @classmethod
+    def realtime_audio(cls) -> RouteSettings:
+        return cls(_NativeEdgeContract.realtime_audio())
+
+    @classmethod
+    def bounded_async(cls) -> RouteSettings:
         return cls(_NativeEdgeContract.bounded_async())
 
     @property
@@ -556,33 +647,62 @@ class EdgeContract:
         return CopyPolicy(self._native.copy_policy)
 
     @property
-    def observability(self) -> EdgeObservabilityLevel:
-        return EdgeObservabilityLevel(self._native.observability)
+    def observability(self) -> RouteObservability:
+        return RouteObservability(self._native.observability)
 
     @property
     def max_payload_bytes(self) -> int | None:
         return self._native.max_payload_bytes
 
-    def with_media(self, media: MediaCaps) -> EdgeContract:
+    @property
+    def delivery_policy(self) -> DeliveryPolicy:
+        return DeliveryPolicy(self._native)
+
+    def with_media(self, media: MediaCaps) -> RouteSettings:
         return type(self)(self._native.with_media(media._native))
 
-    def with_backpressure(self, policy: BackpressurePolicy) -> EdgeContract:
+    def with_delivery_policy(self, policy: DeliveryPolicy) -> RouteSettings:
+        return type(self)(policy._native.with_media(self.media._native))
+
+    def with_backpressure(self, policy: BackpressurePolicy) -> RouteSettings:
         return type(self)(
             _native_call(lambda: self._native.with_backpressure(policy.value))
         )
 
-    def with_copy_policy(self, policy: CopyPolicy) -> EdgeContract:
+    def with_copy_policy(self, policy: CopyPolicy) -> RouteSettings:
         return type(self)(
             _native_call(lambda: self._native.with_copy_policy(policy.value))
         )
 
-    def with_jitter_budget_ms(self, budget_ms: int | None) -> EdgeContract:
+    def with_jitter_budget_ms(self, budget_ms: int | None) -> RouteSettings:
         return type(self)(self._native.with_jitter_budget_ms(budget_ms))
 
-    def with_max_payload_bytes(self, maximum_bytes: int) -> EdgeContract:
+    def with_max_payload_bytes(self, maximum_bytes: int) -> RouteSettings:
         return type(self)(
             _native_call(lambda: self._native.with_max_payload_bytes(maximum_bytes))
         )
+
+    def _values(self) -> tuple[object, ...]:
+        return (self.media, self.delivery_policy)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, RouteSettings) and self._values() == other._values()
+
+    def __hash__(self) -> int:
+        return hash(self._values())
+
+
+EdgeContract: TypeAlias = RouteSettings
+
+
+def _select_route_settings(
+    route_settings: RouteSettings | None,
+    edge: EdgeContract | None,
+    default: RouteSettings,
+) -> RouteSettings:
+    if route_settings is not None and edge is not None:
+        raise ValueError("pass route_settings or edge, not both")
+    return route_settings or edge or default
 
 
 ConfigurationInput: TypeAlias = Mapping[str, str] | Iterable[tuple[str, str]]
@@ -657,6 +777,10 @@ class EndpointDescriptor:
     configuration: EndpointConfiguration = field(default_factory=EndpointConfiguration)
     input_edge: EdgeContract | None = None
     _native: _NativeEndpointDescriptor = field(init=False, repr=False, compare=False)
+
+    @property
+    def route_settings(self) -> RouteSettings | None:
+        return self.input_edge
 
     def __post_init__(self) -> None:
         native = _native_call(
@@ -767,8 +891,8 @@ class _RoutableStream:
 
         This is the concise one-destination form. Use
         ``Session.register_connector(...).declare(...)`` when one Connector
-        implementation needs multiple configurations or explicit edge
-        contracts.
+        implementation needs multiple configurations or explicit
+        route settings.
         """
         return self.send(
             self._destination(connector),
@@ -805,7 +929,7 @@ class _RoutableStream:
 
 
 class Stem(_RoutableStream):
-    """Independent source-aware PCM path declared on a Session."""
+    """Independent source-aware PCM stream declared on a Session."""
 
     __slots__ = ("_native",)
     _native: _NativeStem
@@ -1019,7 +1143,7 @@ class _GraphSessionDeclarations:
         )
 
     def browser(self, receiver_uri: str) -> Endpoint:
-        """Declare the frozen browser/remote receiver endpoint contract."""
+        """Declare the frozen browser or remote-receiver Endpoint."""
         return _native_call(lambda: Endpoint(self._native.browser(receiver_uri)))
 
     def subscribe(
@@ -1027,6 +1151,7 @@ class _GraphSessionDeclarations:
         stream: DerivedStream | SourceOutput,
         *,
         signal: SignalSpec[_PayloadT],
+        route_settings: RouteSettings | None = None,
         edge: EdgeContract | None = None,
     ) -> BusSubscription[_PayloadT]:
         """Declare one bounded, exclusive typed-signal subscription.
@@ -1036,17 +1161,17 @@ class _GraphSessionDeclarations:
         """
         from .signal import BusSubscription
 
-        contract = (
-            EdgeContract.bounded_async().with_media(_media_for_signal(signal))
-            if edge is None
-            else edge
+        settings = _select_route_settings(
+            route_settings,
+            edge,
+            RouteSettings.bounded_async().with_media(_media_for_signal(signal)),
         )
         if isinstance(stream, DerivedStream):
             native = _native_call(
                 lambda: self._native.subscribe_derived(
                     stream._native,
                     signal._native,
-                    contract._native,
+                    settings._native,
                 )
             )
         elif isinstance(stream, SourceOutput):
@@ -1054,7 +1179,7 @@ class _GraphSessionDeclarations:
                 lambda: self._native.subscribe_source_output(
                     stream._native,
                     signal._native,
-                    contract._native,
+                    settings._native,
                 )
             )
         else:
@@ -1117,6 +1242,7 @@ __all__ = [
     "ClockDomain",
     "Codec",
     "CopyPolicy",
+    "DeliveryPolicy",
     "DeliverySemantics",
     "DerivedStream",
     "EdgeContract",
@@ -1135,6 +1261,8 @@ __all__ = [
     "OperatorInstance",
     "PortDirection",
     "PortSpec",
+    "RouteObservability",
+    "RouteSettings",
     "SampleFormat",
     "SignalKind",
     "SignalSpec",

@@ -1,4 +1,4 @@
-"""Bounded asyncio projection of Core's advanced Endpoint lifecycle."""
+"""Bounded asyncio API for Core's advanced Endpoint lifecycle."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from ..endpoint_authoring import EndpointProvider as SyncEndpointProvider
 from ..endpoint_authoring import PreparedEndpointDriver as SyncPreparedEndpointDriver
 from ..endpoint_authoring import RegisteredEndpoint as SyncRegisteredEndpoint
 from ..endpoint_authoring import RunningEndpointDriver as SyncRunningEndpointDriver
-from ..graph import EdgeContract, Endpoint
+from ..graph import EdgeContract, Endpoint, RouteSettings
 from ..observations import EndpointFailureStage
 
 _Result = TypeVar("_Result")
@@ -222,9 +222,14 @@ class RegisteredEndpoint:
         self,
         configuration: EndpointConfigurationInput = (),
         *,
+        route_settings: RouteSettings | None = None,
         edge: EdgeContract | None = None,
     ) -> Endpoint:
-        return self._registered.declare(configuration, edge=edge)
+        return self._registered.declare(
+            configuration,
+            route_settings=route_settings,
+            edge=edge,
+        )
 
 
 def _wait_for_provider(

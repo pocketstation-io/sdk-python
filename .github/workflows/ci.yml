@@ -73,6 +73,18 @@ jobs:
           ruff check python tests examples
           ruff format --check python tests examples
 
+      - name: Public documentation language
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        working-directory: sdk-python
+        shell: bash
+        run: |
+          if rg -n -i '\b(boundary|path|surface|authority|projection|lowering|flow|layer|contracts?)\b' \
+            README.md RELEASE_NOTES.md docs examples \
+            --glob '*.md' --glob '*.mdx'; then
+            echo "Public documentation must name the API, queue, process, service, or request directly."
+            exit 1
+          fi
+
       - name: Python type contract
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
         working-directory: sdk-python

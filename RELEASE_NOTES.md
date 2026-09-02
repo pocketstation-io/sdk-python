@@ -1,5 +1,19 @@
 # PocketStation for Python release notes
 
+## Unreleased
+
+### Added
+
+Advanced integrations can now configure `RouteSettings` as accepted media plus
+a separate `DeliveryPolicy`. Connector, Endpoint, and signal-subscription APIs
+accept the clearer `route_settings=` keyword. Runtime metrics expose
+`RouteObservability`, `RouteLatencyMeasurement`, `RouteDeliveryMetrics`, and
+`SignalQueueMetrics`.
+
+Existing `EdgeContract`, `EdgeObservabilityLevel`, `RouteLatencyBoundary`,
+`EdgeMetrics`, `TypedEdgeMetrics`, and `edge=` uses remain compatible throughout
+the 0.1.x series.
+
 ## 0.1.2 — 2026-09-01
 
 Capture code can now send source-aware audio to an external system through one
@@ -60,7 +74,7 @@ python -m pip install --upgrade pocketstation==0.1.2
 ```
 
 Python Connectors run outside native realtime partitions, but each frame still
-crosses the Python interpreter boundary. Use a native Connector when that cost
+enters the Python interpreter. Use a native Connector when that cost
 is not appropriate for the destination.
 
 ## 0.1.1 — 2026-09-01
@@ -98,7 +112,7 @@ does not execute on native capture callbacks.
 ### Voice interruption example
 
 `examples/debug_voice_ai.py` connects a physical microphone directly to OpenAI
-Realtime, routes generated speech through the normal Session audio path, and
+Realtime, routes generated speech through the normal Session audio stream, and
 records microphone input, generated output, and browser playback separately.
 The resulting timeline distinguishes provider cancellation from Core output
 cancellation and receiver delivery.
@@ -110,7 +124,7 @@ provider-history truncation as unavailable instead of inferring them.
 ### Supported and qualified environments
 
 - macOS Apple silicon has installed-wheel evidence for application capture,
-  physical microphone input, the 10 ms voice path, Relay, Chromium, and
+  physical microphone input, the 10 ms voice configuration, Relay, Chromium, and
   multistem recording.
 - Linux and Windows have Core application-selection and 10 ms capture evidence.
   Installed Python distributions are qualified separately by the release

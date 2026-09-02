@@ -16,7 +16,7 @@ from .identity import SourceId, StreamId
 
 @dataclass(frozen=True, slots=True)
 class AudioInputConfig:
-    """Finite PCM contract shared by the convenient and advanced APIs."""
+    """Finite PCM configuration shared by the concise and advanced APIs."""
 
     name: str
     sample_rate_hz: int = 48_000
@@ -133,7 +133,7 @@ class PcmSource:
         except BufferError as error:
             # PyO3 rejects an incompatible buffer format before entering the
             # native method, so it cannot attach PocketStation's coded error.
-            # Keep that binding detail out of the public SDK contract.
+            # Keep that binding detail out of the public SDK API.
             raise AudioInputBufferError(
                 "samples must be a C-contiguous float32 buffer",
                 "audio_input.invalid_buffer",

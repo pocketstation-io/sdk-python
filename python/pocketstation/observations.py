@@ -147,8 +147,13 @@ class RouteObservationInterval(StrEnum):
     ROUTE_LIFETIME_TO_SNAPSHOT = "route-lifetime-to-snapshot"
 
 
-class RouteLatencyBoundary(StrEnum):
+class RouteLatencyMeasurement(StrEnum):
+    """Identify the timestamps used to calculate route latency."""
+
     SOURCE_TIMESTAMP_TO_ROUTE_RECEIVE = "source-monotonic-timestamp-to-route-receive"
+
+
+RouteLatencyBoundary = RouteLatencyMeasurement
 
 
 class RouteLatencyUnit(StrEnum):
@@ -266,7 +271,7 @@ class SessionFailure:
 
 @dataclass(frozen=True, slots=True)
 class SessionEvent:
-    """One immutable projection of an authoritative native Session event."""
+    """One immutable Python view of a native Session event."""
 
     kind: SessionEventType
     lifecycle_state: SessionLifecycleState | None
@@ -362,7 +367,7 @@ class LatencyHistogram:
 
 
 @dataclass(frozen=True, slots=True)
-class EdgeMetrics:
+class RouteDeliveryMetrics:
     queue_capacity_frames: int
     queue_depth_frames: int
     queue_peak_frames: int
@@ -389,7 +394,7 @@ class EdgeMetrics:
     discarded_output_frames_total: int | None
 
     @classmethod
-    def _from_native(cls, value: _NativeEdgeMetrics) -> EdgeMetrics:
+    def _from_native(cls, value: _NativeEdgeMetrics) -> RouteDeliveryMetrics:
         return cls(
             queue_capacity_frames=value.queue_capacity_frames,
             queue_depth_frames=value.queue_depth_frames,
@@ -436,6 +441,9 @@ class EdgeMetrics:
         )
 
 
+EdgeMetrics = RouteDeliveryMetrics
+
+
 @dataclass(frozen=True, slots=True)
 class EndpointMetrics:
     observation_stage: EndpointObservationStage
@@ -451,17 +459,21 @@ class EndpointMetrics:
 class RouteMetrics:
     route_id: int
     endpoint_id: int
-    edge: EdgeMetrics
+    edge: RouteDeliveryMetrics
     endpoint: EndpointMetrics
     frames_attempted_total: int
     observation_interval: RouteObservationInterval
     drop_rate_pct: float
-    source_latency_boundary: RouteLatencyBoundary
+    source_latency_boundary: RouteLatencyMeasurement
     source_latency_unit: RouteLatencyUnit
 
     @property
     def queue_capacity_frames(self) -> int:
         return self.edge.queue_capacity_frames
+
+    @property
+    def delivery(self) -> RouteDeliveryMetrics:
+        return self.edge
 
     @property
     def frames_delivered_total(self) -> int:
@@ -471,9 +483,13 @@ class RouteMetrics:
     def frames_dropped_total(self) -> int:
         return self.edge.frames_dropped_total
 
+    @property
+    def source_latency_measurement(self) -> RouteLatencyMeasurement:
+        return self.source_latency_boundary
+
     @classmethod
     def _from_native(cls, value: _NativeRouteMetrics) -> RouteMetrics:
-        edge = EdgeMetrics._from_native(cast(_NativeEdgeMetrics, value))
+        edge = RouteDeliveryMetrics._from_native(cast(_NativeEdgeMetrics, value))
         return cls(
             route_id=value.route_id,
             endpoint_id=value.endpoint_id,
@@ -494,7 +510,9 @@ class RouteMetrics:
                 value.drop_observation_interval
             ),
             drop_rate_pct=value.drop_rate_pct,
-            source_latency_boundary=RouteLatencyBoundary(value.source_latency_boundary),
+            source_latency_boundary=RouteLatencyMeasurement(
+                value.source_latency_boundary
+            ),
             source_latency_unit=RouteLatencyUnit(value.source_latency_unit),
         )
 
@@ -582,7 +600,7 @@ class ExternalSourceMetrics:
 
 
 @dataclass(frozen=True, slots=True)
-class TypedEdgeMetrics:
+class SignalQueueMetrics:
     capacity_signals: int
     max_payload_bytes: int
     maximum_buffered_payload_bytes: int
@@ -593,8 +611,11 @@ class TypedEdgeMetrics:
     dropped_total: int
 
     @classmethod
-    def _from_native(cls, value: _NativeTypedEdgeMetrics) -> TypedEdgeMetrics:
+    def _from_native(cls, value: _NativeTypedEdgeMetrics) -> SignalQueueMetrics:
         return cls(**{name: getattr(value, name) for name in cls.__dataclass_fields__})
+
+
+TypedEdgeMetrics = SignalQueueMetrics
 
 
 @dataclass(frozen=True, slots=True)
@@ -622,26 +643,37 @@ class OperatorWorkerMetrics:
 @dataclass(frozen=True, slots=True)
 class OperatorInputMetrics:
     port_name: str
-    edge: EdgeMetrics
+    edge: RouteDeliveryMetrics
+
+    @property
+    def delivery(self) -> RouteDeliveryMetrics:
+        return self.edge
 
     @classmethod
     def _from_native(cls, value: _NativeOperatorInputMetrics) -> OperatorInputMetrics:
-        return cls(port_name=value.port_name, edge=EdgeMetrics._from_native(value.edge))
+        return cls(
+            port_name=value.port_name,
+            edge=RouteDeliveryMetrics._from_native(value.edge),
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class OperatorMetrics:
     operator_instance_id: int
-    input_edge: EdgeMetrics
+    input_edge: RouteDeliveryMetrics
     worker: OperatorWorkerMetrics
     finalization_failures_total: int
     input_ports: tuple[OperatorInputMetrics, ...]
+
+    @property
+    def input_delivery(self) -> RouteDeliveryMetrics:
+        return self.input_edge
 
     @classmethod
     def _from_native(cls, value: _NativeOperatorMetrics) -> OperatorMetrics:
         return cls(
             operator_instance_id=value.operator_instance_id,
-            input_edge=EdgeMetrics._from_native(value.input_edge),
+            input_edge=RouteDeliveryMetrics._from_native(value.input_edge),
             worker=OperatorWorkerMetrics._from_native(value.worker),
             finalization_failures_total=value.finalization_failures_total,
             input_ports=tuple(
@@ -654,7 +686,7 @@ class OperatorMetrics:
 class DerivedRouteMetrics:
     route_id: int
     endpoint_id: int
-    output: TypedEdgeMetrics
+    output: SignalQueueMetrics
     endpoint: EndpointMetrics
 
     @classmethod
@@ -662,7 +694,7 @@ class DerivedRouteMetrics:
         return cls(
             route_id=value.route_id,
             endpoint_id=value.endpoint_id,
-            output=TypedEdgeMetrics._from_native(value.output),
+            output=SignalQueueMetrics._from_native(value.output),
             endpoint=EndpointMetrics(
                 observation_stage=EndpointObservationStage(
                     value.endpoint_observation_stage
@@ -1246,7 +1278,9 @@ __all__ = [
     "RecordingState",
     "RecordingStemOutcome",
     "RelayPublishOutcome",
+    "RouteDeliveryMetrics",
     "RouteLatencyBoundary",
+    "RouteLatencyMeasurement",
     "RouteLatencyUnit",
     "RouteMetrics",
     "RouteObservationInterval",
@@ -1267,6 +1301,7 @@ __all__ = [
     "SessionTraceRecordType",
     "SessionTraceRecorderOutcome",
     "SessionTraceValidation",
+    "SignalQueueMetrics",
     "SourceMetrics",
     "StopResult",
     "TerminationDisposition",

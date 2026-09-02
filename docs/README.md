@@ -13,6 +13,7 @@ need the lower-level API.
 ## Create an integration
 
 - [Write application-owned audio into a Session](guides/application-audio.md)
+- [Process audio and typed signals](guides/process-audio-and-signals.md)
 - [Record stems and inspect Session delivery](guides/record-and-observe.md)
 - [Compose a bounded voice workflow](guides/voice.md)
 - [Publish a named AudioBus through Relay](guides/relay.md)
@@ -21,6 +22,8 @@ need the lower-level API.
 ## Understand the system
 
 - [Session ownership, bounds, and shutdown](concepts/session-and-bounds.md)
+- [Source identity, timestamps, and discontinuities](concepts/source-identity-and-time.md)
+- [Media and delivery settings for each route](concepts/route-settings.md)
 
 ## Operate and upgrade
 
@@ -35,13 +38,14 @@ need the lower-level API.
 - [`pocketstation.aio`](../python/pocketstation/aio/__init__.py) — asyncio over
   the same native Session.
 - [`pocketstation.voice`](../python/pocketstation/voice/__init__.py) —
-  provider-neutral voice composition contracts.
+  provider-neutral voice composition protocols.
 - [`pocketstation.graph`](../python/pocketstation/graph.py) — stems, routes,
   ports, and signals.
 - [`pocketstation.observations`](../python/pocketstation/observations.py) —
   runtime metrics and outcomes.
 - [Python API map](reference/api-map.md) — public entry points and advanced
   modules by task.
+- [Events, metrics, outcomes, and errors](reference/events-and-errors.md)
 
 For supported platforms and current qualification limits, read the
 [repository README](../README.md#platform-support).

@@ -1,6 +1,6 @@
 """PocketStation's concise Python entry point.
 
-Advanced graph, authoring, Relay, extension, and diagnostic contracts live in
+Advanced graph, authoring, Relay, extension, and diagnostic APIs live in
 their named modules. They are not duplicated at the package root.
 """
 

@@ -1,4 +1,4 @@
-"""Streaming transcript revisions and transcriber integration contracts."""
+"""Streaming transcript revisions and transcriber integration protocols."""
 
 from __future__ import annotations
 

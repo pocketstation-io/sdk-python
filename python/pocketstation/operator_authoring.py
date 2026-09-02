@@ -20,6 +20,7 @@ from .graph import (
     OperatorInstance,
     PortDirection,
     PortSpec,
+    RouteSettings,
     SignalSpec,
 )
 from .signal import SignalAudioPayload, SignalEnvelope
@@ -31,7 +32,7 @@ class _SessionOwner(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class OperatorManifest:
-    """Validated contract for one off-realtime Python Operator."""
+    """Validated definition for one off-realtime Python Operator."""
 
     operator_id: str
     inputs: tuple[PortSpec, ...]
@@ -76,6 +77,10 @@ class OperatorPortContext:
     signal: SignalSpec[object]
     media: MediaCaps
     edge: EdgeContract
+
+    @property
+    def route_settings(self) -> RouteSettings:
+        return self.edge
 
     @classmethod
     def _from_native(cls, value: _NativeOperatorPortContext) -> OperatorPortContext:
@@ -148,7 +153,7 @@ class OperatorNode:
     """Off-realtime computation hosted by Core's Operator worker."""
 
     def prepare(self, context: OperatorPrepareContext) -> None:
-        """Observe compiled port and edge contracts before processing."""
+        """Observe compiled ports and route settings before processing."""
 
     def process(
         self, input_port: str, envelope: SignalEnvelope[object]

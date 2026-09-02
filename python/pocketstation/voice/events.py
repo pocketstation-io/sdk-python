@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class VoiceEvent:
-    """One measured voice lifecycle or media-boundary event."""
+    """One measured voice lifecycle or media-timing event."""
 
     kind: str
     timestamp_ns: int

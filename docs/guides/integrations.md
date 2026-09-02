@@ -1,10 +1,10 @@
 # Create a Source, Operator, Connector, or Endpoint
 
-Choose the boundary by the direction and ownership of the work. All four use
+Choose the API by the direction of the work. All four use
 the same Session compiler, finite queues, lifecycle, observations, and joined
 shutdown.
 
-| Boundary | Use it when |
+| API | Use it when |
 |---|---|
 | `Source` | Media or signals enter the Session. |
 | `Operator` | Computation transforms media or emits signals. |
@@ -22,8 +22,8 @@ another Session, or hide an unbounded queue behind a provider callback.
 
 ## Choose a Connector for outbound delivery
 
-A Connector is the outbound boundary between one PocketStation Session and an
-external system. Use it to publish source-aware audio to a WebSocket, call
+A Connector sends data from one PocketStation Session to an external system.
+Use it to publish source-aware audio to a WebSocket, call
 transport, monitoring service, storage API, or provider SDK without rebuilding
 capture, buffering, routing, and shutdown in every integration.
 
@@ -44,7 +44,7 @@ does not create a second media engine or skip Core.
 Do not use a Connector for work that changes audio into another signal. A
 transcriber is an `Operator`. Audio arriving from a provider is a `Source` or
 an application-owned `AudioInput`. A duplex integration can compose inbound
-and outbound boundaries while the Session remains the only runtime.
+and outbound APIs while the Session remains the only runtime.
 
 ## Send audio to a provider
 
@@ -119,7 +119,7 @@ raised them. Raise `ConnectorError` when the provider has a stable error code
 or retryability classification. Other routes continue independently when one
 Connector is slow or fails.
 
-## Lifecycle and delivery contract
+## Lifecycle and delivery behavior
 
 | Method | Provider responsibility | PocketStation responsibility |
 |---|---|---|
@@ -167,5 +167,5 @@ errors, logs, metrics, observations, or object representations.
 
 Build and install the distribution into a clean environment. Run the provider
 through a normal Session, cause saturation and cancellation, and verify joined
-shutdown. A mock proves only the adapter contract; a network integration needs
+shutdown. A mock proves only the adapter calls; a network integration needs
 provider and receiver evidence.

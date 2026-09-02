@@ -95,7 +95,7 @@ class RealtimeVoiceConfig:
 
 @dataclass(frozen=True, slots=True)
 class RealtimeVoiceObservations:
-    """Finite provider and PocketStation boundary counters."""
+    """Finite provider and PocketStation delivery counters."""
 
     input_ready: bool
     input_frames_sent: int
@@ -309,7 +309,7 @@ class OpenAIRealtime:
 
     @property
     def observations(self) -> RealtimeVoiceObservations:
-        """Return measured provider and generated-audio boundary counters."""
+        """Return measured provider and generated-audio delivery counters."""
         if self._voice is None:
             raise RuntimeError("the OpenAI Realtime connection has not been declared")
         return self._voice.observations
@@ -620,7 +620,7 @@ class _OpenAIRealtimeVoice:
         self,
         disposition: Literal["completed", "stopped", "cancelled", "failed"],
     ) -> ConversationOutcome:
-        """Return measured provider and media-boundary facts collected so far."""
+        """Return measured provider and media delivery facts collected so far."""
         history = _conversation_history(self._event_records)
         events = tuple(_voice_event(record) for record in self._event_records)
         turns_started = sum(message.role == "user" for message in history)
@@ -707,7 +707,7 @@ class _OpenAIRealtimeVoice:
                 "  cancellation decision      "
                 f"{max(cancelled - interruption, 0) / 1_000_000:.1f} ms"
             )
-        print(f"  provider boundary         {self.observations}")
+        print(f"  provider delivery         {self.observations}")
         print(
             "  browser playout cutoff    unavailable: the receiver has not returned "
             "a played-sample acknowledgement"

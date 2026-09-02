@@ -1,6 +1,6 @@
 """Compatibility imports for the former conversation module.
 
-New code should import these contracts from :mod:`pocketstation.voice`.
+New code should import these protocols from :mod:`pocketstation.voice`.
 """
 
 from .voice import (

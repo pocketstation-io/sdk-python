@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class RuntimeCompatibility:
-    """Exact native components and interpreter contract embedded by the wheel."""
+    """Native component and interpreter versions embedded by the wheel."""
 
     sdk_version: str
     core_version: str
