@@ -1,12 +1,12 @@
 # Compose a bounded voice workflow
 
-`pocketstation.voice` defines provider-neutral voice contracts.
+`pocketstation.voice` defines provider-neutral Python protocols.
 `pocketstation.aio.Session` composes those providers around one native Session.
 The package does not contain a model provider, capture engine, Relay
 implementation, or agent framework.
 
 Start with a declared asyncio Session, one input stem, one `AudioInput` for
-generated speech, and provider objects that implement the selected contracts.
+generated speech, and provider objects that implement the selected protocols.
 
 ## Choose one provider shape
 

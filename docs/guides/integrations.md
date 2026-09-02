@@ -119,7 +119,7 @@ raised them. Raise `ConnectorError` when the provider has a stable error code
 or retryability classification. Other routes continue independently when one
 Connector is slow or fails.
 
-## Lifecycle and delivery contract
+## Lifecycle and delivery behavior
 
 | Method | Provider responsibility | PocketStation responsibility |
 |---|---|---|
@@ -167,5 +167,5 @@ errors, logs, metrics, observations, or object representations.
 
 Build and install the distribution into a clean environment. Run the provider
 through a normal Session, cause saturation and cancellation, and verify joined
-shutdown. A mock proves only the adapter contract; a network integration needs
+shutdown. A mock proves only the adapter calls; a network integration needs
 provider and receiver evidence.

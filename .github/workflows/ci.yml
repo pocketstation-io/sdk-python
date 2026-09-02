@@ -78,7 +78,7 @@ jobs:
         working-directory: sdk-python
         shell: bash
         run: |
-          if rg -n -i '\b(boundary|path|surface|authority|projection|lowering|flow|layer)\b' \
+          if rg -n -i '\b(boundary|path|surface|authority|projection|lowering|flow|layer|contracts?)\b' \
             README.md RELEASE_NOTES.md docs examples \
             --glob '*.md' --glob '*.mdx'; then
             echo "Public documentation must name the API, queue, process, service, or request directly."

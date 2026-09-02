@@ -1,7 +1,7 @@
 # Find the Python API for a task
 
 Use the package root for capture and Session lifecycle. Import advanced graph,
-provider, Relay, and diagnostic contracts from the module that owns them.
+provider, Relay, and diagnostic APIs from the module that implements them.
 
 ## Start and stop a Session
 
@@ -47,7 +47,7 @@ callbacks never call Python.
 
 ## Build a voice workflow
 
-`pocketstation.voice` contains the provider-neutral contracts.
+`pocketstation.voice` contains the provider-neutral Python protocols.
 `pocketstation.aio.Session.conversation()` composes either:
 
 - a `StreamingTranscriber`, `ResponseModel`, and `SpeechSynthesizer`, with an

@@ -159,7 +159,7 @@ PocketStation provides four integration APIs:
 | `Source` | Media or signals enter the Session. |
 | `Operator` | Work transforms media or emits typed signals. |
 | `Connector` | Media or signals leave for an external system. |
-| `Endpoint` | You need the lower-level outbound execution contract. |
+| `Endpoint` | You need direct control of an outbound worker. |
 
 Pass one function when the destination is already open:
 
@@ -174,7 +174,7 @@ destination = pks_aio.Connector(send=send_audio)
 application.send_to(destination)
 ```
 
-Subclass the synchronous or asyncio contract when the provider opens and
+Subclass the synchronous or asyncio Connector when the provider opens and
 closes resources. The provider class owns its connection; the Session owns
 bounded delivery, lineage, observations, drain, abort, and joined shutdown:
 
@@ -274,7 +274,7 @@ uv run mypy python tests/qualification/typing_contract.py examples
   prerequisites.
 - `pocketstation.capture` — concise application and microphone capture.
 - `pocketstation.session` — Session declarations and lifecycle.
-- `pocketstation.graph` — stems, ports, routes, and signal contracts.
+- `pocketstation.graph` — stems, ports, routes, and signal specifications.
 - `pocketstation.connector` — outbound provider authoring.
 - `pocketstation.operator_authoring` — computation authoring.
 - `pocketstation.source_authoring` — inbound provider authoring.

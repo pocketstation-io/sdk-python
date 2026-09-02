@@ -35,7 +35,7 @@ need the lower-level API.
 - [`pocketstation.aio`](../python/pocketstation/aio/__init__.py) — asyncio over
   the same native Session.
 - [`pocketstation.voice`](../python/pocketstation/voice/__init__.py) —
-  provider-neutral voice composition contracts.
+  provider-neutral voice composition protocols.
 - [`pocketstation.graph`](../python/pocketstation/graph.py) — stems, routes,
   ports, and signals.
 - [`pocketstation.observations`](../python/pocketstation/observations.py) —
