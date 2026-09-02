@@ -1,4 +1,4 @@
-"""Asyncio projection of bounded application-owned PCM input."""
+"""Asyncio API for bounded application-owned PCM input."""
 
 from __future__ import annotations
 

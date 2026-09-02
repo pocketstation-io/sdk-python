@@ -1,7 +1,7 @@
-"""Provider-neutral contracts and composition for live voice applications.
+"""Provider-neutral protocols and composition for live voice applications.
 
-Provider packages implement these contracts. PocketStation continues to own
-the native Session, source-aware audio paths, bounded routing, recording,
+Provider packages implement these protocols. PocketStation continues to own
+the native Session, source-aware audio routes, bounded routing, recording,
 Relay delivery, and output cancellation.
 """
 

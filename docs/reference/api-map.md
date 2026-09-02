@@ -28,6 +28,9 @@ observations. Both forms use the same Rust engine.
 | Application-owned PCM | `pocketstation.audio_input` |
 | Runtime events, metrics, and outcomes | `pocketstation.observations` |
 
+Read [source identity and time](../concepts/source-identity-and-time.md) before
+persisting selectors or correlating provider events with recorded media.
+
 ## Connect external systems
 
 | Task | Module |
@@ -65,4 +68,4 @@ package root. Advanced modules expose errors for the feature they implement. Pre
 the structured error and inspect the Session outcome before retrying.
 
 Continue with [Session ownership, bounds, and shutdown](../concepts/session-and-bounds.md)
-or [troubleshooting](../troubleshooting.md).
+or [events, metrics, outcomes, and errors](events-and-errors.md).

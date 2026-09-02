@@ -1,4 +1,4 @@
-"""Streaming speech-synthesis contracts over the existing PCM input boundary."""
+"""Streaming speech-synthesis protocols that write to an existing PCM input."""
 
 from __future__ import annotations
 

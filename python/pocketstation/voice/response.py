@@ -1,4 +1,4 @@
-"""Incremental response contracts for provider-neutral voice composition."""
+"""Incremental response protocols for provider-neutral voice composition."""
 
 from __future__ import annotations
 

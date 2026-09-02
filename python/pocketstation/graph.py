@@ -95,7 +95,7 @@ SignalFormat: TypeAlias = Codec | TextFormat | EventFormat | BinaryFormat
 
 @dataclass(frozen=True, slots=True)
 class SignalSpec(Generic[_PayloadT_co]):
-    """Stable language-neutral signal identity, role, and schema contract."""
+    """Stable language-neutral signal identity, role, and schema."""
 
     kind: SignalKind
     format: SignalFormat | None = None
@@ -348,7 +348,7 @@ class MediaCaps:
 
     @classmethod
     def for_signal(cls, signal: SignalSpec[object]) -> MediaCaps:
-        """Select the wildcard media contract for a signal."""
+        """Select wildcard media requirements for a signal."""
         if signal.kind is SignalKind.PCM_AUDIO:
             return cls.audio()
         if signal.kind is SignalKind.ENCODED_AUDIO:
@@ -374,7 +374,7 @@ class MediaCaps:
         return self._native.is_compatible_with(other._native)
 
     def negotiate(self, other: MediaCaps) -> MediaCaps | None:
-        """Return Core's narrow compatible media contract, if one exists."""
+        """Return Core's narrow compatible media requirements, if any."""
         native = self._native.negotiate(other._native)
         return None if native is None else type(self)._from_native(native)
 
@@ -427,7 +427,7 @@ class PortSpec:
         multiplicity: Multiplicity = Multiplicity.ONE,
         required: bool = True,
     ) -> PortSpec:
-        """Declare an input port, inferring the normal media contract."""
+        """Declare an input port and infer its normal media requirements."""
         return cls(
             name,
             PortDirection.INPUT,
@@ -447,7 +447,7 @@ class PortSpec:
         multiplicity: Multiplicity = Multiplicity.ONE,
         required: bool = True,
     ) -> PortSpec:
-        """Declare an output port, inferring the normal media contract."""
+        """Declare an output port and infer its normal media requirements."""
         return cls(
             name,
             PortDirection.OUTPUT,
@@ -767,8 +767,8 @@ class _RoutableStream:
 
         This is the concise one-destination form. Use
         ``Session.register_connector(...).declare(...)`` when one Connector
-        implementation needs multiple configurations or explicit edge
-        contracts.
+        implementation needs multiple configurations or explicit
+        EdgeContract settings.
         """
         return self.send(
             self._destination(connector),
@@ -805,7 +805,7 @@ class _RoutableStream:
 
 
 class Stem(_RoutableStream):
-    """Independent source-aware PCM path declared on a Session."""
+    """Independent source-aware PCM stream declared on a Session."""
 
     __slots__ = ("_native",)
     _native: _NativeStem
@@ -1019,7 +1019,7 @@ class _GraphSessionDeclarations:
         )
 
     def browser(self, receiver_uri: str) -> Endpoint:
-        """Declare the frozen browser/remote receiver endpoint contract."""
+        """Declare the frozen browser or remote-receiver Endpoint."""
         return _native_call(lambda: Endpoint(self._native.browser(receiver_uri)))
 
     def subscribe(

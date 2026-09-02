@@ -1,4 +1,4 @@
-"""Bounded asyncio projection of Core's advanced Endpoint lifecycle."""
+"""Bounded asyncio API for Core's advanced Endpoint lifecycle."""
 
 from __future__ import annotations
 

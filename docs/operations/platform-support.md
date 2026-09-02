@@ -12,13 +12,13 @@ do not rely on a sibling Rust checkout.
 
 ## Check permission without prompting
 
-`pocketstation.microphone_permission_observation()` reads the current state
-without showing consent UI:
+`microphone_permission_observation()` reads the current state without showing
+consent UI:
 
 ```python
-import pocketstation as pks
+from pocketstation.sources import microphone_permission_observation
 
-permission = pks.microphone_permission_observation()
+permission = microphone_permission_observation()
 print(permission.value)
 ```
 
@@ -40,8 +40,9 @@ after a restart:
 
 ```python
 import pocketstation as pks
+from pocketstation.sources import SourceQuery
 
-matches = pks.discover_sources(pks.SourceQuery.application("Zoom"))
+matches = pks.discover_sources(SourceQuery.application("Zoom"))
 if len(matches) != 1:
     raise RuntimeError("Select one running Zoom source")
 

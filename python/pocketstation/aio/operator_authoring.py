@@ -46,7 +46,7 @@ class OperatorDeadlines:
 
 class OperatorNode:
     async def prepare(self, context: OperatorPrepareContext) -> None:
-        """Observe compiled port and edge contracts before processing."""
+        """Observe compiled ports and EdgeContract settings before processing."""
 
     async def process(
         self, input_port: str, envelope: SignalEnvelope[object]

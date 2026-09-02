@@ -30,7 +30,7 @@ class ExtensionPortDirection(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ExtensionAbiVersion:
-    """Native authority for the linked PocketStation extension ABI."""
+    """Loaded native library that implements the PocketStation extension ABI."""
 
     struct_size_bytes: int
     abi_major: int

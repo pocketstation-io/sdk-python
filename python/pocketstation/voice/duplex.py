@@ -1,4 +1,4 @@
-"""Contracts for stateful providers that accept and produce live audio."""
+"""Protocols for stateful providers that accept and produce live audio."""
 
 from __future__ import annotations
 

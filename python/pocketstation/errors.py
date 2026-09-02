@@ -29,7 +29,7 @@ class SessionDeclarationError(SessionError, ValueError):
 
 @dataclass(frozen=True, slots=True)
 class SessionCompileDiagnostic:
-    """Machine-readable location and contract facts for a compile failure."""
+    """Machine-readable location and validation details for a compile failure."""
 
     code: str
     node_index: int | None = None
@@ -67,15 +67,15 @@ class CaptureError(SessionStartError):
 
 
 class GraphError(PocketStationError, ValueError):
-    """A graph, signal, port, edge, or media contract is invalid."""
+    """A graph, signal, port, edge, or media declaration is invalid."""
 
 
 class SourceError(PocketStationError):
-    """An externally authored Source contract or lifecycle failed."""
+    """An externally authored Source failed validation or lifecycle work."""
 
 
 class OperatorError(PocketStationError):
-    """An externally authored Operator contract or lifecycle failed."""
+    """An externally authored Operator failed validation or lifecycle work."""
 
 
 class ConnectorRuntimeError(PocketStationError):
@@ -118,7 +118,7 @@ class SidecarBackpressureError(SidecarError):
 
 
 class SidecarProtocolError(SidecarError):
-    """The child violated the frozen PKSS wire or handshake contract."""
+    """The child violated the frozen PKSS wire protocol or handshake."""
 
 
 class SidecarTimeoutError(SidecarError):
@@ -126,7 +126,7 @@ class SidecarTimeoutError(SidecarError):
 
 
 class ExtensionError(PocketStationError):
-    """A compiled extension descriptor or ABI contract was rejected."""
+    """A compiled extension descriptor or ABI requirement was rejected."""
 
 
 class AudioInputError(PocketStationError):

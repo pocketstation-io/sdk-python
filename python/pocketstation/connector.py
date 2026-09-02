@@ -286,7 +286,7 @@ class ConnectorConfigurationValue:
         unsigned = self._native.as_unsigned_integer()
         if unsigned is not None:
             return unsigned
-        raise AssertionError("native Connector value has no compatible projection")
+        raise AssertionError("native Connector value has no compatible Python wrapper")
 
     def __repr__(self) -> str:
         if self.kind is ConnectorConfigurationValueKind.SECRET:
@@ -447,7 +447,7 @@ class ConnectorRequirement:
 
 @dataclass(frozen=True, slots=True)
 class ConnectorManifest:
-    """Provider-neutral outbound Connector contract compiled by Core."""
+    """Provider-neutral outbound Connector compiled by Core."""
 
     operator_id: str
     package_version: str

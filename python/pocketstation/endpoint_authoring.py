@@ -1,4 +1,4 @@
-"""Advanced Python projection of Core's generic Endpoint lifecycle."""
+"""Advanced Python API for Core's generic Endpoint lifecycle."""
 
 from __future__ import annotations
 
@@ -237,7 +237,7 @@ class EndpointReceiver:
 
 
 class EndpointPortInput:
-    """One compiled input port, receiver, route identity, and edge contract."""
+    """One compiled input port, receiver, route identity, and EdgeContract."""
 
     __slots__ = ("_native",)
 

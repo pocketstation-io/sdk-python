@@ -266,7 +266,7 @@ class SessionFailure:
 
 @dataclass(frozen=True, slots=True)
 class SessionEvent:
-    """One immutable projection of an authoritative native Session event."""
+    """One immutable Python view of a native Session event."""
 
     kind: SessionEventType
     lifecycle_state: SessionLifecycleState | None

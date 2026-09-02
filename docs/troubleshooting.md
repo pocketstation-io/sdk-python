@@ -24,7 +24,8 @@ process or device.
 
 ## Permission changes are not reflected
 
-`microphone_permission_observation()` never prompts. Treat `NOT_OBSERVABLE` as
+`pocketstation.sources.microphone_permission_observation()` never prompts.
+Treat `NOT_OBSERVABLE` as
 unknown and use the typed Source open result. On macOS, restart the Python host
 after changing screen-recording or microphone consent. On Windows and Linux,
 verify that the current desktop user or service can access the selected audio

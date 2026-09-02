@@ -34,8 +34,10 @@ recorded. Both behaviors are off by default.
 ## Handle permissions and source changes
 
 PocketStation does not prompt during import or discovery. Check microphone
-permission without prompting, then let Source opening report the authoritative
-result. Application capture and microphone capture use separate permissions.
+permission without prompting through
+`pocketstation.sources.microphone_permission_observation()`, then let Source
+opening report the authoritative result. Application capture and microphone
+capture use separate permissions.
 
 When an application or device disappears, PocketStation reports the change and
 does not switch to another Source. Stop the current Session, discover again,
@@ -266,8 +268,14 @@ uv run mypy python tests/qualification/typing_contract.py examples
   API ownership.
 - [Write application-owned audio](docs/guides/application-audio.md) — bounded
   PCM input and selective output cancellation.
+- [Process audio and typed signals](docs/guides/process-audio-and-signals.md) —
+  Operators, named ports, generated audio, and finite model work.
 - [Record and observe a Session](docs/guides/record-and-observe.md) — multistem
   outcomes, route metrics, and lifecycle events.
+- [Keep each source identifiable](docs/concepts/source-identity-and-time.md) —
+  selection, persistence, timestamps, generations, and discontinuities.
+- [Read events, metrics, outcomes, and errors](docs/reference/events-and-errors.md)
+  — setup failure, live observations, and terminal results.
 - [Prepare each platform](docs/operations/platform-support.md) — permissions,
   source persistence, explicit rediscovery, and fallback policy.
 - [`examples/README.md`](examples/README.md) — runnable examples and
