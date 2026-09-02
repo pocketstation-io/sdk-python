@@ -20,7 +20,7 @@ The example asks which running application to capture. PocketStation owns the
 bounded route and shutdown; the surrounding WebSocket context owns its
 connection.
 
-## Debug a voice-agent interruption from the media boundary
+## Debug a voice-agent interruption
 
 [`debug_voice_ai.py`](debug_voice_ai.py) connects PocketStation directly to
 OpenAI Realtime. PocketStation owns the physical microphone, generated
@@ -28,7 +28,7 @@ assistant PCM, browser delivery, independent recording stems, bounded queues,
 and sender-side output cancellation. The provider owns speech recognition and
 the model response.
 
-The example observes three separate audio paths:
+The example observes three separate audio streams:
 
 - the microphone sent to the model;
 - generated assistant audio sent to Relay;

@@ -52,7 +52,7 @@ a browser played the same sample.
 
 Leaving the context requests normal stop and drains accepted bounded work.
 Call `cancel()` on the explicit `RunningSession` API when active provider or
-sidecar work must abort. Both paths join Session-owned workers before returning
+sidecar work must abort. Both shutdown modes join Session workers before returning
 a terminal `StopResult`.
 
 After shutdown, inspect:

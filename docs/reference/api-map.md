@@ -14,9 +14,9 @@ provider, Relay, and diagnostic contracts from the module that owns them.
 | Discover running sources | `pocketstation.discover_sources` |
 | Feed application-owned PCM | `Session.audio_input` |
 
-`capture()` is the short path. Use `Session` when you need more than one
+`capture()` is the convenience API. Use `Session` when you need more than one
 destination, custom route policies, provider composition, Relay, or detailed
-observations. Both paths use the same Rust engine.
+observations. Both forms use the same Rust engine.
 
 ## Compose and route media
 
@@ -61,7 +61,7 @@ depending on interruption or playout observations.
 ## Handle failures
 
 Start with `PocketStationError`, `CaptureError`, and `SessionError` from the
-package root. Advanced modules expose errors for their own boundary. Preserve
+package root. Advanced modules expose errors for the feature they implement. Preserve
 the structured error and inspect the Session outcome before retrying.
 
 Continue with [Session ownership, bounds, and shutdown](../concepts/session-and-bounds.md)

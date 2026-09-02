@@ -21,7 +21,7 @@ destinations does not mix that identity or recapture the source.
 ## Every crossing is finite
 
 Audio input, polling, Python provider work, signals, Relay, and recording use
-declared capacities. When a boundary is full, PocketStation returns or records
+declared capacities. When a queue is full, PocketStation returns or records
 pressure according to that route's policy. It does not hide pressure in an
 unbounded `asyncio.Queue`.
 
@@ -36,7 +36,7 @@ bounded off-realtime workers. Native capture callbacks remain allocation-free,
 lock-free, blocking-free, async-free, log-free, and panic-free.
 
 Use a compiled extension when code must stay native. Use a process sidecar when
-crash isolation matters. Neither boundary creates a second Session engine.
+crash isolation matters. Neither option creates a second Session engine.
 
 ## Stop and cancel are different
 

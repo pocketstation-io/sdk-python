@@ -118,7 +118,7 @@ permissions explicitly.
 
 An installed import and component test establish package correctness. A device
 claim needs the physical device. A latency claim needs p50, p95, p99, and
-maximum measurements from the same frame definition and clock boundary.
+maximum measurements from the same frame definition and clock domain.
 
 The 10 ms profile sets PocketStation's frame cadence. It does not guarantee
 sub-10 ms capture-to-Python, network, browser, or acoustic latency. WAN and TURN

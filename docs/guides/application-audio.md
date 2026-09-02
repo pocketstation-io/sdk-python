@@ -55,7 +55,7 @@ assistant.write(samples, generation=generation)
 generation.cancel()
 ```
 
-Core discards matching frames that are still in its bounded sender paths.
+Core discards matching frames that are still waiting in its sender queues.
 Microphone capture, recording, and unrelated outputs continue.
 
 This operation cannot recall audio already accepted by a remote service or
