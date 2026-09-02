@@ -35,7 +35,15 @@ from ._native import (
     _RegisteredEndpoint as _NativeRegisteredEndpoint,
 )
 from .errors import PocketStationError, _native_call
-from .graph import EdgeContract, Endpoint, MediaCaps, PortSpec, SignalSpec
+from .graph import (
+    EdgeContract,
+    Endpoint,
+    MediaCaps,
+    PortSpec,
+    RouteSettings,
+    SignalSpec,
+    _select_route_settings,
+)
 from .observations import EndpointFailureRetryability, EndpointFailureStage
 from .signal import SignalEnvelope
 
@@ -237,7 +245,7 @@ class EndpointReceiver:
 
 
 class EndpointPortInput:
-    """One compiled input port, receiver, route identity, and EdgeContract."""
+    """One compiled input port, receiver, route identity, and settings."""
 
     __slots__ = ("_native",)
 
@@ -257,8 +265,12 @@ class EndpointPortInput:
         return MediaCaps._from_native(self._native.media)
 
     @property
+    def route_settings(self) -> RouteSettings:
+        return RouteSettings(self._native.edge)
+
+    @property
     def edge(self) -> EdgeContract:
-        return EdgeContract(self._native.edge)
+        return self.route_settings
 
     @property
     def context(self) -> EndpointPrepareContext:
@@ -421,13 +433,18 @@ class RegisteredEndpoint:
         self,
         configuration: EndpointConfigurationInput = (),
         *,
+        route_settings: RouteSettings | None = None,
         edge: EdgeContract | None = None,
     ) -> Endpoint:
         values = _configuration(configuration)
-        selected_edge = edge or _default_edge(self._provider.manifest)
+        selected_settings = _select_route_settings(
+            route_settings,
+            edge,
+            _default_route_settings(self._provider.manifest),
+        )
         native = _native_call(
             lambda: self._session._native.declare_registered_endpoint(
-                self._native, values, selected_edge._native
+                self._native, values, selected_settings._native
             )
         )
         return Endpoint(native)
@@ -449,10 +466,10 @@ def _configuration(values: EndpointConfigurationInput) -> dict[str, str]:
     return result
 
 
-def _default_edge(manifest: EndpointManifest) -> EdgeContract:
+def _default_route_settings(manifest: EndpointManifest) -> RouteSettings:
     if len(manifest.inputs) == 1 and manifest.inputs[0].signal.is_audio:
-        return EdgeContract.realtime_audio()
-    return EdgeContract.bounded_async()
+        return RouteSettings.realtime_audio()
+    return RouteSettings.bounded_async()
 
 
 __all__ = [

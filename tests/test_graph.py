@@ -11,6 +11,7 @@ from pocketstation._api import (
     ClockDomain,
     Codec,
     CopyPolicy,
+    DeliveryPolicy,
     DeliverySemantics,
     EdgeContract,
     EdgeObservabilityLevel,
@@ -25,6 +26,8 @@ from pocketstation._api import (
     PocketStationError,
     PortDirection,
     PortSpec,
+    RouteObservability,
+    RouteSettings,
     Session,
     SessionStartError,
     SignalSpec,
@@ -168,11 +171,12 @@ def test_edge_presets_and_modifiers_preserve_bounded_contracts() -> None:
     assert realtime.delivery is DeliverySemantics.ORDERED
     assert realtime.loss is LossPolicy.CONCEAL_FOR_AUDIO
     assert realtime.copy_policy is CopyPolicy.SHARE_READ_ONLY
-    assert realtime.observability is EdgeObservabilityLevel.COUNTERS
+    assert realtime.observability is RouteObservability.COUNTERS
     assert realtime.max_payload_bytes is None
     assert realtime.clock.is_realtime
     assert not ClockDomain.INHERITED.is_realtime
-    assert EdgeObservabilityLevel.FULL.rank > realtime.observability.rank
+    assert EdgeObservabilityLevel is RouteObservability
+    assert RouteObservability.FULL.rank > realtime.observability.rank
 
     bounded = EdgeContract.bounded_async()
     assert bounded.clock is ClockDomain.INHERITED
@@ -192,6 +196,37 @@ def test_edge_presets_and_modifiers_preserve_bounded_contracts() -> None:
     assert changed.jitter_budget_ms == 25
     assert changed.max_payload_bytes == 4096
     assert bounded.backpressure is BackpressurePolicy.BOUNDED_QUEUE
+
+
+def test_route_settings_apply_delivery_policy_without_changing_media() -> None:
+    media = MediaCaps.audio(
+        AudioCaps(
+            sample_rate_hz=48_000,
+            frame_samples=480,
+            channel_layout=ChannelLayout.MONO,
+        )
+    )
+    delivery = (
+        DeliveryPolicy.bounded_async()
+        .with_backpressure(BackpressurePolicy.DROP_OLDEST)
+        .with_copy_policy(CopyPolicy.COPY_TO_BRANCH_POOL)
+        .with_jitter_budget_ms(25)
+        .with_max_payload_bytes(4096)
+    )
+
+    settings = (
+        RouteSettings.realtime_audio().with_media(media).with_delivery_policy(delivery)
+    )
+
+    assert EdgeContract is RouteSettings
+    assert settings.media == media
+    assert settings != RouteSettings.realtime_audio()
+    assert settings.clock is ClockDomain.INHERITED
+    assert delivery != DeliveryPolicy.realtime_audio()
+    assert settings.delivery_policy.backpressure is BackpressurePolicy.DROP_OLDEST
+    assert settings.delivery_policy.copy_policy is CopyPolicy.COPY_TO_BRANCH_POOL
+    assert settings.delivery_policy.jitter_budget_ms == 25
+    assert settings.delivery_policy.max_payload_bytes == 4096
 
 
 def test_configuration_values_are_immutable_snapshots() -> None:

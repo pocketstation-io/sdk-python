@@ -26,6 +26,7 @@ from pocketstation._api import (
     ConnectorShutdownMode,
     ConnectorWorker,
     PocketStationError,
+    RouteSettings,
     Session,
 )
 from pocketstation.connector import connector
@@ -224,6 +225,31 @@ def test_session_destination_reuses_one_connector_registration() -> None:
     assert first.session_id == session.id
     assert second.session_id == session.id
     assert session.register_connector(provider).session_id == session.id
+
+
+def test_session_destination_accepts_route_settings_and_rejects_duplicate_names() -> (
+    None
+):
+    manifest = ConnectorManifest.audio(
+        "io.pocketstation.test.route-settings.v1",
+        package_version="1.0.0",
+    )
+    provider = Connector.from_handler(
+        manifest,
+        lambda _item, _context: ConnectorDeliveryOutcome.DELIVERED,
+    )
+    session = Session()
+    settings = RouteSettings.realtime_audio()
+
+    endpoint = session.destination(provider, route_settings=settings)
+
+    assert endpoint.session_id == session.id
+    with pytest.raises(ValueError, match="route_settings or edge"):
+        session.destination(
+            provider,
+            route_settings=settings,
+            edge=settings,
+        )
 
 
 def test_session_destination_does_not_merge_different_connector_implementations() -> (

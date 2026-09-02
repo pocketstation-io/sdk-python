@@ -38,7 +38,9 @@ from .graph import (
     Multiplicity,
     PortDirection,
     PortSpec,
+    RouteSettings,
     SignalSpec,
+    _select_route_settings,
 )
 from .signal import SignalEnvelope
 
@@ -555,8 +557,12 @@ class ConnectorInputDescriptor:
         return MediaCaps._from_native(self._native.media)
 
     @property
+    def route_settings(self) -> RouteSettings:
+        return RouteSettings(self._native.edge)
+
+    @property
     def edge(self) -> EdgeContract:
-        return EdgeContract(self._native.edge)
+        return self.route_settings
 
     @property
     def configuration(self) -> Mapping[str, ConnectorConfigurationValue]:
@@ -1230,16 +1236,21 @@ class RegisteredConnector:
         self,
         configuration: ConnectorConfigurationInput = (),
         *,
+        route_settings: RouteSettings | None = None,
         edge: EdgeContract | None = None,
     ) -> Endpoint:
         """Declare one configured endpoint using the registered implementation."""
         native_configuration = self._connector.manifest.configuration.configuration(
             configuration
         )
-        selected_edge = edge or _default_edge(self._connector.manifest)
+        selected_settings = _select_route_settings(
+            route_settings,
+            edge,
+            _default_route_settings(self._connector.manifest),
+        )
         native = _native_call(
             lambda: self._session._native.declare_connector(
-                self._native, native_configuration, selected_edge._native
+                self._native, native_configuration, selected_settings._native
             )
         )
         return Endpoint(native)
@@ -1309,10 +1320,10 @@ def _first_duplicate(values: Iterable[str]) -> str | None:
     return None
 
 
-def _default_edge(manifest: ConnectorManifest) -> EdgeContract:
+def _default_route_settings(manifest: ConnectorManifest) -> RouteSettings:
     if len(manifest.inputs) == 1 and manifest.inputs[0].signal.is_audio:
-        return EdgeContract.realtime_audio()
-    return EdgeContract.bounded_async()
+        return RouteSettings.realtime_audio()
+    return RouteSettings.bounded_async()
 
 
 __all__ = [

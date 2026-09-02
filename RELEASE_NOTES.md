@@ -1,5 +1,19 @@
 # PocketStation for Python release notes
 
+## Unreleased
+
+### Added
+
+Advanced integrations can now configure `RouteSettings` as accepted media plus
+a separate `DeliveryPolicy`. Connector, Endpoint, and signal-subscription APIs
+accept the clearer `route_settings=` keyword. Runtime metrics expose
+`RouteObservability`, `RouteLatencyMeasurement`, `RouteDeliveryMetrics`, and
+`SignalQueueMetrics`.
+
+Existing `EdgeContract`, `EdgeObservabilityLevel`, `RouteLatencyBoundary`,
+`EdgeMetrics`, `TypedEdgeMetrics`, and `edge=` uses remain compatible throughout
+the 0.1.x series.
+
 ## 0.1.2 — 2026-09-01
 
 Capture code can now send source-aware audio to an external system through one

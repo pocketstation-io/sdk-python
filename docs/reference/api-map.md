@@ -15,7 +15,7 @@ provider, Relay, and diagnostic APIs from the module that implements them.
 | Feed application-owned PCM | `Session.audio_input` |
 
 `capture()` is the convenience API. Use `Session` when you need more than one
-destination, custom route policies, provider composition, Relay, or detailed
+destination, explicit route settings, provider composition, Relay, or detailed
 observations. Both forms use the same Rust engine.
 
 ## Compose and route media
@@ -27,9 +27,12 @@ observations. Both forms use the same Rust engine.
 | Source declarations and discovery | `pocketstation.sources` |
 | Application-owned PCM | `pocketstation.audio_input` |
 | Runtime events, metrics, and outcomes | `pocketstation.observations` |
+| Accepted media and delivery behavior | `pocketstation.graph.RouteSettings` and `DeliveryPolicy` |
 
 Read [source identity and time](../concepts/source-identity-and-time.md) before
 persisting selectors or correlating provider events with recorded media.
+Read [route settings](../concepts/route-settings.md) before changing queue or
+loss behavior.
 
 ## Connect external systems
 

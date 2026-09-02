@@ -34,7 +34,7 @@ def test_root_exports_are_a_small_intentional_entry_point() -> None:
     }
 
 
-def test_advanced_contracts_are_not_duplicated_at_the_package_root() -> None:
+def test_advanced_types_are_not_duplicated_at_the_package_root() -> None:
     assert hasattr(pocketstation, "Connector")
     assert not hasattr(pocketstation, "ConnectorManifest")
     assert not hasattr(pocketstation, "OperatorProvider")

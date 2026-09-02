@@ -23,6 +23,7 @@ need the lower-level API.
 
 - [Session ownership, bounds, and shutdown](concepts/session-and-bounds.md)
 - [Source identity, timestamps, and discontinuities](concepts/source-identity-and-time.md)
+- [Media and delivery settings for each route](concepts/route-settings.md)
 
 ## Operate and upgrade
 
