@@ -1,5 +1,5 @@
 use pocketstation::{
-    ExecutionPartition, PortDirection, SafetyContract, SignalPayload, SignalSpec, SourceManifest,
+    ExecutionPartition, ExecutionSafety, PortDirection, SignalPayload, SignalSpec, SourceManifest,
     SourceTypeId,
 };
 use pyo3::exceptions::PyValueError;
@@ -48,7 +48,7 @@ impl PythonSourceManifest {
             implementation_generation,
             outputs,
             ExecutionPartition::BlockingWorker,
-            SafetyContract::AllocationAllowed,
+            ExecutionSafety::AllocationAllowed,
         )
         .map(|value| Self { value })
         .map_err(|error| invalid_source(error.to_string()))

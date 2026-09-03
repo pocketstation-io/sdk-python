@@ -30,7 +30,6 @@ from ..endpoint_authoring import RegisteredEndpoint as SyncRegisteredEndpoint
 from ..errors import PocketStationError, _native_call, _normalize_native_error
 from ..extensions import NativeExtensionLibrary
 from ..graph import (
-    EdgeContract,
     Endpoint,
     RouteSettings,
     SignalSpec,
@@ -458,13 +457,11 @@ class Session(_GraphSessionDeclarations):
         configuration: ConnectorConfigurationInput = (),
         *,
         route_settings: RouteSettings | None = None,
-        edge: EdgeContract | None = None,
     ) -> Endpoint:
         """Declare one Connector destination using an idempotent registration."""
         return self.register_connector(connector).declare(
             configuration,
             route_settings=route_settings,
-            edge=edge,
         )
 
     def register_endpoint(

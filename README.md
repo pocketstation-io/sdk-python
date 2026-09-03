@@ -80,12 +80,12 @@ faster-whisper Operator, connects both stems to its audio input, and prints each
 transcript with its original source identity. It does not start Relay or write a
 recording.
 
-The Session runs these jobs concurrently:
+The Session preserves each source while the transcriber processes both:
 
 ```text
-voice application ─┐
-                   ├─ one bounded faster-whisper Operator ─ transcripts
-physical microphone┘
+voice application ──┐
+                    ├─ PocketStation Session ─ faster-whisper ─ source-aware transcripts
+physical microphone ┘
 ```
 
 The complete composition is visible in
@@ -131,9 +131,9 @@ with pocketstation.capture(
         print(frame.source_id, frame.stem_id)
 ```
 
-The iterator reads a bounded native endpoint. A slow Python consumer produces
-observable pressure and discontinuities; it does not create an unbounded Python
-audio queue.
+The iterator reads frames from a native Endpoint. If Python stops reading, the
+Endpoint reports its queue depth, dropped frames, and discontinuities instead
+of allowing memory use to grow without a limit.
 
 ## Send application-owned audio into a Session
 
@@ -178,7 +178,7 @@ application.send_to(destination)
 
 Subclass the synchronous or asyncio Connector when the provider opens and
 closes resources. The provider class owns its connection; the Session owns
-bounded delivery, lineage, observations, drain, abort, and joined shutdown:
+route delivery, lineage, observations, drain, abort, and joined shutdown:
 
 ```python
 class WebSocketConnector(pks_aio.Connector):
@@ -208,7 +208,7 @@ PocketStation calls `start()` once, interleaves both source-aware stems through
 destination. See [Create an integration](docs/guides/integrations.md) for
 deadlines, failures, and the advanced SPI.
 
-Python provider callbacks execute on bounded off-realtime workers. They cannot
+Python provider callbacks execute on off-realtime workers. They cannot
 be used as native capture callbacks. Use compiled native extensions for native
 provider code, or a process sidecar when crash
 isolation is required.
@@ -220,8 +220,8 @@ The shared Rust `pocketstation-relay` connector publishes media. The Go Relay
 service forwards WebRTC audio. Python does not encode Opus, write RTP, or own a
 second media plane.
 
-The control client uses finite request deadlines, bounded response bodies,
-redacted secrets, and matching synchronous and asyncio APIs.
+The control client limits request duration and response size, redacts secrets,
+and provides matching synchronous and asyncio APIs.
 
 ## Sync and asyncio
 
@@ -243,7 +243,7 @@ does not have the same execution cost as Rust.
 | Windows 11 ARM64 | Core application selection and 10 ms capture tested in a VM; installed Python distribution and physical-device qualification in progress |
 | WAN and TURN | Not yet qualified |
 
-The native binding uses PocketStation Core `1.1.4` and the shared Relay
+The native binding uses PocketStation Core `1.1.5` and the shared Relay
 Connector `0.1.2`.
 
 The Rust-to-Python audio read currently copies native samples into Python-owned
@@ -266,8 +266,8 @@ uv run mypy python tests/qualification/typing_contract.py examples
   guidance.
 - [`docs/README.md`](docs/README.md) — task guides, concepts, operations, and
   API ownership.
-- [Write application-owned audio](docs/guides/application-audio.md) — bounded
-  PCM input and selective output cancellation.
+- [Write application-owned audio](docs/guides/application-audio.md) — PCM input
+  with explicit queue capacity and selective output cancellation.
 - [Process audio and typed signals](docs/guides/process-audio-and-signals.md) —
   Operators, named ports, generated audio, and finite model work.
 - [Record and observe a Session](docs/guides/record-and-observe.md) — multistem

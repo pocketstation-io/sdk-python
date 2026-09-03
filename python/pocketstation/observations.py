@@ -21,15 +21,15 @@ from ._native import SessionTraceRecorderOutcome as _NativeTraceRecorderOutcome
 from ._native import StopResult as _NativeStopResult
 from ._native import _AudioReentryMetrics as _NativeAudioReentryMetrics
 from ._native import _DerivedRouteMetrics as _NativeDerivedRouteMetrics
-from ._native import _EdgeMetrics as _NativeEdgeMetrics
 from ._native import _ExternalSourceMetrics as _NativeExternalSourceMetrics
 from ._native import _OperatorInputMetrics as _NativeOperatorInputMetrics
 from ._native import _OperatorMetrics as _NativeOperatorMetrics
 from ._native import _OperatorWorkerMetrics as _NativeOperatorWorkerMetrics
+from ._native import _RouteDeliveryMetrics as _NativeRouteDeliveryMetrics
 from ._native import _SessionFailure as _NativeSessionFailure
 from ._native import _SessionSourceMetrics as _NativeSessionSourceMetrics
 from ._native import _SessionTraceValidation as _NativeTraceValidation
-from ._native import _TypedEdgeMetrics as _NativeTypedEdgeMetrics
+from ._native import _SignalQueueMetrics as _NativeSignalQueueMetrics
 from .errors import PocketStationError, _native_call
 from .identity import (
     EndpointId,
@@ -151,9 +151,6 @@ class RouteLatencyMeasurement(StrEnum):
     """Identify the timestamps used to calculate route latency."""
 
     SOURCE_TIMESTAMP_TO_ROUTE_RECEIVE = "source-monotonic-timestamp-to-route-receive"
-
-
-RouteLatencyBoundary = RouteLatencyMeasurement
 
 
 class RouteLatencyUnit(StrEnum):
@@ -394,7 +391,7 @@ class RouteDeliveryMetrics:
     discarded_output_frames_total: int | None
 
     @classmethod
-    def _from_native(cls, value: _NativeEdgeMetrics) -> RouteDeliveryMetrics:
+    def _from_native(cls, value: _NativeRouteDeliveryMetrics) -> RouteDeliveryMetrics:
         return cls(
             queue_capacity_frames=value.queue_capacity_frames,
             queue_depth_frames=value.queue_depth_frames,
@@ -441,9 +438,6 @@ class RouteDeliveryMetrics:
         )
 
 
-EdgeMetrics = RouteDeliveryMetrics
-
-
 @dataclass(frozen=True, slots=True)
 class EndpointMetrics:
     observation_stage: EndpointObservationStage
@@ -459,41 +453,35 @@ class EndpointMetrics:
 class RouteMetrics:
     route_id: int
     endpoint_id: int
-    edge: RouteDeliveryMetrics
+    delivery: RouteDeliveryMetrics
     endpoint: EndpointMetrics
     frames_attempted_total: int
     observation_interval: RouteObservationInterval
     drop_rate_pct: float
-    source_latency_boundary: RouteLatencyMeasurement
+    source_latency_measurement: RouteLatencyMeasurement
     source_latency_unit: RouteLatencyUnit
 
     @property
     def queue_capacity_frames(self) -> int:
-        return self.edge.queue_capacity_frames
-
-    @property
-    def delivery(self) -> RouteDeliveryMetrics:
-        return self.edge
+        return self.delivery.queue_capacity_frames
 
     @property
     def frames_delivered_total(self) -> int:
-        return self.edge.frames_delivered_total
+        return self.delivery.frames_delivered_total
 
     @property
     def frames_dropped_total(self) -> int:
-        return self.edge.frames_dropped_total
-
-    @property
-    def source_latency_measurement(self) -> RouteLatencyMeasurement:
-        return self.source_latency_boundary
+        return self.delivery.frames_dropped_total
 
     @classmethod
     def _from_native(cls, value: _NativeRouteMetrics) -> RouteMetrics:
-        edge = RouteDeliveryMetrics._from_native(cast(_NativeEdgeMetrics, value))
+        delivery = RouteDeliveryMetrics._from_native(
+            cast(_NativeRouteDeliveryMetrics, value)
+        )
         return cls(
             route_id=value.route_id,
             endpoint_id=value.endpoint_id,
-            edge=edge,
+            delivery=delivery,
             endpoint=EndpointMetrics(
                 observation_stage=EndpointObservationStage(
                     value.endpoint_observation_stage
@@ -510,8 +498,8 @@ class RouteMetrics:
                 value.drop_observation_interval
             ),
             drop_rate_pct=value.drop_rate_pct,
-            source_latency_boundary=RouteLatencyMeasurement(
-                value.source_latency_boundary
+            source_latency_measurement=RouteLatencyMeasurement(
+                value.source_latency_measurement
             ),
             source_latency_unit=RouteLatencyUnit(value.source_latency_unit),
         )
@@ -611,11 +599,8 @@ class SignalQueueMetrics:
     dropped_total: int
 
     @classmethod
-    def _from_native(cls, value: _NativeTypedEdgeMetrics) -> SignalQueueMetrics:
+    def _from_native(cls, value: _NativeSignalQueueMetrics) -> SignalQueueMetrics:
         return cls(**{name: getattr(value, name) for name in cls.__dataclass_fields__})
-
-
-TypedEdgeMetrics = SignalQueueMetrics
 
 
 @dataclass(frozen=True, slots=True)
@@ -643,37 +628,29 @@ class OperatorWorkerMetrics:
 @dataclass(frozen=True, slots=True)
 class OperatorInputMetrics:
     port_name: str
-    edge: RouteDeliveryMetrics
-
-    @property
-    def delivery(self) -> RouteDeliveryMetrics:
-        return self.edge
+    delivery: RouteDeliveryMetrics
 
     @classmethod
     def _from_native(cls, value: _NativeOperatorInputMetrics) -> OperatorInputMetrics:
         return cls(
             port_name=value.port_name,
-            edge=RouteDeliveryMetrics._from_native(value.edge),
+            delivery=RouteDeliveryMetrics._from_native(value.delivery),
         )
 
 
 @dataclass(frozen=True, slots=True)
 class OperatorMetrics:
     operator_instance_id: int
-    input_edge: RouteDeliveryMetrics
+    input_delivery: RouteDeliveryMetrics
     worker: OperatorWorkerMetrics
     finalization_failures_total: int
     input_ports: tuple[OperatorInputMetrics, ...]
-
-    @property
-    def input_delivery(self) -> RouteDeliveryMetrics:
-        return self.input_edge
 
     @classmethod
     def _from_native(cls, value: _NativeOperatorMetrics) -> OperatorMetrics:
         return cls(
             operator_instance_id=value.operator_instance_id,
-            input_edge=RouteDeliveryMetrics._from_native(value.input_edge),
+            input_delivery=RouteDeliveryMetrics._from_native(value.input_delivery),
             worker=OperatorWorkerMetrics._from_native(value.worker),
             finalization_failures_total=value.finalization_failures_total,
             input_ports=tuple(
@@ -1259,7 +1236,6 @@ class EventStream:
 __all__ = [
     "AudioReentryMetrics",
     "DerivedRouteMetrics",
-    "EdgeMetrics",
     "EndpointFailureRetryability",
     "EndpointFailureStage",
     "EndpointMetrics",
@@ -1279,7 +1255,6 @@ __all__ = [
     "RecordingStemOutcome",
     "RelayPublishOutcome",
     "RouteDeliveryMetrics",
-    "RouteLatencyBoundary",
     "RouteLatencyMeasurement",
     "RouteLatencyUnit",
     "RouteMetrics",
@@ -1305,5 +1280,4 @@ __all__ = [
     "SourceMetrics",
     "StopResult",
     "TerminationDisposition",
-    "TypedEdgeMetrics",
 ]

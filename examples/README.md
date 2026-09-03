@@ -16,15 +16,15 @@ python -m pip install 'pocketstation[voice-agent-debug]'
 python examples/send_audio_to_websocket.py
 ```
 
-The example asks which running application to capture. PocketStation owns the
-bounded route and shutdown; the surrounding WebSocket context owns its
+The example asks which running application to capture. PocketStation owns route
+delivery and shutdown; the surrounding WebSocket context owns its
 connection.
 
 ## Debug a voice-agent interruption
 
 [`debug_voice_ai.py`](debug_voice_ai.py) connects PocketStation directly to
 OpenAI Realtime. PocketStation owns the physical microphone, generated
-assistant PCM, browser delivery, independent recording stems, bounded queues,
+assistant PCM, browser delivery, independent recording stems, queue limits,
 and sender-side output cancellation. The provider owns speech recognition and
 the model response.
 
@@ -58,7 +58,7 @@ Speak, interrupt the assistant while it is replying, then press `Ctrl-C`. Use
 headphones for this run: the example does not provide acoustic echo
 cancellation.
 
-The final report includes source continuity, bounded queue drops, provider
+The final report includes source continuity, queue depth and drops, provider
 events, and PocketStation's output-cancellation events. The receiver reports
 WebRTC statistics, but it does not acknowledge the exact sample played through
 the loudspeaker. The example therefore reports acoustic hearing and exact
@@ -88,7 +88,7 @@ python -m pip install 'pocketstation[transcription]'
 ```
 
 The first run may download the configured faster-whisper model. Model work runs
-on a bounded off-realtime Operator worker, not on a capture callback.
+on an off-realtime Operator worker, not on a capture callback.
 
 ## Stream application audio to a browser
 

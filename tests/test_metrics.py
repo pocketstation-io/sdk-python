@@ -7,7 +7,6 @@ from dataclasses import FrozenInstanceError
 import pocketstation._native as _native
 import pytest
 from pocketstation._api import (
-    EdgeMetrics,
     EndpointObservationStage,
     PocketStationError,
     RouteDeliveryMetrics,
@@ -43,9 +42,10 @@ def test_metrics_preserve_bounded_source_route_and_polled_audio_truth(tmp_path) 
     assert metrics.polled_audio.registered_endpoints == 2
     assert metrics.polled_audio.queue_capacity_frames > 0
     assert metrics.event_queue.capacity_count > 0
-    assert all(route.edge.queue_capacity_frames > 0 for route in metrics.routes)
-    assert EdgeMetrics is RouteDeliveryMetrics
-    assert all(route.delivery is route.edge for route in metrics.routes)
+    assert all(route.delivery.queue_capacity_frames > 0 for route in metrics.routes)
+    assert all(
+        isinstance(route.delivery, RouteDeliveryMetrics) for route in metrics.routes
+    )
     assert all(
         route.endpoint.observation_stage is EndpointObservationStage.LIVE
         for route in metrics.routes

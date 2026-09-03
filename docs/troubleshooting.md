@@ -1,7 +1,7 @@
 # Troubleshoot capture, delivery, and shutdown
 
 Start with the component that did not produce the expected result. PocketStation
-keeps source opening, bounded delivery, provider work, Relay delivery,
+reports source opening, route delivery, provider work, Relay delivery,
 recording, and receiver playout as separate observations.
 
 ## No application audio arrives
@@ -38,8 +38,9 @@ application receives.
 ## Python misses frames
 
 Inspect route capacity, queue depth, delivered frames, drops, and
-discontinuities. The Python iterator is bounded; a consumer that does not read
-on time can lose frames according to its route policy.
+discontinuities. The iterator uses the route's configured queue capacity; a
+consumer that does not read on time can lose frames according to its delivery
+policy.
 
 Move expensive model work into an Operator or provider worker. Do not perform
 inference in the loop that must keep the frame Endpoint drained.

@@ -27,7 +27,7 @@ from ..endpoint_authoring import EndpointProvider as SyncEndpointProvider
 from ..endpoint_authoring import PreparedEndpointDriver as SyncPreparedEndpointDriver
 from ..endpoint_authoring import RegisteredEndpoint as SyncRegisteredEndpoint
 from ..endpoint_authoring import RunningEndpointDriver as SyncRunningEndpointDriver
-from ..graph import EdgeContract, Endpoint, RouteSettings
+from ..graph import Endpoint, RouteSettings
 from ..observations import EndpointFailureStage
 
 _Result = TypeVar("_Result")
@@ -223,12 +223,10 @@ class RegisteredEndpoint:
         configuration: EndpointConfigurationInput = (),
         *,
         route_settings: RouteSettings | None = None,
-        edge: EdgeContract | None = None,
     ) -> Endpoint:
         return self._registered.declare(
             configuration,
             route_settings=route_settings,
-            edge=edge,
         )
 
 

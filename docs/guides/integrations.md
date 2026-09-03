@@ -29,7 +29,7 @@ capture, buffering, routing, and shutdown in every integration.
 
 ```text
 application ─┐
-microphone ──┼→ independent bounded Session routes
+microphone ──┼→ independent Session routes
 generated ───┘              ↓
                     one Connector lifecycle
                              ↓
@@ -101,7 +101,7 @@ microphone.send_to(destination)
 ```
 
 One Connector object is one provider lifecycle. PocketStation creates two
-bounded routes, calls `start()` once, preserves each frame's source and stem
+routes with separate delivery queues, calls `start()` once, preserves each frame's source and stem
 identity, and calls `stop()` once. Two Connector objects create two independent
 destinations.
 
@@ -124,7 +124,7 @@ Connector is slow or fails.
 | Method | Provider responsibility | PocketStation responsibility |
 |---|---|---|
 | `start()` | Open and authenticate the configured destination. | Run on the managed worker after the Session start gate, apply a finite async deadline, retain failure in the terminal outcome, and close once. |
-| `send(frame)` | Encode or publish one frame without retaining it indefinitely. | Deliver off realtime from a bounded route and preserve frame lineage. |
+| `send(frame)` | Encode or publish one frame without retaining it indefinitely. | Deliver off realtime from a route with a configured queue capacity and preserve frame lineage. |
 | `stop()` | Close sockets, files, tasks, and provider resources. | Call once after drain, abort, startup rollback, timeout, or delivery failure. |
 
 `AudioFrame` includes source, stream, stem, sequence, timestamp, clock,

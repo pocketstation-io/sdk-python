@@ -131,8 +131,10 @@ def test_real_session_delivers_audio_text_and_bytes_with_complete_provenance(
         "bytes": bytes_stream,
     }
     for name, subscription in subscriptions.items():
-        assert subscription.edge.backpressure is BackpressurePolicy.BOUNDED_QUEUE
-        assert subscription.edge.max_payload_bytes == 1_048_576
+        assert (
+            subscription.route_settings.backpressure is BackpressurePolicy.BOUNDED_QUEUE
+        )
+        assert subscription.route_settings.max_payload_bytes == 1_048_576
         metrics = streams[name].metrics()
         assert metrics.capacity_signals > 0
         assert metrics.max_payload_bytes == 1_048_576
@@ -173,7 +175,7 @@ def test_external_source_outputs_have_the_same_subscription_declaration() -> Non
 
     assert subscription.session_id == session.id
     assert subscription.signal == SignalSpec.text(TextFormat.JSON)
-    assert subscription.edge.media.supports_signal(subscription.signal)
+    assert subscription.route_settings.media.supports_signal(subscription.signal)
     assert subscription.route_id > 0
 
 

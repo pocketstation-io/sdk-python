@@ -209,7 +209,10 @@ async def test_given_queued_output_when_interrupted_then_only_replacement_is_rea
     assert await running.audio.read(timeout_s=0.01) is None
     discarded_output_frames_total = (
         metrics.polled_audio.discarded_output_frames_total
-        + sum(route.edge.discarded_output_frames_total or 0 for route in metrics.routes)
+        + sum(
+            route.delivery.discarded_output_frames_total or 0
+            for route in metrics.routes
+        )
     )
     assert discarded_output_frames_total >= 1
     assert stopped.success

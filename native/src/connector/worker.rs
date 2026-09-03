@@ -24,7 +24,7 @@ use super::values::{
     configuration_values, PythonConnectorConfigurationValue, PythonConnectorManifest,
 };
 use crate::errors::coded_reason;
-use crate::graph::{PythonEdgeContract, PythonMediaCaps, PythonSignalSpec};
+use crate::graph::{PythonMediaCaps, PythonRouteSettings, PythonSignalSpec};
 use crate::signals::{copy_envelope, python_envelope};
 use crate::streams::{owned_endpoint_audio_frame_for_route, python_audio_frame, PythonAudioFrame};
 
@@ -378,10 +378,10 @@ fn python_input_descriptor(
             value: *input.media(),
         },
     )?;
-    let edge = Py::new(
+    let route_settings = Py::new(
         py,
-        PythonEdgeContract {
-            value: *input.edge_contract(),
+        PythonRouteSettings {
+            value: *input.route_settings(),
         },
     )?;
     Py::new(
@@ -397,7 +397,7 @@ fn python_input_descriptor(
             signal_wire_id: input.signal_spec().wire_id().to_owned(),
             signal,
             media,
-            edge,
+            route_settings,
             configuration,
         },
     )

@@ -53,7 +53,7 @@ from ..connector import (
 from ..connector import (
     RegisteredConnector as SyncRegisteredConnector,
 )
-from ..graph import EdgeContract, Endpoint, RouteSettings
+from ..graph import Endpoint, RouteSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -711,12 +711,10 @@ class RegisteredConnector:
         configuration: ConnectorConfigurationInput = (),
         *,
         route_settings: RouteSettings | None = None,
-        edge: EdgeContract | None = None,
     ) -> Endpoint:
         return self._registered.declare(
             configuration,
             route_settings=route_settings,
-            edge=edge,
         )
 
     async def observations(self) -> tuple[ConnectorRuntimeObservations, ...]:

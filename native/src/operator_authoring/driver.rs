@@ -13,7 +13,7 @@ use pyo3::types::PyDict;
 
 use super::values::{PythonOperatorEmission, PythonOperatorManifest, PythonOperatorPayload};
 use crate::errors::coded_reason;
-use crate::graph::{PythonEdgeContract, PythonMediaCaps, PythonSignalSpec};
+use crate::graph::{PythonMediaCaps, PythonRouteSettings, PythonSignalSpec};
 use crate::signals::{copy_envelope, python_envelope};
 
 pub(crate) fn register_operator(
@@ -48,7 +48,7 @@ pub(crate) struct PythonOperatorPortContext {
     capacity_signals: usize,
     signal: Py<PythonSignalSpec>,
     media: Py<PythonMediaCaps>,
-    edge: Py<PythonEdgeContract>,
+    route_settings: Py<PythonRouteSettings>,
 }
 
 #[pymethods]
@@ -64,8 +64,8 @@ impl PythonOperatorPortContext {
     }
 
     #[getter]
-    fn edge(&self, py: Python<'_>) -> Py<PythonEdgeContract> {
-        self.edge.clone_ref(py)
+    fn route_settings(&self, py: Python<'_>) -> Py<PythonRouteSettings> {
+        self.route_settings.clone_ref(py)
     }
 }
 
@@ -407,7 +407,7 @@ fn audio_output_spec(
             ))
         })?;
     if manifest
-        .output_edge()
+        .output_route_settings()
         .max_payload_bytes()
         .is_some_and(|maximum| payload_bytes > maximum)
     {
@@ -475,10 +475,10 @@ fn python_port_context(
                     value: value.media(),
                 },
             )?,
-            edge: Py::new(
+            route_settings: Py::new(
                 py,
-                PythonEdgeContract {
-                    value: value.edge_contract(),
+                PythonRouteSettings {
+                    value: value.route_settings(),
                 },
             )?,
         },

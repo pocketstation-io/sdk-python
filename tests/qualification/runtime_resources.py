@@ -297,7 +297,7 @@ def qualify_slow_consumer(
     if len(metrics.routes) != 1:
         raise RuntimeError("slow-consumer qualification expected one route")
     route = metrics.routes[0]
-    if route.edge.queue_peak_frames > route.queue_capacity_frames:
+    if route.delivery.queue_peak_frames > route.queue_capacity_frames:
         raise RuntimeError("slow-consumer queue exceeded its declared capacity")
     if route.frames_dropped_total == 0:
         raise RuntimeError("slow-consumer saturation was not observed")
@@ -309,7 +309,7 @@ def qualify_slow_consumer(
         frames_accepted_total=observations.accepted_total,
         input_full_retries_total=retries_total,
         route_capacity_frames=route.queue_capacity_frames,
-        route_peak_frames=route.edge.queue_peak_frames,
+        route_peak_frames=route.delivery.queue_peak_frames,
         route_drops_total=route.frames_dropped_total,
         stop_success=stop.success,
     )

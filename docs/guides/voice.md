@@ -1,4 +1,4 @@
-# Compose a bounded voice workflow
+# Compose a voice workflow
 
 `pocketstation.voice` defines provider-neutral Python protocols.
 `pocketstation.aio.Session` composes those providers around one native Session.

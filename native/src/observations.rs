@@ -349,7 +349,7 @@ pub(crate) struct PythonOperatorInputMetrics {
     #[pyo3(get)]
     port_name: String,
     #[pyo3(get)]
-    edge: Py<PythonEdgeMetrics>,
+    delivery: Py<PythonRouteDeliveryMetrics>,
 }
 
 #[pyclass(name = "_OperatorWorkerMetrics", frozen)]
@@ -389,7 +389,7 @@ pub(crate) struct PythonOperatorMetrics {
     #[pyo3(get)]
     operator_instance_id: u64,
     #[pyo3(get)]
-    input_edge: Py<PythonEdgeMetrics>,
+    input_delivery: Py<PythonRouteDeliveryMetrics>,
     #[pyo3(get)]
     worker: Py<PythonOperatorWorkerMetrics>,
     #[pyo3(get)]
@@ -407,8 +407,8 @@ impl PythonOperatorMetrics {
     }
 }
 
-#[pyclass(name = "_TypedEdgeMetrics", frozen)]
-pub(crate) struct PythonTypedEdgeMetrics {
+#[pyclass(name = "_SignalQueueMetrics", frozen)]
+pub(crate) struct PythonSignalQueueMetrics {
     #[pyo3(get)]
     capacity_signals: u64,
     #[pyo3(get)]
@@ -434,7 +434,7 @@ pub(crate) struct PythonDerivedRouteMetrics {
     #[pyo3(get)]
     endpoint_id: u64,
     #[pyo3(get)]
-    output: Py<PythonTypedEdgeMetrics>,
+    output: Py<PythonSignalQueueMetrics>,
     #[pyo3(get)]
     endpoint_observation_stage: String,
     #[pyo3(get)]
@@ -493,8 +493,8 @@ pub(crate) struct PythonAudioReentryMetrics {
     joined: bool,
 }
 
-#[pyclass(name = "_EdgeMetrics", frozen)]
-pub(crate) struct PythonEdgeMetrics {
+#[pyclass(name = "_RouteDeliveryMetrics", frozen)]
+pub(crate) struct PythonRouteDeliveryMetrics {
     #[pyo3(get)]
     queue_capacity_frames: u64,
     #[pyo3(get)]
@@ -744,7 +744,7 @@ pub(crate) struct PythonRouteMetrics {
     #[pyo3(get)]
     drop_rate_pct: f64,
     #[pyo3(get)]
-    source_latency_boundary: String,
+    source_latency_measurement: String,
     #[pyo3(get)]
     source_latency_unit: String,
 }
@@ -1671,7 +1671,7 @@ pub(crate) fn python_session_event(
     })
 }
 
-impl From<pocketstation::EdgeObservations> for PythonEdgeMetrics {
+impl From<pocketstation::EdgeObservations> for PythonRouteDeliveryMetrics {
     fn from(edge: pocketstation::EdgeObservations) -> Self {
         Self {
             queue_capacity_frames: edge.queue_capacity_frames,
@@ -1802,7 +1802,7 @@ fn python_operator_metrics(
                 py,
                 PythonOperatorInputMetrics {
                     port_name: input.port_name.clone(),
-                    edge: Py::new(py, PythonEdgeMetrics::from(input.edge))?,
+                    delivery: Py::new(py, PythonRouteDeliveryMetrics::from(input.edge))?,
                 },
             )
         })
@@ -1812,7 +1812,7 @@ fn python_operator_metrics(
         py,
         PythonOperatorMetrics {
             operator_instance_id: operator.operator_instance_id.value(),
-            input_edge: Py::new(py, PythonEdgeMetrics::from(operator.input_edge))?,
+            input_delivery: Py::new(py, PythonRouteDeliveryMetrics::from(operator.input_delivery))?,
             worker: Py::new(
                 py,
                 PythonOperatorWorkerMetrics {
@@ -1850,7 +1850,7 @@ fn python_derived_route_metrics(
             endpoint_id: route.endpoint_id.get(),
             output: Py::new(
                 py,
-                PythonTypedEdgeMetrics {
+                PythonSignalQueueMetrics {
                     capacity_signals: route.output.capacity_signals,
                     max_payload_bytes: route.output.max_payload_bytes,
                     maximum_buffered_payload_bytes: route.output.maximum_buffered_payload_bytes,
@@ -2132,7 +2132,7 @@ pub(crate) fn python_session_metrics(
                         .endpoint_finalization_failures_total,
                     drop_observation_interval: "route-lifetime-to-snapshot".to_owned(),
                     drop_rate_pct: route.drop_rate_pct,
-                    source_latency_boundary: "source-monotonic-timestamp-to-route-receive"
+                    source_latency_measurement: "source-monotonic-timestamp-to-route-receive"
                         .to_owned(),
                     source_latency_unit: "nanoseconds".to_owned(),
                 },
@@ -2317,11 +2317,11 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PythonRouteMetrics>()?;
     module.add_class::<PythonSessionSourceMetrics>()?;
     module.add_class::<PythonExternalSourceMetrics>()?;
-    module.add_class::<PythonEdgeMetrics>()?;
+    module.add_class::<PythonRouteDeliveryMetrics>()?;
     module.add_class::<PythonOperatorInputMetrics>()?;
     module.add_class::<PythonOperatorWorkerMetrics>()?;
     module.add_class::<PythonOperatorMetrics>()?;
-    module.add_class::<PythonTypedEdgeMetrics>()?;
+    module.add_class::<PythonSignalQueueMetrics>()?;
     module.add_class::<PythonDerivedRouteMetrics>()?;
     module.add_class::<PythonAudioReentryMetrics>()?;
     module.add_class::<PythonSessionTraceRecorderOutcome>()?;

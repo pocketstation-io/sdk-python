@@ -6,8 +6,8 @@ use pocketstation::{
     ConfigError, EndpointCancellationOutcome, EndpointDriverFactory, EndpointDriverFinalization,
     EndpointDriverObservations, EndpointFailure, EndpointFailureRetryability, EndpointFailureStage,
     EndpointInputOrigin, EndpointPortInput, EndpointPreparationGroup, EndpointReceiver,
-    EndpointShutdownMode, EndpointStartGate, ExecutionPartition, NodeDefinition, NodeDescriptor,
-    NodeTypeId, OperatorId, PreparedEndpointDriver, RunningEndpointDriver, SafetyContract, Session,
+    EndpointShutdownMode, EndpointStartGate, ExecutionPartition, ExecutionSafety, NodeDefinition,
+    NodeDescriptor, NodeTypeId, OperatorId, PreparedEndpointDriver, RunningEndpointDriver, Session,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -15,7 +15,7 @@ use pyo3::types::PyDict;
 
 use crate::errors::{coded_reason, session_endpoint_error};
 use crate::graph::{
-    PythonEdgeContract, PythonEndpoint, PythonMediaCaps, PythonPortSpec, PythonSignalSpec,
+    PythonEndpoint, PythonMediaCaps, PythonPortSpec, PythonRouteSettings, PythonSignalSpec,
 };
 use crate::signals::{copy_envelope, python_envelope, PythonSignalEnvelope};
 use crate::streams::{owned_endpoint_audio_frame_for_route, python_audio_frame, PythonAudioFrame};
@@ -64,7 +64,7 @@ impl PythonEndpointManifest {
             inputs,
             Vec::new(),
             ExecutionPartition::External,
-            SafetyContract::ExternalService,
+            ExecutionSafety::ExternalService,
             true,
         )
         .map_err(|error| invalid_endpoint(error.to_string()))?;
@@ -441,7 +441,7 @@ struct PythonEndpointPortInput {
     port_name: String,
     signal: Py<PythonSignalSpec>,
     media: Py<PythonMediaCaps>,
-    edge: Py<PythonEdgeContract>,
+    route_settings: Py<PythonRouteSettings>,
     context: Py<PythonEndpointPrepareContext>,
     receiver: Py<PythonEndpointReceiver>,
 }
@@ -459,8 +459,8 @@ impl PythonEndpointPortInput {
     }
 
     #[getter]
-    fn edge(&self, py: Python<'_>) -> Py<PythonEdgeContract> {
-        self.edge.clone_ref(py)
+    fn route_settings(&self, py: Python<'_>) -> Py<PythonRouteSettings> {
+        self.route_settings.clone_ref(py)
     }
 
     #[getter]
@@ -526,7 +526,7 @@ pub(crate) fn declare_endpoint(
     session: &Session,
     registered: &PythonRegisteredEndpoint,
     configuration: HashMap<String, String>,
-    edge: &PythonEdgeContract,
+    route_settings: &PythonRouteSettings,
 ) -> PyResult<PythonEndpoint> {
     if registered.session_id != session.id() {
         return Err(PyValueError::new_err(coded_reason(
@@ -545,7 +545,7 @@ pub(crate) fn declare_endpoint(
                 registered.operator_id.clone(),
             )
             .with_configuration(configuration)
-            .with_input_edge(edge.value),
+            .with_route_settings(route_settings.value),
         )
         .map(|handle| PythonEndpoint { handle })
         .map_err(crate::errors::session_error)
@@ -568,10 +568,10 @@ fn python_port_input(
             value: *input.media(),
         },
     )?;
-    let edge = Py::new(
+    let route_settings = Py::new(
         py,
-        PythonEdgeContract {
-            value: *input.edge_contract(),
+        PythonRouteSettings {
+            value: *input.route_settings(),
         },
     )?;
     let prepare = input.context();
@@ -628,7 +628,7 @@ fn python_port_input(
             port_name,
             signal,
             media,
-            edge,
+            route_settings,
             context,
             receiver,
         },

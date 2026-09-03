@@ -36,7 +36,6 @@ from ._native import (
 )
 from .errors import PocketStationError, _native_call
 from .graph import (
-    EdgeContract,
     Endpoint,
     MediaCaps,
     PortSpec,
@@ -266,11 +265,7 @@ class EndpointPortInput:
 
     @property
     def route_settings(self) -> RouteSettings:
-        return RouteSettings(self._native.edge)
-
-    @property
-    def edge(self) -> EdgeContract:
-        return self.route_settings
+        return RouteSettings(self._native.route_settings)
 
     @property
     def context(self) -> EndpointPrepareContext:
@@ -434,12 +429,10 @@ class RegisteredEndpoint:
         configuration: EndpointConfigurationInput = (),
         *,
         route_settings: RouteSettings | None = None,
-        edge: EdgeContract | None = None,
     ) -> Endpoint:
         values = _configuration(configuration)
         selected_settings = _select_route_settings(
             route_settings,
-            edge,
             _default_route_settings(self._provider.manifest),
         )
         native = _native_call(

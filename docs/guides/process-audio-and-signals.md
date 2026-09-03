@@ -4,7 +4,7 @@ Use an `Operator` when work consumes Session media or signals and emits a
 derived result. Transcription, classification, translation, speech synthesis,
 and policy checks are Operators when their outputs remain inside the Session.
 
-A Python Operator runs on a bounded off-realtime worker. Capture and unrelated
+A Python Operator runs on an off-realtime worker. Capture and unrelated
 destinations continue while the Operator works. The Operator does not create a
 second Session or call Python from a native capture callback.
 

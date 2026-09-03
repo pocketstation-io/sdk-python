@@ -19,7 +19,7 @@ class RuntimeCompatibility:
 
 RUNTIME_COMPATIBILITY = RuntimeCompatibility(
     sdk_version="0.1.2",
-    core_version="1.1.4",
+    core_version="1.1.5",
     relay_connector_version="0.1.2",
     python_requires=">=3.11",
     python_abi="abi3-py311",

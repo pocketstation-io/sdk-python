@@ -930,9 +930,9 @@ class Conversation:
                     "generated audio delivery failed before output drained"
                 )
             routes_drained = bool(routes) and all(
-                route.edge.queue_depth_frames == 0
-                and route.edge.frames_delivered_total
-                + (route.edge.discarded_output_frames_total or 0)
+                route.delivery.queue_depth_frames == 0
+                and route.delivery.frames_delivered_total
+                + (route.delivery.discarded_output_frames_total or 0)
                 >= self._output_frames_written
                 for route in routes
             )

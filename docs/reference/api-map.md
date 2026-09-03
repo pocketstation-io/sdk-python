@@ -48,7 +48,7 @@ loss behavior.
 | Run a managed process | `pocketstation.sidecar` |
 | Load a trusted native extension | `pocketstation.extensions` |
 
-Provider callbacks run on bounded off-realtime workers. Native capture
+Provider callbacks run on off-realtime workers. Native capture
 callbacks never call Python.
 
 ## Build a voice workflow
@@ -61,7 +61,7 @@ callbacks never call Python.
 - one `DuplexVoiceModel`.
 
 Provider implementations remain in example or separately installed provider
-packages. Read [Compose a bounded voice workflow](../guides/voice.md) before
+packages. Read [Compose a voice workflow](../guides/voice.md) before
 depending on interruption or playout observations.
 
 ## Handle failures

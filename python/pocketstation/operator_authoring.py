@@ -13,7 +13,6 @@ from ._native import _OperatorPrepareContext as _NativeOperatorPrepareContext
 from ._native import _SignalEnvelope as _NativeSignalEnvelope
 from .errors import _native_call
 from .graph import (
-    EdgeContract,
     MediaCaps,
     Operator,
     OperatorConfiguration,
@@ -76,11 +75,7 @@ class OperatorPortContext:
     capacity_signals: int
     signal: SignalSpec[object]
     media: MediaCaps
-    edge: EdgeContract
-
-    @property
-    def route_settings(self) -> RouteSettings:
-        return self.edge
+    route_settings: RouteSettings
 
     @classmethod
     def _from_native(cls, value: _NativeOperatorPortContext) -> OperatorPortContext:
@@ -91,7 +86,7 @@ class OperatorPortContext:
             capacity_signals=value.capacity_signals,
             signal=SignalSpec._from_native(value.signal),
             media=MediaCaps._from_native(value.media),
-            edge=EdgeContract(value.edge),
+            route_settings=RouteSettings(value.route_settings),
         )
 
 

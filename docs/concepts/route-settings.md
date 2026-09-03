@@ -64,9 +64,3 @@ Advanced Connector and Endpoint preparation objects expose `route_settings`.
 attempted delivery, drops, and discontinuities. Typed signals use
 `SignalQueueMetrics`. Check those observations before increasing capacity: a
 larger finite queue can hold older audio without solving the slow destination.
-
-`EdgeContract` remains an import-compatible name for `RouteSettings` in the
-0.1.x series. Existing `edge=` keyword arguments continue to work. New code
-should use `route_settings=` so the decision is clear at the call site.
-`EdgeMetrics` and `TypedEdgeMetrics` remain compatibility names for the clearer
-metrics types.

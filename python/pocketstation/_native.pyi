@@ -176,11 +176,11 @@ class _PortSpec:
     multiplicity: str
     required: bool
 
-class _EdgeContract:
+class _RouteSettings:
     @staticmethod
-    def realtime_audio() -> _EdgeContract: ...
+    def realtime_audio() -> _RouteSettings: ...
     @staticmethod
-    def bounded_async() -> _EdgeContract: ...
+    def bounded_async() -> _RouteSettings: ...
     media: _MediaCaps
     clock: str
     latency_budget_ms: int | None
@@ -191,18 +191,18 @@ class _EdgeContract:
     copy_policy: str
     observability: str
     max_payload_bytes: int | None
-    def with_media(self, media: _MediaCaps) -> _EdgeContract: ...
-    def with_backpressure(self, value: str) -> _EdgeContract: ...
-    def with_copy_policy(self, value: str) -> _EdgeContract: ...
-    def with_jitter_budget_ms(self, value: int | None) -> _EdgeContract: ...
-    def with_max_payload_bytes(self, value: int) -> _EdgeContract: ...
+    def with_media(self, media: _MediaCaps) -> _RouteSettings: ...
+    def with_backpressure(self, value: str) -> _RouteSettings: ...
+    def with_copy_policy(self, value: str) -> _RouteSettings: ...
+    def with_jitter_budget_ms(self, value: int | None) -> _RouteSettings: ...
+    def with_max_payload_bytes(self, value: int) -> _RouteSettings: ...
 
 class BusSubscription:
     id: int
     session_id: RuntimeSessionId
     route_id: RouteId
     signal: _SignalSpec
-    edge: _EdgeContract
+    route_settings: _RouteSettings
 
 class _SignalTiming:
     source_timestamp_ns: int | None
@@ -272,7 +272,7 @@ class _EndpointDescriptor:
         node_type_id: str,
         operator_id: str,
         configuration: dict[str, str],
-        input_edge: _EdgeContract | None = None,
+        route_settings: _RouteSettings | None = None,
     ) -> None: ...
 
 class _ConnectorConfigurationValue:
@@ -368,7 +368,7 @@ class ConnectorInputDescriptor:
     signal_wire_id: str
     signal: _SignalSpec
     media: _MediaCaps
-    edge: _EdgeContract
+    route_settings: _RouteSettings
     configuration: dict[str, _ConnectorConfigurationValue]
 
 class ConnectorItem:
@@ -664,7 +664,7 @@ class _SessionFailure:
     source_platform_status_code: int | None
     source_backend_class: str | None
 
-class _EdgeMetrics:
+class _RouteDeliveryMetrics:
     queue_capacity_frames: int
     queue_depth_frames: int
     queue_peak_frames: int
@@ -749,7 +749,7 @@ class RouteMetrics:
     endpoint_finalization_failures_total: int
     drop_observation_interval: str
     drop_rate_pct: float
-    source_latency_boundary: str
+    source_latency_measurement: str
     source_latency_unit: str
 
 class _SessionSourceMetrics:
@@ -798,7 +798,7 @@ class _ExternalSourceMetrics:
 
 class _OperatorInputMetrics:
     port_name: str
-    edge: _EdgeMetrics
+    delivery: _RouteDeliveryMetrics
 
 class _OperatorWorkerMetrics:
     input_attempted_total: int
@@ -818,12 +818,12 @@ class _OperatorWorkerMetrics:
 
 class _OperatorMetrics:
     operator_instance_id: int
-    input_edge: _EdgeMetrics
+    input_delivery: _RouteDeliveryMetrics
     worker: _OperatorWorkerMetrics
     finalization_failures_total: int
     def input_ports(self) -> list[_OperatorInputMetrics]: ...
 
-class _TypedEdgeMetrics:
+class _SignalQueueMetrics:
     capacity_signals: int
     max_payload_bytes: int
     maximum_buffered_payload_bytes: int
@@ -836,7 +836,7 @@ class _TypedEdgeMetrics:
 class _DerivedRouteMetrics:
     route_id: int
     endpoint_id: int
-    output: _TypedEdgeMetrics
+    output: _SignalQueueMetrics
     endpoint_observation_stage: str
     endpoint_frames_received_total: int
     endpoint_frames_delivered_total: int
@@ -1183,7 +1183,7 @@ class EndpointPortInput:
     port_name: str
     signal: _SignalSpec
     media: _MediaCaps
-    edge: _EdgeContract
+    route_settings: _RouteSettings
     context: EndpointPrepareContext
     receiver: EndpointReceiver
 
@@ -1199,7 +1199,7 @@ class _OperatorPortContext:
     capacity_signals: int
     signal: _SignalSpec
     media: _MediaCaps
-    edge: _EdgeContract
+    route_settings: _RouteSettings
 
 class _OperatorPrepareContext:
     execution_partition: str
@@ -1287,13 +1287,13 @@ class Session:
         self,
         registered: _RegisteredConnector,
         configuration: _ConnectorConfiguration,
-        edge: _EdgeContract,
+        route_settings: _RouteSettings,
     ) -> Endpoint: ...
     def declare_registered_endpoint(
         self,
         registered: _RegisteredEndpoint,
         configuration: dict[str, str],
-        edge: _EdgeContract,
+        route_settings: _RouteSettings,
     ) -> Endpoint: ...
     def load_native_extension_library(
         self,
@@ -1310,13 +1310,13 @@ class Session:
         self,
         stream: DerivedStream,
         signal: _SignalSpec,
-        edge: _EdgeContract,
+        route_settings: _RouteSettings,
     ) -> BusSubscription: ...
     def subscribe_source_output(
         self,
         stream: SourceOutput,
         signal: _SignalSpec,
-        edge: _EdgeContract,
+        route_settings: _RouteSettings,
     ) -> BusSubscription: ...
     def start(
         self,

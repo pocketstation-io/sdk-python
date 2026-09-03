@@ -13,7 +13,7 @@ from ._native import _SignalEnvelope as _NativeSignalEnvelope
 from ._native import _SignalLineage as _NativeSignalLineage
 from ._native import _SignalSubscriptionMetrics as _NativeSignalSubscriptionMetrics
 from ._native import _SignalTiming as _NativeSignalTiming
-from .graph import EdgeContract, RouteSettings, SignalSpec
+from .graph import RouteSettings, SignalSpec
 from .identity import (
     ClockDomainId,
     ConnectorId,
@@ -245,11 +245,7 @@ class BusSubscription(Generic[_PayloadT_co]):
 
     @property
     def route_settings(self) -> RouteSettings:
-        return RouteSettings(self._native.edge)
-
-    @property
-    def edge(self) -> EdgeContract:
-        return self.route_settings
+        return RouteSettings(self._native.route_settings)
 
 
 class EndOfStream:
