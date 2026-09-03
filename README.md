@@ -243,8 +243,8 @@ does not have the same execution cost as Rust.
 | Windows 11 ARM64 | Core application selection and 10 ms capture tested in a VM; installed Python distribution and physical-device qualification in progress |
 | WAN and TURN | Not yet qualified |
 
-The native binding uses PocketStation Core `1.1.5` and the shared Relay
-Connector `0.1.2`.
+The native binding uses PocketStation Core `1.1.6` and the shared Relay
+Connector `0.1.3`.
 
 The Rust-to-Python audio read currently copies native samples into Python-owned
 bytes before exposing a `memoryview`. The view avoids another Python-side copy;

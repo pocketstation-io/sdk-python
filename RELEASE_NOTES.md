@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.3 — 2026-09-03
+
+Configure route delivery with one consistent set of names across Python and
+the native runtime.
+
 ### Added
 
 Advanced integrations can now configure `RouteSettings` as accepted media plus
@@ -10,9 +15,17 @@ accept the clearer `route_settings=` keyword. Runtime metrics expose
 `RouteObservability`, `RouteLatencyMeasurement`, `RouteDeliveryMetrics`, and
 `SignalQueueMetrics`.
 
-Existing `EdgeContract`, `EdgeObservabilityLevel`, `RouteLatencyBoundary`,
-`EdgeMetrics`, `TypedEdgeMetrics`, and `edge=` uses remain compatible throughout
-the 0.1.x series.
+Session operator metrics expose aggregate input delivery through
+`input_delivery`, with per-port detail in `input_ports`.
+
+### Changed
+
+Connector, Endpoint, Operator, subscription, and observation APIs now use the
+same route-settings vocabulary.
+
+```console
+python -m pip install --upgrade pocketstation==0.1.3
+```
 
 ## 0.1.2 — 2026-09-01
 
@@ -35,7 +48,7 @@ application.send_to(destination)
 
 Subclass `pocketstation.Connector` for a synchronous destination or
 `pocketstation.aio.Connector` for an asynchronous provider. The class owns its
-provider connection. PocketStation owns the bounded routes, source and stem
+provider connection. PocketStation owns route delivery, source and stem
 identity, delivery observations, drain, abort, and joined shutdown.
 
 ```python
@@ -98,7 +111,7 @@ The first release includes:
 - synchronous and asyncio Session APIs;
 - exact application selection and default-microphone capture;
 - 10 ms and 20 ms audio profiles;
-- bounded audio and typed-signal streams;
+- audio and typed-signal streams with explicit queue capacities;
 - Python-authored Sources, Operators, Connectors, and Endpoints;
 - application-owned PCM input and generated-audio output cancellation;
 - provider-neutral voice composition with revisable transcripts;
@@ -106,7 +119,7 @@ The first release includes:
 - source-aware multistem recording with structured outcomes.
 
 The package uses PocketStation Core for capture, routing, timing, recording,
-and lifecycle. Python provider work runs on bounded off-realtime workers and
+and lifecycle. Python provider work runs on off-realtime workers and
 does not execute on native capture callbacks.
 
 ### Voice interruption example
