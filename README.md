@@ -154,14 +154,9 @@ cancelled, and invalid-buffer outcomes explicitly.
 
 ## Create an integration
 
-PocketStation provides four integration APIs:
-
-| API | Use it when |
-|---|---|
-| `Source` | Media or signals enter the Session. |
-| `Operator` | Work transforms media or emits typed signals. |
-| `Connector` | Media or signals leave for an external system. |
-| `Endpoint` | You need direct control of an outbound worker. |
+Create a `Connector` when Session audio needs to reach an API, socket, file, or
+provider. Most Python integrations need only a send function or a small class;
+PocketStation supplies the worker, queue, delivery observations, and shutdown.
 
 Pass one function when the destination is already open:
 
@@ -208,10 +203,15 @@ PocketStation calls `start()` once, interleaves both source-aware stems through
 destination. See [Create an integration](docs/guides/integrations.md) for
 deadlines, failures, and the advanced SPI.
 
-Python provider callbacks execute on off-realtime workers. They cannot
-be used as native capture callbacks. Use compiled native extensions for native
-provider code, or a process sidecar when crash
-isolation is required.
+Python provider callbacks execute on off-realtime workers. They cannot be used
+as native capture callbacks. Use a compiled native extension for native
+provider code, or a managed process when crash isolation is required.
+
+Use a `Source` when media enters the Session, an `Operator` when work transforms
+media or emits typed signals, and an `Endpoint` when an integration needs direct
+control of outbound delivery. The [integration guide](docs/guides/integrations.md)
+starts with the normal Connector API and introduces those advanced APIs only
+when the task requires them.
 
 ## Use Relay from Python
 
