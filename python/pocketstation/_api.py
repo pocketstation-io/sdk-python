@@ -127,8 +127,6 @@ from .graph import (
     DeliveryPolicy,
     DeliverySemantics,
     DerivedStream,
-    EdgeContract,
-    EdgeObservabilityLevel,
     Endpoint,
     EndpointConfiguration,
     EndpointDescriptor,
@@ -172,7 +170,6 @@ from .identity import (
 from .observations import (
     AudioReentryMetrics,
     DerivedRouteMetrics,
-    EdgeMetrics,
     EndpointFailureRetryability,
     EndpointFailureStage,
     EndpointMetrics,
@@ -190,7 +187,6 @@ from .observations import (
     RecordingState,
     RelayPublishOutcome,
     RouteDeliveryMetrics,
-    RouteLatencyBoundary,
     RouteLatencyMeasurement,
     RouteLatencyUnit,
     RouteObservationInterval,
@@ -212,7 +208,6 @@ from .observations import (
     SignalQueueMetrics,
     SourceMetrics,
     TerminationDisposition,
-    TypedEdgeMetrics,
 )
 from .operator_authoring import (
     OperatorConfigValidator,
@@ -327,7 +322,7 @@ from .streams import (
     SignalStream,
 )
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __all__ = [
     "RUNTIME_COMPATIBILITY",
     "STREAM_EOF",
@@ -413,9 +408,6 @@ __all__ = [
     "DerivedRouteMetrics",
     "DerivedStream",
     "DiscoveredSource",
-    "EdgeContract",
-    "EdgeMetrics",
-    "EdgeObservabilityLevel",
     "EndOfStream",
     "Endpoint",
     "EndpointConfiguration",
@@ -510,7 +502,6 @@ __all__ = [
     "RelayTimeoutError",
     "RouteDeliveryMetrics",
     "RouteId",
-    "RouteLatencyBoundary",
     "RouteLatencyMeasurement",
     "RouteLatencyUnit",
     "RouteMetrics",
@@ -617,7 +608,6 @@ __all__ = [
     "SubscriptionState",
     "TerminationDisposition",
     "TextFormat",
-    "TypedEdgeMetrics",
     "aio",
     "application_capture_available",
     "capture",

@@ -8,7 +8,7 @@ captures and routes audio through finite queues.
 application ─┐
 microphone ──┼─ Session ─┬─ Python or native Operator
 owned PCM ───┘           ├─ Connector or Endpoint
-                         ├─ bounded frame iterator
+                         ├─ frame iterator
                          └─ multistem recording
 ```
 
@@ -25,14 +25,14 @@ declared capacities. When a queue is full, PocketStation returns or records
 pressure according to that route's policy. It does not hide pressure in an
 unbounded `asyncio.Queue`.
 
-A slow Python consumer can still lose frames at its own bounded endpoint.
-Inspect the route counters and discontinuities whenever complete delivery
+A slow Python consumer can still lose frames when its route queue fills.
+Inspect the queue depth, dropped-frame counters, and discontinuities whenever complete delivery
 matters.
 
 ## Python does not run on capture callbacks
 
 Python-authored Sources, Operators, Connectors, and Endpoints execute on
-bounded off-realtime workers. Native capture callbacks remain allocation-free,
+off-realtime workers. Their queues have configured capacities. Native capture callbacks remain allocation-free,
 lock-free, blocking-free, async-free, log-free, and panic-free.
 
 Use a compiled extension when code must stay native. Use a process sidecar when

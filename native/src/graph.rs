@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use pocketstation::connector::ConnectorSecret;
 use pocketstation::{
     AudioCaps, BackpressurePolicy, BinaryFormat, ChannelLayout, Codec, CopyPolicy,
-    DerivedStreamHandle, EdgeContract, EndpointConfiguration, EndpointDescriptor, EndpointHandle,
-    EventFormat, MediaCaps, Multiplicity, Operator, OperatorConfiguration, OperatorId,
-    OperatorInputHandle, OperatorInstanceHandle, PortDirection, PortSpec, SampleFormat,
-    SignalClass, SignalSpec, SourceConfiguration, SourceInstanceHandle, SourceOutputHandle,
-    SourceTypeId, StemHandle, TextFormat,
+    DerivedStreamHandle, EndpointConfiguration, EndpointDescriptor, EndpointHandle, EventFormat,
+    MediaCaps, Multiplicity, Operator, OperatorConfiguration, OperatorId, OperatorInputHandle,
+    OperatorInstanceHandle, PortDirection, PortSpec, RouteSettings, SampleFormat, SignalClass,
+    SignalSpec, SourceConfiguration, SourceInstanceHandle, SourceOutputHandle, SourceTypeId,
+    StemHandle, TextFormat,
 };
 use pocketstation_relay::{RelayPublishReceiptKey, RelayRouteConfiguration};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -497,25 +497,25 @@ impl PythonPortSpec {
     }
 }
 
-#[pyclass(name = "_EdgeContract", frozen)]
+#[pyclass(name = "_RouteSettings", frozen)]
 #[derive(Clone, Copy)]
-pub(crate) struct PythonEdgeContract {
-    pub(crate) value: EdgeContract,
+pub(crate) struct PythonRouteSettings {
+    pub(crate) value: RouteSettings,
 }
 
 #[pymethods]
-impl PythonEdgeContract {
+impl PythonRouteSettings {
     #[staticmethod]
     fn realtime_audio() -> Self {
         Self {
-            value: EdgeContract::realtime_audio(),
+            value: RouteSettings::realtime_audio(),
         }
     }
 
     #[staticmethod]
     fn bounded_async() -> Self {
         Self {
-            value: EdgeContract::bounded_async(),
+            value: RouteSettings::bounded_async(),
         }
     }
 
@@ -608,9 +608,9 @@ impl PythonEdgeContract {
     #[getter]
     fn observability(&self) -> &'static str {
         match self.value.observability() {
-            pocketstation::EdgeObservabilityLevel::Off => "off",
-            pocketstation::EdgeObservabilityLevel::Counters => "counters",
-            pocketstation::EdgeObservabilityLevel::Full => "full",
+            pocketstation::RouteObservability::Off => "off",
+            pocketstation::RouteObservability::Counters => "counters",
+            pocketstation::RouteObservability::Full => "full",
         }
     }
 
@@ -629,12 +629,12 @@ pub(crate) struct PythonEndpointDescriptor {
 #[pymethods]
 impl PythonEndpointDescriptor {
     #[new]
-    #[pyo3(signature = (node_type_id, operator_id, configuration, input_edge=None))]
+    #[pyo3(signature = (node_type_id, operator_id, configuration, route_settings=None))]
     fn new(
         node_type_id: String,
         operator_id: String,
         configuration: HashMap<String, String>,
-        input_edge: Option<&PythonEdgeContract>,
+        route_settings: Option<&PythonRouteSettings>,
     ) -> PyResult<Self> {
         let configuration = configuration.into_iter().fold(
             EndpointConfiguration::new(),
@@ -645,8 +645,8 @@ impl PythonEndpointDescriptor {
             OperatorId::new(operator_id),
         )
         .with_configuration(configuration);
-        if let Some(input_edge) = input_edge {
-            value = value.with_input_edge(input_edge.value);
+        if let Some(route_settings) = route_settings {
+            value = value.with_route_settings(route_settings.value);
         }
         Ok(Self { value })
     }
@@ -784,7 +784,7 @@ fn publish_route(
             configuration
                 .connector_configuration()
                 .map_err(|error| PyValueError::new_err(error.to_string()))?,
-            EdgeContract::realtime_audio(),
+            RouteSettings::realtime_audio(),
         )
         .map_err(|error| PyValueError::new_err(error.to_string()))?;
     let route_id = send(endpoint)?;
@@ -1308,11 +1308,11 @@ fn graph_conformance_manifest(
         true,
     )
     .map_err(|error| error.to_string())?;
-    let input_edge = EdgeContract::bounded_async()
+    let input_route_settings = RouteSettings::bounded_async()
         .with_media(input_media)
         .with_backpressure(BackpressurePolicy::DropNewest)
         .with_copy_policy(CopyPolicy::CopyToBranchPool);
-    let output_edge = EdgeContract::bounded_async()
+    let output_route_settings = RouteSettings::bounded_async()
         .with_media(output_media)
         .with_copy_policy(CopyPolicy::CopyToBranchPool);
     pocketstation::AsyncOperatorManifest::new(
@@ -1325,12 +1325,12 @@ fn graph_conformance_manifest(
             vec![input],
             vec![output],
             pocketstation::ExecutionPartition::AsyncWorker,
-            pocketstation::SafetyContract::AllocationAllowed,
+            pocketstation::ExecutionSafety::AllocationAllowed,
             false,
         )
         .map_err(|error| error.to_string())?,
-        input_edge,
-        output_edge,
+        input_route_settings,
+        output_route_settings,
         16,
         pocketstation::OperatorPermissionPolicy {
             network_allowed: false,
@@ -1350,7 +1350,7 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PythonSignalSpec>()?;
     module.add_class::<PythonMediaCaps>()?;
     module.add_class::<PythonPortSpec>()?;
-    module.add_class::<PythonEdgeContract>()?;
+    module.add_class::<PythonRouteSettings>()?;
     module.add_class::<PythonEndpointDescriptor>()?;
     module.add_class::<PythonEndpoint>()?;
     module.add_class::<PythonOperatorInput>()?;

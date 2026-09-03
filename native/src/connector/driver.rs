@@ -19,7 +19,7 @@ use super::values::{
     PythonConnectorManifest,
 };
 use crate::errors::coded_reason;
-use crate::graph::{PythonEdgeContract, PythonEndpoint, PythonMediaCaps, PythonSignalSpec};
+use crate::graph::{PythonEndpoint, PythonMediaCaps, PythonRouteSettings, PythonSignalSpec};
 use crate::signals::{copy_envelope, python_envelope, PythonSignalEnvelope};
 use crate::streams::{owned_endpoint_audio_frame, python_audio_frame, PythonAudioFrame};
 
@@ -37,7 +37,7 @@ pub(crate) struct PythonConnectorInputDescriptor {
     pub(super) signal_wire_id: String,
     pub(super) signal: Py<PythonSignalSpec>,
     pub(super) media: Py<PythonMediaCaps>,
-    pub(super) edge: Py<PythonEdgeContract>,
+    pub(super) route_settings: Py<PythonRouteSettings>,
     pub(super) configuration: Vec<(String, Py<PythonConnectorConfigurationValue>)>,
 }
 
@@ -63,8 +63,8 @@ impl PythonConnectorInputDescriptor {
     }
 
     #[getter]
-    fn edge(&self, py: Python<'_>) -> Py<PythonEdgeContract> {
-        self.edge.clone_ref(py)
+    fn route_settings(&self, py: Python<'_>) -> Py<PythonRouteSettings> {
+        self.route_settings.clone_ref(py)
     }
 }
 
@@ -443,11 +443,11 @@ pub(crate) fn declare_connector(
     registered: &PythonRegisteredConnector,
     session: &Session,
     configuration: &PythonConnectorConfiguration,
-    edge: &PythonEdgeContract,
+    route_settings: &PythonRouteSettings,
 ) -> PyResult<PythonEndpoint> {
     registered
         .registered
-        .declare(session, configuration.value.clone(), edge.value)
+        .declare(session, configuration.value.clone(), route_settings.value)
         .map(|handle| PythonEndpoint { handle })
         .map_err(|error| {
             PyValueError::new_err(coded_reason(
@@ -477,10 +477,10 @@ fn python_input_descriptor(
             value: input.media(),
         },
     )?;
-    let edge = Py::new(
+    let route_settings = Py::new(
         py,
-        PythonEdgeContract {
-            value: input.edge_contract(),
+        PythonRouteSettings {
+            value: input.route_settings(),
         },
     )?;
     Py::new(
@@ -493,7 +493,7 @@ fn python_input_descriptor(
             signal_wire_id: input.signal_spec().wire_id().to_owned(),
             signal,
             media,
-            edge,
+            route_settings,
             configuration,
         },
     )

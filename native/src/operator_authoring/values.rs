@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use pocketstation::{
-    AsyncOperatorManifest, BackpressurePolicy, CopyPolicy, EdgeContract, ExecutionPartition,
+    AsyncOperatorManifest, BackpressurePolicy, CopyPolicy, ExecutionPartition, ExecutionSafety,
     MediaCaps, NodeDescriptor, NodeTypeId, OperatorCancellationPolicy, OperatorDeadlinePolicy,
     OperatorFailurePolicy, OperatorId, OperatorOutputRolePolicy, OperatorPermissionPolicy,
-    PortDirection, SafetyContract, SemanticRole, SignalPayload, SignalSpec,
+    PortDirection, RouteSettings, SemanticRole, SignalPayload, SignalSpec,
 };
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::PyValueError;
@@ -64,17 +64,17 @@ impl PythonOperatorManifest {
         }
         let input_media = common_media(&inputs, "input")?;
         let output_media = common_media(&outputs, "output")?;
-        let input_edge = if matches!(input_media, MediaCaps::Audio(_)) {
-            EdgeContract::realtime_audio()
+        let input_route_settings = if matches!(input_media, MediaCaps::Audio(_)) {
+            RouteSettings::realtime_audio()
                 .with_media(input_media)
                 .with_copy_policy(CopyPolicy::CopyToBranchPool)
         } else {
-            EdgeContract::bounded_async()
+            RouteSettings::bounded_async()
                 .with_media(input_media)
                 .with_backpressure(BackpressurePolicy::DropNewest)
                 .with_copy_policy(CopyPolicy::CopyToBranchPool)
         };
-        let output_edge = EdgeContract::bounded_async()
+        let output_route_settings = RouteSettings::bounded_async()
             .with_media(output_media)
             .with_copy_policy(CopyPolicy::CopyToBranchPool);
         let roles = outputs
@@ -95,7 +95,7 @@ impl PythonOperatorManifest {
             inputs,
             outputs,
             ExecutionPartition::AsyncWorker,
-            SafetyContract::AllocationAllowed,
+            ExecutionSafety::AllocationAllowed,
             true,
         )
         .map_err(|error| invalid_operator(error.to_string()))?;
@@ -104,8 +104,8 @@ impl PythonOperatorManifest {
             revision,
             implementation_generation,
             descriptor,
-            input_edge,
-            output_edge,
+            input_route_settings,
+            output_route_settings,
             queue_capacity_signals,
             OperatorPermissionPolicy {
                 network_allowed,

@@ -50,7 +50,8 @@ a browser played the same sample.
 
 ## Stop or cancel deliberately
 
-Leaving the context requests normal stop and drains accepted bounded work.
+Leaving the context requests normal stop and drains work already accepted by
+the route queues.
 Call `cancel()` on the explicit `RunningSession` API when active provider or
 sidecar work must abort. Both shutdown modes join Session workers before returning
 a terminal `StopResult`.

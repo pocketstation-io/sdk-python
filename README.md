@@ -75,22 +75,21 @@ python -m pip install 'pocketstation[transcription]'
 python examples/transcribe_voice_app.py
 ```
 
-The program asks which desktop voice application to inspect. It declares one
-faster-whisper Operator, connects both stems to its audio input, and prints each
-transcript with its original source identity. It does not start Relay or write a
+The program asks which desktop voice application to inspect. It sends the
+application and microphone through one faster-whisper model, then labels each
+transcript with the source that produced it. It does not start Relay or write a
 recording.
 
-The Session runs these jobs concurrently:
+The Session preserves each source while the transcriber processes both:
 
 ```text
-voice application ─┐
-                   ├─ one bounded faster-whisper Operator ─ transcripts
-physical microphone┘
+voice application ── faster-whisper ── transcript labeled "application"
+physical microphone ─ faster-whisper ─ transcript labeled "microphone"
 ```
 
 The complete composition is visible in
 [`examples/transcribe_voice_app.py`](examples/transcribe_voice_app.py). The
-example adapter imports `faster_whisper.WhisperModel` when the Operator starts;
+example adapter imports `faster_whisper.WhisperModel` when transcription starts;
 the provider is not part of the `pocketstation` namespace.
 
 This example does not debug turn handling, interruption, agent latency, or
@@ -131,9 +130,9 @@ with pocketstation.capture(
         print(frame.source_id, frame.stem_id)
 ```
 
-The iterator reads a bounded native endpoint. A slow Python consumer produces
-observable pressure and discontinuities; it does not create an unbounded Python
-audio queue.
+The iterator receives audio through a native queue that holds 32 frames by
+default. If Python stops reading and the queue fills, PocketStation drops new
+frames and reports the queue depth, dropped-frame count, and discontinuity.
 
 ## Send application-owned audio into a Session
 
@@ -154,14 +153,9 @@ cancelled, and invalid-buffer outcomes explicitly.
 
 ## Create an integration
 
-PocketStation provides four integration APIs:
-
-| API | Use it when |
-|---|---|
-| `Source` | Media or signals enter the Session. |
-| `Operator` | Work transforms media or emits typed signals. |
-| `Connector` | Media or signals leave for an external system. |
-| `Endpoint` | You need direct control of an outbound worker. |
+Create a `Connector` when Session audio needs to reach an API, socket, file, or
+provider. Most Python integrations need only a send function or a small class;
+PocketStation supplies the worker, queue, delivery observations, and shutdown.
 
 Pass one function when the destination is already open:
 
@@ -169,8 +163,10 @@ Pass one function when the destination is already open:
 import pocketstation as pks
 import pocketstation.aio as pks_aio
 
+
 async def send_audio(frame: pks.AudioFrame) -> None:
     await socket.send(frame.samples)
+
 
 destination = pks_aio.Connector(send=send_audio)
 application.send_to(destination)
@@ -178,7 +174,7 @@ application.send_to(destination)
 
 Subclass the synchronous or asyncio Connector when the provider opens and
 closes resources. The provider class owns its connection; the Session owns
-bounded delivery, lineage, observations, drain, abort, and joined shutdown:
+route delivery, lineage, observations, drain, abort, and joined shutdown:
 
 ```python
 class WebSocketConnector(pks_aio.Connector):
@@ -208,10 +204,15 @@ PocketStation calls `start()` once, interleaves both source-aware stems through
 destination. See [Create an integration](docs/guides/integrations.md) for
 deadlines, failures, and the advanced SPI.
 
-Python provider callbacks execute on bounded off-realtime workers. They cannot
-be used as native capture callbacks. Use compiled native extensions for native
-provider code, or a process sidecar when crash
-isolation is required.
+Python provider callbacks execute on off-realtime workers. They cannot be used
+as native capture callbacks. Use a compiled native extension for native
+provider code, or a managed process when crash isolation is required.
+
+Use a `Source` when media enters the Session, an `Operator` when work transforms
+media or emits typed signals, and an `Endpoint` when an integration needs direct
+control of outbound delivery. The [integration guide](docs/guides/integrations.md)
+starts with the normal Connector API and introduces those advanced APIs only
+when the task requires them.
 
 ## Use Relay from Python
 
@@ -220,8 +221,8 @@ The shared Rust `pocketstation-relay` connector publishes media. The Go Relay
 service forwards WebRTC audio. Python does not encode Opus, write RTP, or own a
 second media plane.
 
-The control client uses finite request deadlines, bounded response bodies,
-redacted secrets, and matching synchronous and asyncio APIs.
+The control client limits request duration and response size, redacts secrets,
+and provides matching synchronous and asyncio APIs.
 
 ## Sync and asyncio
 
@@ -243,8 +244,8 @@ does not have the same execution cost as Rust.
 | Windows 11 ARM64 | Core application selection and 10 ms capture tested in a VM; installed Python distribution and physical-device qualification in progress |
 | WAN and TURN | Not yet qualified |
 
-The native binding uses PocketStation Core `1.1.4` and the shared Relay
-Connector `0.1.2`.
+The native binding uses PocketStation Core `1.1.7` and the shared Relay
+Connector `0.1.5`.
 
 The Rust-to-Python audio read currently copies native samples into Python-owned
 bytes before exposing a `memoryview`. The view avoids another Python-side copy;
@@ -266,8 +267,8 @@ uv run mypy python tests/qualification/typing_contract.py examples
   guidance.
 - [`docs/README.md`](docs/README.md) — task guides, concepts, operations, and
   API ownership.
-- [Write application-owned audio](docs/guides/application-audio.md) — bounded
-  PCM input and selective output cancellation.
+- [Write application-owned audio](docs/guides/application-audio.md) — PCM input
+  with explicit queue capacity and selective output cancellation.
 - [Process audio and typed signals](docs/guides/process-audio-and-signals.md) —
   Operators, named ports, generated audio, and finite model work.
 - [Record and observe a Session](docs/guides/record-and-observe.md) — multistem

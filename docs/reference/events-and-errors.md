@@ -44,9 +44,6 @@ Missing measurements remain `None`. Sender time, Relay receive time, browser
 jitter-buffer time, and acoustic playout are different observations.
 `RouteMetrics.source_latency_measurement` returns a
 `RouteLatencyMeasurement`; `source_latency_unit` gives its unit.
-`RouteLatencyBoundary` and `source_latency_boundary` remain 0.1.x compatibility
-names.
-
 ## Terminal results
 
 After stop or cancellation, inspect `StopResult` before reporting success:

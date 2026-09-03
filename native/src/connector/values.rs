@@ -8,7 +8,7 @@ use pocketstation::connector::{
     ConnectorRequirement, ConnectorSecret,
 };
 use pocketstation::{
-    ExecutionPartition, NodeDescriptor, NodeTypeId, OperatorId, PortDirection, SafetyContract,
+    ExecutionPartition, ExecutionSafety, NodeDescriptor, NodeTypeId, OperatorId, PortDirection,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -320,7 +320,7 @@ impl PythonConnectorManifest {
             inputs,
             Vec::new(),
             ExecutionPartition::AsyncWorker,
-            SafetyContract::AllocationAllowed,
+            ExecutionSafety::AllocationAllowed,
             true,
         )
         .map_err(|error| invalid_connector(error.to_string()))?;

@@ -23,7 +23,7 @@ use crate::errors::{
 use crate::extensions::PythonNativeExtensionLibrary;
 use crate::graph::{
     make_operator, make_source_configuration, make_source_type_id, PythonDerivedStream,
-    PythonEdgeContract, PythonEndpoint, PythonEndpointDescriptor, PythonOperatorInstance,
+    PythonEndpoint, PythonEndpointDescriptor, PythonOperatorInstance, PythonRouteSettings,
     PythonSignalSpec, PythonSourceInstance, PythonSourceOutput, PythonStem,
 };
 use crate::observations::{
@@ -333,31 +333,6 @@ impl PythonSession {
         })
     }
 
-    #[allow(deprecated)]
-    fn connector(
-        &self,
-        operator_id: String,
-        configuration: HashMap<String, String>,
-    ) -> PyResult<PythonEndpoint> {
-        validate_nonempty("operator ID", &operator_id)?;
-        if configuration.keys().any(|key| key.trim().is_empty()) {
-            return Err(PyValueError::new_err(coded_reason(
-                "graph.invalid_contract",
-                "endpoint configuration keys cannot be empty",
-            )));
-        }
-        let configuration = configuration.into_iter().fold(
-            pocketstation::EndpointConfiguration::new(),
-            |configuration, (key, value)| configuration.with(key, value),
-        );
-        self.with_session(|session| {
-            session
-                .connector(pocketstation::OperatorId::new(operator_id), configuration)
-                .map(|handle| PythonEndpoint { handle })
-                .map_err(session_error)
-        })
-    }
-
     fn browser(&self, receiver_uri: String) -> PyResult<PythonEndpoint> {
         validate_nonempty("receiver URI", &receiver_uri)?;
         self.with_session(|session| {
@@ -424,18 +399,22 @@ impl PythonSession {
         &self,
         registered: &PythonRegisteredConnector,
         configuration: &PythonConnectorConfiguration,
-        edge: &PythonEdgeContract,
+        route_settings: &PythonRouteSettings,
     ) -> PyResult<PythonEndpoint> {
-        self.with_session(|session| declare_connector(registered, session, configuration, edge))
+        self.with_session(|session| {
+            declare_connector(registered, session, configuration, route_settings)
+        })
     }
 
     fn declare_registered_endpoint(
         &self,
         registered: &PythonRegisteredEndpoint,
         configuration: HashMap<String, String>,
-        edge: &PythonEdgeContract,
+        route_settings: &PythonRouteSettings,
     ) -> PyResult<PythonEndpoint> {
-        self.with_session(|session| declare_endpoint(session, registered, configuration, edge))
+        self.with_session(|session| {
+            declare_endpoint(session, registered, configuration, route_settings)
+        })
     }
 
     fn register_sidecar(&self, spec: &PythonSidecarProcessSpec) -> PyResult<u64> {
@@ -471,7 +450,7 @@ impl PythonSession {
         &self,
         stream: &PythonDerivedStream,
         signal: &PythonSignalSpec,
-        edge: &PythonEdgeContract,
+        route_settings: &PythonRouteSettings,
     ) -> PyResult<PythonBusSubscription> {
         let subscription_id = self.allocate_signal_subscription_id()?;
         self.with_session(|session| {
@@ -479,7 +458,7 @@ impl PythonSession {
                 session,
                 &stream.handle,
                 signal,
-                edge,
+                route_settings,
                 subscription_id,
                 &self.signal_receipts,
             )
@@ -490,7 +469,7 @@ impl PythonSession {
         &self,
         stream: &PythonSourceOutput,
         signal: &PythonSignalSpec,
-        edge: &PythonEdgeContract,
+        route_settings: &PythonRouteSettings,
     ) -> PyResult<PythonBusSubscription> {
         let subscription_id = self.allocate_signal_subscription_id()?;
         self.with_session(|session| {
@@ -498,7 +477,7 @@ impl PythonSession {
                 session,
                 &stream.handle,
                 signal,
-                edge,
+                route_settings,
                 subscription_id,
                 &self.signal_receipts,
             )

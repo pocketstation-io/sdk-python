@@ -15,10 +15,10 @@ from ._native import Session as _NativeSession
 from ._native import SourceInstance as _NativeSourceInstance
 from ._native import SourceOutput as _NativeSourceOutput
 from ._native import Stem as _NativeStem
-from ._native import _EdgeContract as _NativeEdgeContract
 from ._native import _EndpointDescriptor as _NativeEndpointDescriptor
 from ._native import _MediaCaps as _NativeMediaCaps
 from ._native import _PortSpec as _NativePortSpec
+from ._native import _RouteSettings as _NativeRouteSettings
 from ._native import _SignalSpec as _NativeSignalSpec
 from .errors import _native_call
 from .identity import (
@@ -509,22 +509,19 @@ class RouteObservability(StrEnum):
         }[self]
 
 
-EdgeObservabilityLevel = RouteObservability
-
-
 @dataclass(frozen=True, slots=True, eq=False)
 class DeliveryPolicy:
     """Choose how a route behaves when delivery slows or fails."""
 
-    _native: _NativeEdgeContract = field(repr=False, compare=False)
+    _native: _NativeRouteSettings = field(repr=False, compare=False)
 
     @classmethod
     def realtime_audio(cls) -> DeliveryPolicy:
-        return cls(_NativeEdgeContract.realtime_audio())
+        return cls(_NativeRouteSettings.realtime_audio())
 
     @classmethod
     def bounded_async(cls) -> DeliveryPolicy:
-        return cls(_NativeEdgeContract.bounded_async())
+        return cls(_NativeRouteSettings.bounded_async())
 
     @property
     def clock(self) -> ClockDomain:
@@ -604,15 +601,15 @@ class DeliveryPolicy:
 class RouteSettings:
     """Choose the media accepted by a route and how that route delivers it."""
 
-    _native: _NativeEdgeContract = field(repr=False, compare=False)
+    _native: _NativeRouteSettings = field(repr=False, compare=False)
 
     @classmethod
     def realtime_audio(cls) -> RouteSettings:
-        return cls(_NativeEdgeContract.realtime_audio())
+        return cls(_NativeRouteSettings.realtime_audio())
 
     @classmethod
     def bounded_async(cls) -> RouteSettings:
-        return cls(_NativeEdgeContract.bounded_async())
+        return cls(_NativeRouteSettings.bounded_async())
 
     @property
     def media(self) -> MediaCaps:
@@ -692,17 +689,11 @@ class RouteSettings:
         return hash(self._values())
 
 
-EdgeContract: TypeAlias = RouteSettings
-
-
 def _select_route_settings(
     route_settings: RouteSettings | None,
-    edge: EdgeContract | None,
     default: RouteSettings,
 ) -> RouteSettings:
-    if route_settings is not None and edge is not None:
-        raise ValueError("pass route_settings or edge, not both")
-    return route_settings or edge or default
+    return route_settings or default
 
 
 ConfigurationInput: TypeAlias = Mapping[str, str] | Iterable[tuple[str, str]]
@@ -775,12 +766,8 @@ class EndpointDescriptor:
     node_type_id: str
     operator_id: str
     configuration: EndpointConfiguration = field(default_factory=EndpointConfiguration)
-    input_edge: EdgeContract | None = None
+    route_settings: RouteSettings | None = None
     _native: _NativeEndpointDescriptor = field(init=False, repr=False, compare=False)
-
-    @property
-    def route_settings(self) -> RouteSettings | None:
-        return self.input_edge
 
     def __post_init__(self) -> None:
         native = _native_call(
@@ -788,7 +775,7 @@ class EndpointDescriptor:
                 self.node_type_id,
                 self.operator_id,
                 self.configuration._as_dict(),
-                None if self.input_edge is None else self.input_edge._native,
+                None if self.route_settings is None else self.route_settings._native,
             )
         )
         object.__setattr__(self, "_native", native)
@@ -1131,17 +1118,6 @@ class _GraphSessionDeclarations:
         """Declare one open Endpoint descriptor on the Session draft."""
         return _native_call(lambda: Endpoint(self._native.endpoint(descriptor._native)))
 
-    def connector(
-        self,
-        operator_id: str,
-        configuration: EndpointConfiguration | None = None,
-    ) -> Endpoint:
-        """Declare an external connector endpoint without provider taxonomy."""
-        values = EndpointConfiguration() if configuration is None else configuration
-        return _native_call(
-            lambda: Endpoint(self._native.connector(operator_id, values._as_dict()))
-        )
-
     def browser(self, receiver_uri: str) -> Endpoint:
         """Declare the frozen browser or remote-receiver Endpoint."""
         return _native_call(lambda: Endpoint(self._native.browser(receiver_uri)))
@@ -1152,7 +1128,6 @@ class _GraphSessionDeclarations:
         *,
         signal: SignalSpec[_PayloadT],
         route_settings: RouteSettings | None = None,
-        edge: EdgeContract | None = None,
     ) -> BusSubscription[_PayloadT]:
         """Declare one bounded, exclusive typed-signal subscription.
 
@@ -1163,7 +1138,6 @@ class _GraphSessionDeclarations:
 
         settings = _select_route_settings(
             route_settings,
-            edge,
             RouteSettings.bounded_async().with_media(_media_for_signal(signal)),
         )
         if isinstance(stream, DerivedStream):
@@ -1245,8 +1219,6 @@ __all__ = [
     "DeliveryPolicy",
     "DeliverySemantics",
     "DerivedStream",
-    "EdgeContract",
-    "EdgeObservabilityLevel",
     "Endpoint",
     "EndpointConfiguration",
     "EndpointDescriptor",

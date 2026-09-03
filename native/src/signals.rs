@@ -8,16 +8,16 @@ use pocketstation::{
     ConfigError, DerivedStreamHandle, EndpointCancellationOutcome, EndpointConfiguration,
     EndpointDriverFactory, EndpointDriverFinalization, EndpointDriverObservations, EndpointFailure,
     EndpointFailureStage, EndpointPortInput, EndpointReceiver, EndpointStartGate,
-    ExecutionPartition, Multiplicity, NodeDefinition, NodeDescriptor, NodeTypeId, OperatorId,
-    PortDirection, PortSpec, PreparedEndpointDriver, RouteId, RunningEndpointDriver,
-    SafetyContract, Session, SignalEnvelope, SignalPayload, SignalSpec, SourceOutputHandle,
+    ExecutionPartition, ExecutionSafety, Multiplicity, NodeDefinition, NodeDescriptor, NodeTypeId,
+    OperatorId, PortDirection, PortSpec, PreparedEndpointDriver, RouteId, RunningEndpointDriver,
+    Session, SignalEnvelope, SignalPayload, SignalSpec, SourceOutputHandle,
 };
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyMemoryView};
 
 use crate::errors::{coded_reason, session_endpoint_error, session_error};
-use crate::graph::{PythonEdgeContract, PythonSignalSpec};
+use crate::graph::{PythonRouteSettings, PythonSignalSpec};
 
 const SUBSCRIPTION_INPUT_PORT: &str = "signal";
 const SUBSCRIPTION_CONFIG_KEY: &str = "subscription_id";
@@ -263,7 +263,7 @@ pub(crate) struct PythonBusSubscription {
     #[pyo3(get)]
     pub(crate) route_id: u64,
     signal: PythonSignalSpec,
-    edge: PythonEdgeContract,
+    route_settings: PythonRouteSettings,
 }
 
 #[pymethods]
@@ -274,8 +274,8 @@ impl PythonBusSubscription {
     }
 
     #[getter]
-    fn edge(&self) -> PythonEdgeContract {
-        self.edge
+    fn route_settings(&self) -> PythonRouteSettings {
+        self.route_settings
     }
 }
 
@@ -283,7 +283,7 @@ pub(crate) fn subscribe_derived(
     session: &Session,
     stream: &DerivedStreamHandle,
     signal: &PythonSignalSpec,
-    edge: &PythonEdgeContract,
+    route_settings: &PythonRouteSettings,
     subscription_id: u64,
     receipts: &SignalReceipts,
 ) -> PyResult<PythonBusSubscription> {
@@ -291,7 +291,7 @@ pub(crate) fn subscribe_derived(
         session,
         stream.session_id().get(),
         signal,
-        edge,
+        route_settings,
         subscription_id,
         receipts,
         |endpoint| stream.send(endpoint),
@@ -302,7 +302,7 @@ pub(crate) fn subscribe_source_output(
     session: &Session,
     stream: &SourceOutputHandle,
     signal: &PythonSignalSpec,
-    edge: &PythonEdgeContract,
+    route_settings: &PythonRouteSettings,
     subscription_id: u64,
     receipts: &SignalReceipts,
 ) -> PyResult<PythonBusSubscription> {
@@ -310,7 +310,7 @@ pub(crate) fn subscribe_source_output(
         session,
         stream.session_id().get(),
         signal,
-        edge,
+        route_settings,
         subscription_id,
         receipts,
         |endpoint| stream.send(endpoint),
@@ -321,7 +321,7 @@ fn declare_subscription(
     session: &Session,
     stream_session_id: u64,
     signal: &PythonSignalSpec,
-    edge: &PythonEdgeContract,
+    route_settings: &PythonRouteSettings,
     subscription_id: u64,
     receipts: &SignalReceipts,
     send: impl FnOnce(pocketstation::EndpointHandle) -> Result<RouteId, pocketstation::SessionError>,
@@ -335,7 +335,7 @@ fn declare_subscription(
     signal.value.validate().map_err(|error| {
         PyValueError::new_err(coded_reason("graph.invalid_contract", error.to_string()))
     })?;
-    if !edge.value.media().supports_signal(&signal.value) {
+    if !route_settings.value.media().supports_signal(&signal.value) {
         return Err(PyValueError::new_err(coded_reason(
             "graph.invalid_contract",
             "BusSubscription edge media does not support its SignalSpec",
@@ -350,7 +350,7 @@ fn declare_subscription(
         SUBSCRIPTION_INPUT_PORT,
         PortDirection::Input,
         signal.value.clone(),
-        edge.value.media(),
+        route_settings.value.media(),
         Multiplicity::Many,
         true,
     )
@@ -363,7 +363,7 @@ fn declare_subscription(
         vec![input],
         Vec::new(),
         ExecutionPartition::External,
-        SafetyContract::ExternalService,
+        ExecutionSafety::ExternalService,
         true,
     )
     .map_err(|error| {
@@ -392,7 +392,7 @@ fn declare_subscription(
             .with_configuration(
                 EndpointConfiguration::new().with(SUBSCRIPTION_CONFIG_KEY, subscription_key),
             )
-            .with_input_edge(edge.value),
+            .with_route_settings(route_settings.value),
         )
         .map_err(session_error)?;
     let route_id = send(endpoint).map_err(session_error)?;
@@ -405,7 +405,7 @@ fn declare_subscription(
         session_id: session.id().get(),
         route_id: route_id.get(),
         signal: signal.clone(),
-        edge: *edge,
+        route_settings: *route_settings,
     })
 }
 

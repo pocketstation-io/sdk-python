@@ -36,8 +36,9 @@ discover it again. For a saved selection, use
 in [Persist a source at its supported scope](../operations/platform-support.md#persist-a-source-at-its-supported-scope).
 
 The context manager starts one native Session and joins it when the block
-exits. The iterator reads a finite native Endpoint; it does not create an
-unbounded Python audio queue.
+exits. The iterator receives audio through a native queue that holds 32 frames
+by default. If Python stops reading and the queue fills, PocketStation drops
+new frames and reports the loss.
 
 ## Add a microphone or recording
 

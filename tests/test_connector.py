@@ -94,7 +94,7 @@ def test_python_connector_receives_application_owned_pcm_with_lineage() -> None:
     assert descriptor.signal_wire_id == "pks.signal.pcm-audio.v1"
     assert descriptor.signal.is_audio
     assert descriptor.media.kind.value == "audio-pcm"
-    assert descriptor.edge.media.kind.value == "audio-pcm"
+    assert descriptor.route_settings.media.kind.value == "audio-pcm"
     assert len(driver.items) == 1
     item = driver.items[0]
     assert item.kind == "audio"
@@ -244,12 +244,6 @@ def test_session_destination_accepts_route_settings_and_rejects_duplicate_names(
     endpoint = session.destination(provider, route_settings=settings)
 
     assert endpoint.session_id == session.id
-    with pytest.raises(ValueError, match="route_settings or edge"):
-        session.destination(
-            provider,
-            route_settings=settings,
-            edge=settings,
-        )
 
 
 def test_session_destination_does_not_merge_different_connector_implementations() -> (

@@ -32,7 +32,6 @@ from ._native import (
 from ._native import _RegisteredConnector as _NativeRegisteredConnector
 from .errors import PocketStationError, _native_call
 from .graph import (
-    EdgeContract,
     Endpoint,
     MediaCaps,
     Multiplicity,
@@ -558,11 +557,7 @@ class ConnectorInputDescriptor:
 
     @property
     def route_settings(self) -> RouteSettings:
-        return RouteSettings(self._native.edge)
-
-    @property
-    def edge(self) -> EdgeContract:
-        return self.route_settings
+        return RouteSettings(self._native.route_settings)
 
     @property
     def configuration(self) -> Mapping[str, ConnectorConfigurationValue]:
@@ -1237,7 +1232,6 @@ class RegisteredConnector:
         configuration: ConnectorConfigurationInput = (),
         *,
         route_settings: RouteSettings | None = None,
-        edge: EdgeContract | None = None,
     ) -> Endpoint:
         """Declare one configured endpoint using the registered implementation."""
         native_configuration = self._connector.manifest.configuration.configuration(
@@ -1245,7 +1239,6 @@ class RegisteredConnector:
         )
         selected_settings = _select_route_settings(
             route_settings,
-            edge,
             _default_route_settings(self._connector.manifest),
         )
         native = _native_call(

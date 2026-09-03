@@ -13,8 +13,6 @@ from pocketstation._api import (
     CopyPolicy,
     DeliveryPolicy,
     DeliverySemantics,
-    EdgeContract,
-    EdgeObservabilityLevel,
     EndpointConfiguration,
     EndpointDescriptor,
     EventFormat,
@@ -164,8 +162,8 @@ def test_port_helpers_infer_media_without_hiding_explicit_contracts() -> None:
     assert output_port.multiplicity is Multiplicity.MANY
 
 
-def test_edge_presets_and_modifiers_preserve_bounded_contracts() -> None:
-    realtime = EdgeContract.realtime_audio()
+def test_route_settings_presets_and_modifiers_remain_bounded() -> None:
+    realtime = RouteSettings.realtime_audio()
     assert realtime.clock is ClockDomain.CAPTURE
     assert realtime.backpressure is BackpressurePolicy.DROP_NEWEST
     assert realtime.delivery is DeliverySemantics.ORDERED
@@ -175,10 +173,9 @@ def test_edge_presets_and_modifiers_preserve_bounded_contracts() -> None:
     assert realtime.max_payload_bytes is None
     assert realtime.clock.is_realtime
     assert not ClockDomain.INHERITED.is_realtime
-    assert EdgeObservabilityLevel is RouteObservability
     assert RouteObservability.FULL.rank > realtime.observability.rank
 
-    bounded = EdgeContract.bounded_async()
+    bounded = RouteSettings.bounded_async()
     assert bounded.clock is ClockDomain.INHERITED
     assert bounded.backpressure is BackpressurePolicy.BOUNDED_QUEUE
     assert bounded.delivery is DeliverySemantics.ORDERED
@@ -218,7 +215,6 @@ def test_route_settings_apply_delivery_policy_without_changing_media() -> None:
         RouteSettings.realtime_audio().with_media(media).with_delivery_policy(delivery)
     )
 
-    assert EdgeContract is RouteSettings
     assert settings.media == media
     assert settings != RouteSettings.realtime_audio()
     assert settings.clock is ClockDomain.INHERITED
@@ -261,9 +257,12 @@ def test_graph_declarations_lower_immediately_to_one_rust_session(tmp_path) -> N
             OperatorConfiguration({"language": "en"}),
         )
     )
-    connector = session.connector(
-        "org.example.connector.v1",
-        EndpointConfiguration({"region": "local"}),
+    connector = session.endpoint(
+        EndpointDescriptor(
+            "org.example.connector-node.v1",
+            "org.example.connector.v1",
+            EndpointConfiguration({"region": "local"}),
+        )
     )
     browser = session.browser("https://receiver.example.test")
     endpoint = session.endpoint(
@@ -271,7 +270,7 @@ def test_graph_declarations_lower_immediately_to_one_rust_session(tmp_path) -> N
             "org.example.endpoint-node.v1",
             "org.example.endpoint.v1",
             EndpointConfiguration({"mode": "events"}),
-            EdgeContract.bounded_async(),
+            RouteSettings.bounded_async(),
         )
     )
 
@@ -345,4 +344,10 @@ def test_sync_and_async_sessions_share_the_same_graph_declaration_surface() -> N
         assert session.id > 0
         declared = session.operator(Operator("org.example.operator.v1"))
         assert declared.session_id == session.id
-        assert session.connector("org.example.connector.v1").session_id == session.id
+        endpoint = session.endpoint(
+            EndpointDescriptor(
+                "org.example.endpoint-node.v1",
+                "org.example.endpoint.v1",
+            )
+        )
+        assert endpoint.session_id == session.id

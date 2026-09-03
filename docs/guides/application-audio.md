@@ -63,4 +63,4 @@ playback device. A Connector and receiver need their own clear operation and
 playout acknowledgement before an application can claim audible cancellation.
 
 Continue with [multistem recording and observations](record-and-observe.md) or
-[bounded voice composition](voice.md).
+[voice composition](voice.md).
