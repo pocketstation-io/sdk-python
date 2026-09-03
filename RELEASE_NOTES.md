@@ -45,6 +45,7 @@ Use `Connector(send=...)` when the destination is already open:
 async def send_audio(frame):
     await socket.send(frame.samples)
 
+
 destination = pocketstation.aio.Connector(send=send_audio)
 application.send_to(destination)
 ```

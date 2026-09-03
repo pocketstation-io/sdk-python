@@ -27,6 +27,7 @@ manifest = OperatorManifest(
     outputs=(PortSpec.output("output", result),),
 )
 
+
 @operator(manifest)
 async def uppercase(input_port, envelope):
     assert input_port == "input"

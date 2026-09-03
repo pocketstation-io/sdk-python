@@ -54,8 +54,10 @@ Use one function when the provider connection is already open:
 import pocketstation as pks
 import pocketstation.aio as pks_aio
 
+
 async def send_audio(frame: pks.AudioFrame) -> None:
     await socket.send(frame.samples)
+
 
 destination = pks_aio.Connector(send=send_audio)
 application.send_to(destination)
@@ -76,6 +78,7 @@ Use a class when the integration is reused or owns provider state:
 ```python
 import pocketstation as pks
 import pocketstation.aio as pks_aio
+
 
 class WebSocketConnector(pks_aio.Connector):
     def __init__(self, url: str, token: str) -> None:

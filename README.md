@@ -163,8 +163,10 @@ Pass one function when the destination is already open:
 import pocketstation as pks
 import pocketstation.aio as pks_aio
 
+
 async def send_audio(frame: pks.AudioFrame) -> None:
     await socket.send(frame.samples)
+
 
 destination = pks_aio.Connector(send=send_audio)
 application.send_to(destination)
