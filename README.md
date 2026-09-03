@@ -1,23 +1,32 @@
 # PocketStation for Python
 
-PocketStation captures one desktop application and an optional microphone as
-separate live audio stems. A single native Session can send those stems to
-Python model code, a remote browser, and a multistem recording without mixing
-their source identities.
+Capture one desktop application and an optional microphone as separate live
+audio stems. Use the same native Session for Python model code, browser
+delivery, and one recording file per stem.
 
-The Python package uses the PocketStation Rust engine for capture, routing,
-timing, recording, and Relay transport. Your Python code owns the model and
-application logic.
+[![PyPI](https://img.shields.io/pypi/v/pocketstation.svg)](https://pypi.org/project/pocketstation/)
+[![Python](https://img.shields.io/pypi/pyversions/pocketstation.svg)](https://pypi.org/project/pocketstation/)
+[![License](https://img.shields.io/pypi/l/pocketstation.svg)](LICENSE)
+
+```text
+desktop application ─┐
+microphone ──────────┼─ native Session ─┬─ Python model code
+generated PCM ───────┘                  ├─ Relay and a browser
+                                       └─ separate recording stems
+```
+
+PocketStation runs capture, frame timing, routing, recording, and Relay
+publication in Rust. Python owns the application and provider code. A slow
+Python integration cannot run on the operating-system capture callback.
 
 ## Capture a desktop application
 
-Install PocketStation:
+You need Python 3.11 or newer, a supported desktop operating system, and one
+running application that is producing audio.
 
 ```bash
 python -m pip install pocketstation
 ```
-
-Capture one application without opening a microphone or writing files:
 
 ```python
 import pocketstation
@@ -27,96 +36,15 @@ with pocketstation.capture(application="Spotify") as live:
         print(frame.source_id, frame.stem_id)
 ```
 
-Add `microphone=True` when you need the default microphone as a second
-independent stem. Add `record_to="recordings"` when you want each selected stem
-recorded. Both behaviors are off by default.
+Replace `Spotify` with the display name or application identifier shown by the
+operating system. You may also pass a positive process ID. Selection must match
+one running application; PocketStation does not guess when several processes
+match.
 
-## Handle permissions and source changes
+The context manager starts one native Session and joins it when the block
+exits. No microphone opens and no file is written unless you request them.
 
-PocketStation does not prompt during import or discovery. Check microphone
-permission without prompting through
-`pocketstation.sources.microphone_permission_observation()`, then let Source
-opening report the authoritative result. Application capture and microphone
-capture use separate permissions.
-
-When an application or device disappears, PocketStation reports the change and
-does not switch to another Source. Stop the current Session, discover again,
-confirm any changed selection, and create a new Session. Store a discovered
-identity only for its reported persistence scope. Keep fallback and provider
-retry policy explicit and finite.
-
-See [Prepare and qualify each Python platform](docs/operations/platform-support.md)
-for the permission states, persistence scopes, and recovery sequence.
-
-## Debug a voice interruption
-
-[`examples/debug_voice_ai.py`](examples/debug_voice_ai.py) sends a physical
-microphone to OpenAI Realtime without another voice framework. PocketStation
-keeps microphone input, generated assistant audio, and the selected browser's
-output as independent recorded stems. Provider events and media events share
-one monotonic timeline, so you can see whether delay occurred before the model,
-inside the provider, in local output, or after Relay delivery.
-
-See the [voice-agent debugger instructions](examples/README.md#debug-a-voice-agent-interruption).
-Run repository examples from a source checkout or source archive. The installed
-`pocketstation-demo` command is the packaged application-and-microphone demo.
-
-```bash
-python -m pip install 'pocketstation[transcription]'
-pocketstation-demo
-```
-
-## Transcribe both sides of a voice application
-
-Install the transcription extra, then run the example:
-
-```bash
-python -m pip install 'pocketstation[transcription]'
-python examples/transcribe_voice_app.py
-```
-
-The program asks which desktop voice application to inspect. It sends the
-application and microphone through one faster-whisper model, then labels each
-transcript with the source that produced it. It does not start Relay or write a
-recording.
-
-The Session preserves each source while the transcriber processes both:
-
-```text
-voice application ── faster-whisper ── transcript labeled "application"
-physical microphone ─ faster-whisper ─ transcript labeled "microphone"
-```
-
-The complete composition is visible in
-[`examples/transcribe_voice_app.py`](examples/transcribe_voice_app.py). The
-example adapter imports `faster_whisper.WhisperModel` when transcription starts;
-the provider is not part of the `pocketstation` namespace.
-
-This example does not debug turn handling, interruption, agent latency, or
-browser playout. PocketStation does not receive those events in this program.
-
-## Stream any application audio to a browser
-
-Run the Relay example when you want another person to listen in a browser:
-
-```bash
-python examples/stream_any_app_audio.py
-```
-
-Choose any running application that is producing audio. The example publishes
-that application as one named AudioBus, waits for Relay readiness, and prints a
-single-use word code and browser URL. It does not open the microphone or record
-audio.
-
-The example uses PocketStation's small, rate-limited demo service unless you set
-`POCKETSTATION_CONTROL_URL` and `POCKETSTATION_RELAY_URL` to services you
-operate. The shared URLs live in `pocketstation_demo`; application code does
-not contain service credentials.
-
-## Read application and microphone audio
-
-Set the optional microphone and recording parameters when the workflow needs
-both sides:
+## Add a microphone or recording
 
 ```python
 import pocketstation
@@ -130,34 +58,148 @@ with pocketstation.capture(
         print(frame.source_id, frame.stem_id)
 ```
 
-The iterator receives audio through a native queue that holds 32 frames by
-default. If Python stops reading and the queue fills, PocketStation drops new
-frames and reports the queue depth, dropped-frame count, and discontinuity.
+The application and microphone keep different source and stem identities.
+Recording writes a separate stem for each source and reports its final result
+when the Session stops.
 
-## Send application-owned audio into a Session
+Use a microphone device ID instead of `True` when the application must select a
+specific input. See [capture one application](docs/getting-started/capture.md)
+for source discovery, permissions, and asyncio.
 
-Use `audio_input()` when your application already owns PCM, such as generated
-speech or audio received from a call provider:
+## Use each source independently
+
+One Session can send a stem to more than one destination:
+
+- iterate over frames in Python;
+- transcribe or process audio with an `Operator`;
+- publish audio with a `Connector`;
+- send a named `AudioBus` through Relay;
+- record the original source;
+- add generated PCM without mixing it into captured audio.
+
+Every destination receives source, stream, stem, sequence, timestamp, clock,
+and discontinuity information. Application and microphone audio do not have to
+be mixed before model processing or remote delivery.
+
+The default Python audio queue holds 32 frames. If Python stops reading and the
+queue fills, new frames are dropped and the Session reports the queue depth,
+dropped-frame count, and discontinuity. Other destinations continue according
+to their own delivery settings.
+
+## Build a voice workflow
+
+`pocketstation.voice` defines the interfaces for streaming transcription,
+response generation, speech synthesis, speech detection, and duplex voice
+models. Provider packages implement those interfaces; PocketStation does not
+embed a model catalog or API key.
+
+Use separate providers when the application chooses each stage:
 
 ```python
-session = pocketstation.Session(recording_root="recordings")
-agent = session.audio_input("agent-output")
-agent.output.record("agent")
-
-with session.start():
-    agent.write(samples)
+conversation = session.conversation(
+    input=microphone,
+    output=assistant,
+    stt=transcriber,
+    llm=response_model,
+    tts=synthesizer,
+    vad=speech_detector,
+)
 ```
 
-The input uses finite preallocated Core buffers. Writes report full, closed,
-cancelled, and invalid-buffer outcomes explicitly.
+Use one duplex provider when it accepts audio and returns audio through one
+stateful connection:
 
-## Create an integration
+```python
+conversation = session.conversation(
+    input=microphone,
+    output=assistant,
+    voice_model=voice_model,
+)
+```
 
-Create a `Connector` when Session audio needs to reach an API, socket, file, or
-provider. Most Python integrations need only a send function or a small class;
-PocketStation supplies the worker, queue, delivery observations, and shutdown.
+The two forms cannot be combined. Provider capabilities are checked before the
+Session starts. Generated speech enters the Session through `audio_input()`, so
+it can be recorded, published, observed, or removed from pending local output
+without stopping microphone capture.
 
-Pass one function when the destination is already open:
+This API does not provide model intelligence, acoustic echo cancellation, or a
+hosted inference service. Provider-side cancellation and receiver playout
+remain separate observations; PocketStation does not report that a person
+stopped hearing audio unless the receiver can prove it.
+
+Read [compose a voice workflow](docs/guides/voice.md) for transcript revisions,
+provider capabilities, interruption, retained history, and current limits.
+
+## Debug a voice interruption
+
+[`examples/debug_voice_ai.py`](examples/debug_voice_ai.py) shows the complete
+Session declaration. It connects a physical microphone to OpenAI Realtime,
+returns assistant PCM to PocketStation, publishes named buses through Relay,
+captures the browser application playing the assistant, and records the three
+sources separately.
+
+```bash
+python -m pip install 'pocketstation[voice-agent-debug]'
+export OPENAI_API_KEY='...'
+python examples/debug_voice_ai.py
+```
+
+Speak while the assistant is replying. The final report separates provider
+events from what PocketStation observed:
+
+- microphone capture and continuity;
+- transcript and response events reported by the provider;
+- assistant PCM accepted by the Session;
+- pending output removed after cancellation;
+- Relay and browser WebRTC observations;
+- the browser application's captured output;
+- finalized recording stems.
+
+The example does not prove the exact loudspeaker sample a person heard, AEC, or
+provider-history truncation. Those fields remain unavailable when the provider
+or receiver cannot report them. Read the
+[example instructions](examples/README.md#debug-a-voice-agent-interruption)
+before running it.
+
+## Transcribe both sides of a voice application
+
+The transcription example sends application and microphone audio through one
+faster-whisper model while keeping the resulting text attributed to its source:
+
+```bash
+python -m pip install 'pocketstation[transcription]'
+python examples/transcribe_voice_app.py
+```
+
+The program asks which running application to inspect. It opens the default
+microphone because that example explicitly requests both sides. It does not
+start Relay or record audio.
+
+faster-whisper processes finite audio windows and emits final transcripts. This
+is batch transcription, not a claim of streaming interim text or voice-agent
+turn handling. The adapter is example code and imports
+`faster_whisper.WhisperModel` only when transcription starts.
+
+## Stream any application to a browser
+
+```bash
+python examples/stream_any_app_audio.py
+```
+
+Choose a running application. The example publishes it as one named AudioBus,
+waits for Relay readiness, and prints a single-use word code and browser URL.
+It does not open a microphone or record audio.
+
+The example uses PocketStation's small, rate-limited demonstration services
+unless you set `POCKETSTATION_CONTROL_URL` and `POCKETSTATION_RELAY_URL` to
+services you operate. Shared service URLs live in `pocketstation_demo`; they are
+not repeated in application code. The demonstration is not a hosted service or
+SLA and can return `HTTP 429` when its configured capacity is in use.
+
+## Send audio to your own provider
+
+A Connector sends Session audio to an API, socket, file, or provider. Pass one
+async function when the connection is already open:
 
 ```python
 import pocketstation as pks
@@ -172,26 +214,25 @@ destination = pks_aio.Connector(send=send_audio)
 application.send_to(destination)
 ```
 
-Subclass the synchronous or asyncio Connector when the provider opens and
-closes resources. The provider class owns its connection; the Session owns
-route delivery, lineage, observations, drain, abort, and joined shutdown:
+Use a class when the Connector opens and closes provider resources:
 
 ```python
 class WebSocketConnector(pks_aio.Connector):
-    def __init__(self, url, token):
-        self.url, self.token = url, token
+    def __init__(self, url: str, token: str) -> None:
+        self.url = url
+        self.token = token
 
-    async def start(self):
+    async def start(self) -> None:
         self.socket = await connect(self.url, token=self.token)
 
-    async def send(self, frame: pks.AudioFrame):
+    async def send(self, frame: pks.AudioFrame) -> None:
         await self.socket.send(frame.samples)
 
-    async def stop(self):
+    async def stop(self) -> None:
         await self.socket.close()
 ```
 
-Attach one configured object to one or more stems:
+One Connector object represents one configured provider connection:
 
 ```python
 destination = WebSocketConnector(url, token)
@@ -199,57 +240,96 @@ application.send_to(destination)
 microphone.send_to(destination)
 ```
 
-PocketStation calls `start()` once, interleaves both source-aware stems through
-`send()`, and calls `stop()` once. A second Connector object creates a separate
-destination. See [Create an integration](docs/guides/integrations.md) for
-deadlines, failures, and the advanced SPI.
+PocketStation calls `start()` once, sends both source-aware stems, and calls
+`stop()` once. Each stem retains its own delivery queue and observations.
+Create another Connector object when credentials, failure handling, or shutdown
+must be independent.
 
-Python provider callbacks execute on off-realtime workers. They cannot be used
-as native capture callbacks. Use a compiled native extension for native
-provider code, or a managed process when crash isolation is required.
+The [integration guide](docs/guides/integrations.md) covers deadlines, failures,
+sync Connectors, Sources, Operators, Endpoints, native extensions, and managed
+processes. The manifest and driver APIs are for distributable integrations that
+need typed configuration or custom service status; they are not required for a
+normal Python Connector.
 
-Use a `Source` when media enters the Session, an `Operator` when work transforms
-media or emits typed signals, and an `Endpoint` when an integration needs direct
-control of outbound delivery. The [integration guide](docs/guides/integrations.md)
-starts with the normal Connector API and introduces those advanced APIs only
-when the task requires them.
+## Write PCM into a Session
 
-## Use Relay from Python
+Use `audio_input()` for generated speech, call audio, or decoded network media:
 
-Python creates and deletes RelaySessions through the typed HTTP control client.
-The shared Rust `pocketstation-relay` connector publishes media. The Go Relay
-service forwards WebRTC audio. Python does not encode Opus, write RTP, or own a
-second media plane.
+```python
+session = pocketstation.Session(recording_root="recordings")
+assistant = session.audio_input("assistant")
+assistant.output.record("assistant")
 
-The control client limits request duration and response size, redacts secrets,
-and provides matching synchronous and asyncio APIs.
+with session.start():
+    assistant.write(samples)
+```
+
+Core preallocates the input buffers. A write reports whether it was accepted,
+full, closed, cancelled, or invalid. Read
+[application-owned audio](docs/guides/application-audio.md) before selecting a
+queue capacity or cancelling pending output.
+
+## Handle permissions and source changes
+
+PocketStation does not prompt during import or discovery. Check microphone
+permission without prompting with
+`pocketstation.sources.microphone_permission_observation()`, then let source
+opening report the operating system's final result. Application and microphone
+capture use separate permissions.
+
+If an application or microphone disappears, PocketStation reports the change
+and does not choose a replacement. Stop the Session, discover sources again,
+confirm the new selection, and start another Session. Store a discovered source
+only for its reported persistence scope.
+
+See [platform operations](docs/operations/platform-support.md) for permission
+states, persistence, recovery, and native dependencies.
 
 ## Sync and asyncio
 
-`pocketstation` and `pocketstation.aio` operate the same native Session. The
-asyncio namespace provides awaitable lifecycle, stream, Relay, provider, and
-audio-input operations without creating another audio queue.
+`pocketstation` and `pocketstation.aio` control the same Rust Session. The
+asyncio API adds awaitable lifecycle, streams, Relay calls, provider callbacks,
+and audio writes; it does not create another capture or routing engine.
 
-Python callbacks still enter the interpreter. Capture, routing,
-recording, and Relay transport remain native-speed; arbitrary Python model code
-does not have the same execution cost as Rust.
+Python callbacks enter the interpreter and pay Python scheduling and conversion
+costs. Capture, routing, recording, and the shared Relay Connector remain
+native. Python-authored model and provider code does not have identical cost to
+Rust code.
 
 ## Platform support
 
-| Area | Support |
+| Area | Published support and evidence |
 |---|---|
 | Python | 3.11 and newer |
-| macOS Apple silicon | Installed wheel, application capture, physical microphone, 10 ms voice capture, Relay, Chromium, and multistem recording tested |
-| Linux | Core application selection and 10 ms capture tested; installed Python distribution qualification in progress |
-| Windows 11 ARM64 | Core application selection and 10 ms capture tested in a VM; installed Python distribution and physical-device qualification in progress |
-| WAN and TURN | Not yet qualified |
+| macOS Apple silicon | installed wheel; physical application and microphone capture; 10 ms voice capture; deployed Relay; Chromium; multistem recording on the recorded host |
+| macOS Intel | published wheel and package tests |
+| Linux x86-64 and ARM64 | published wheels; Core application selection and 10 ms capture in automated Ubuntu environments; physical-device qualification remains separate |
+| Windows x86-64 and ARM64 | published wheels; Core selection and 10 ms capture in a Windows 11 ARM64 VM; physical-device and latency qualification remain separate |
+| WAN and TURN | not yet qualified |
 
-The native binding uses PocketStation Core `1.1.7` and the shared Relay
-Connector `0.1.5`.
+Version 0.1.3 uses PocketStation Core 1.1.7 and the shared Relay Connector
+0.1.5.
 
-The Rust-to-Python audio read currently copies native samples into Python-owned
-bytes before exposing a `memoryview`. The view avoids another Python-side copy;
-the call into Python still copies samples and is not zero-copy.
+Reading native audio into Python copies samples into Python-owned bytes before
+exposing a `memoryview`. The view avoids another Python-side copy; the
+Rust-to-Python call is not zero-copy.
+
+## Continue from the task you have
+
+| Task | Guide |
+|---|---|
+| Capture one application | [Python quickstart](docs/getting-started/capture.md) |
+| Write generated or received PCM | [Application audio](docs/guides/application-audio.md) |
+| Process audio and typed signals | [Operators and signals](docs/guides/process-audio-and-signals.md) |
+| Record stems and inspect delivery | [Record and observe](docs/guides/record-and-observe.md) |
+| Compose voice providers | [Voice](docs/guides/voice.md) |
+| Publish through Relay | [Relay](docs/guides/relay.md) |
+| Create an integration | [Integrations](docs/guides/integrations.md) |
+| Understand Session queues and shutdown | [Session behavior](docs/concepts/session-and-bounds.md) |
+| Understand source identity and time | [Source identity](docs/concepts/source-identity-and-time.md) |
+| Prepare or troubleshoot a platform | [Platform support](docs/operations/platform-support.md) and [troubleshooting](docs/troubleshooting.md) |
+| Find a public Python API | [API map](docs/reference/api-map.md) |
+| Check an upgrade | [Release notes](RELEASE_NOTES.md) |
 
 ## Develop the SDK
 
@@ -261,30 +341,6 @@ uv run ruff format --check python tests examples
 uv run mypy python tests/qualification/typing_contract.py examples
 ```
 
-## Reference
+## License
 
-- [`RELEASE_NOTES.md`](RELEASE_NOTES.md) — user-visible changes and upgrade
-  guidance.
-- [`docs/README.md`](docs/README.md) — task guides, concepts, operations, and
-  API ownership.
-- [Write application-owned audio](docs/guides/application-audio.md) — PCM input
-  with explicit queue capacity and selective output cancellation.
-- [Process audio and typed signals](docs/guides/process-audio-and-signals.md) —
-  Operators, named ports, generated audio, and finite model work.
-- [Record and observe a Session](docs/guides/record-and-observe.md) — multistem
-  outcomes, route metrics, and lifecycle events.
-- [Keep each source identifiable](docs/concepts/source-identity-and-time.md) —
-  selection, persistence, timestamps, generations, and discontinuities.
-- [Read events, metrics, outcomes, and errors](docs/reference/events-and-errors.md)
-  — setup failure, live observations, and terminal results.
-- [Prepare each platform](docs/operations/platform-support.md) — permissions,
-  source persistence, explicit rediscovery, and fallback policy.
-- [`examples/README.md`](examples/README.md) — runnable examples and
-  prerequisites.
-- `pocketstation.capture` — concise application and microphone capture.
-- `pocketstation.session` — Session declarations and lifecycle.
-- `pocketstation.graph` — stems, ports, routes, and signal specifications.
-- `pocketstation.connector` — outbound provider authoring.
-- `pocketstation.operator_authoring` — computation authoring.
-- `pocketstation.source_authoring` — inbound provider authoring.
-- `pocketstation.aio` — asyncio APIs for the same engine.
+PocketStation for Python is available under the MIT or Apache-2.0 license.
