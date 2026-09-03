@@ -1812,7 +1812,10 @@ fn python_operator_metrics(
         py,
         PythonOperatorMetrics {
             operator_instance_id: operator.operator_instance_id.value(),
-            input_delivery: Py::new(py, PythonRouteDeliveryMetrics::from(operator.input_delivery))?,
+            input_delivery: Py::new(
+                py,
+                PythonRouteDeliveryMetrics::from(operator.input_delivery),
+            )?,
             worker: Py::new(
                 py,
                 PythonOperatorWorkerMetrics {
