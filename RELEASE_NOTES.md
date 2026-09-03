@@ -18,6 +18,9 @@ accept the clearer `route_settings=` keyword. Runtime metrics expose
 Session operator metrics expose aggregate input delivery through
 `input_delivery`, with per-port detail in `input_ports`.
 
+This release uses PocketStation Core 1.1.7, which keeps concurrent queue-depth
+observations within the configured route capacity, and Relay Connector 0.1.5.
+
 ### Changed
 
 Connector, Endpoint, Operator, subscription, and observation APIs now use the
