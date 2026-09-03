@@ -71,8 +71,9 @@ strict admission limits. Set `POCKETSTATION_CONTROL_URL` and
 ## Transcribe both sides of a voice application
 
 Use this example to inspect what a desktop voice application produced and what
-the person said into the microphone. PocketStation keeps both sources separate
-while one faster-whisper Operator transcribes them.
+the person said into the microphone. One faster-whisper model transcribes both
+sources, and every transcript identifies whether it came from the application
+or the microphone.
 
 ```bash
 python examples/transcribe_voice_app.py
@@ -87,8 +88,8 @@ Install the optional model dependency before the first run:
 python -m pip install 'pocketstation[transcription]'
 ```
 
-The first run may download the configured faster-whisper model. Model work runs
-on an off-realtime Operator worker, not on a capture callback.
+The first run may download the configured faster-whisper model. PocketStation
+runs transcription on a dedicated worker, never on the capture callback.
 
 ## Stream application audio to a browser
 

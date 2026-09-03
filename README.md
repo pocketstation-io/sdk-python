@@ -75,22 +75,21 @@ python -m pip install 'pocketstation[transcription]'
 python examples/transcribe_voice_app.py
 ```
 
-The program asks which desktop voice application to inspect. It declares one
-faster-whisper Operator, connects both stems to its audio input, and prints each
-transcript with its original source identity. It does not start Relay or write a
+The program asks which desktop voice application to inspect. It sends the
+application and microphone through one faster-whisper model, then labels each
+transcript with the source that produced it. It does not start Relay or write a
 recording.
 
 The Session preserves each source while the transcriber processes both:
 
 ```text
-voice application ──┐
-                    ├─ PocketStation Session ─ faster-whisper ─ source-aware transcripts
-physical microphone ┘
+voice application ── faster-whisper ── transcript labeled "application"
+physical microphone ─ faster-whisper ─ transcript labeled "microphone"
 ```
 
 The complete composition is visible in
 [`examples/transcribe_voice_app.py`](examples/transcribe_voice_app.py). The
-example adapter imports `faster_whisper.WhisperModel` when the Operator starts;
+example adapter imports `faster_whisper.WhisperModel` when transcription starts;
 the provider is not part of the `pocketstation` namespace.
 
 This example does not debug turn handling, interruption, agent latency, or
@@ -131,9 +130,9 @@ with pocketstation.capture(
         print(frame.source_id, frame.stem_id)
 ```
 
-The iterator reads frames from a native Endpoint. If Python stops reading, the
-Endpoint reports its queue depth, dropped frames, and discontinuities instead
-of allowing memory use to grow without a limit.
+The iterator receives audio through a native queue that holds 32 frames by
+default. If Python stops reading and the queue fills, PocketStation drops new
+frames and reports the queue depth, dropped-frame count, and discontinuity.
 
 ## Send application-owned audio into a Session
 
