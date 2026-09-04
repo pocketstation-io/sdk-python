@@ -57,6 +57,7 @@ def test_given_selector_family_when_declared_then_each_shape_is_available():
         "macos",
         "bundle:com.spotify.client",
     )
+    assert Source.system_audio()
     assert Source.microphone_id("device-42")
 
 

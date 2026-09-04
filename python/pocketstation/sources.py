@@ -454,6 +454,16 @@ class Source:
         )
 
     @classmethod
+    def system_audio(cls) -> Source:
+        """Capture the audio playing through the host output devices."""
+        native = _native_call(_NativeSource.system_audio)
+        return cls(
+            native,
+            SourceKind.SYSTEM_MIX,
+            SourceSelectorKind.SYSTEM_MIX,
+        )
+
+    @classmethod
     def microphone_default(cls) -> Source:
         """Select the host default microphone for this Session open."""
         native = _native_call(_NativeSource.microphone_default)
@@ -478,8 +488,7 @@ class Source:
     def from_discovered(cls, source: DiscoveredSource) -> Source:
         """Build the strongest supported Session declaration from discovery.
 
-        Output devices and system mix remain discovery-only in the stable 1.1
-        Session declaration requirements.
+        Output devices remain discovery-only.
         """
         stable_id = source.stable_id
         if stable_id.kind is SourceKind.APPLICATION:
@@ -495,6 +504,8 @@ class Source:
             )
         if stable_id.kind is SourceKind.INPUT_DEVICE:
             return cls.microphone_id(source.device_uid or stable_id.stable_key)
+        if stable_id.kind is SourceKind.SYSTEM_MIX:
+            return cls.system_audio()
         raise PocketStationError(
             "discovered "
             f"{stable_id.kind.value!r} is not a frozen built-in Session Source",
@@ -586,9 +597,9 @@ def application_capture_available() -> bool:
 def microphone_permission_observation() -> PermissionObservation:
     """Read microphone authorization without prompting.
 
-    Linux, Python hosts on Windows with Core 1.1.4, and any backend without an
-    authoritative query return :attr:`PermissionObservation.NOT_OBSERVABLE`;
-    callers must not reinterpret it as allowed or denied.
+    Linux, Python hosts on Windows, and any backend without an authoritative
+    query return :attr:`PermissionObservation.NOT_OBSERVABLE`; callers must
+    not reinterpret it as allowed or denied.
     """
     observation = _native_call(_native_microphone_permission_observation)
     return PermissionObservation(observation)
