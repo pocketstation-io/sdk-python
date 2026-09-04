@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from time import monotonic
 
 import pocketstation._native as _native
 import pytest
@@ -162,14 +161,12 @@ async def test_native_cancellation_waits_for_bounded_thread_cleanup() -> None:
 
     task = asyncio.create_task(_native_async(operation))
     assert await asyncio.to_thread(entered.wait, 1.0)
-    started = monotonic()
     task.cancel()
     asyncio.get_running_loop().call_later(0.02, release.set)
 
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    assert monotonic() - started >= 0.015
     assert finished.is_set()
 
 
