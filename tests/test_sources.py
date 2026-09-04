@@ -56,11 +56,15 @@ def _discovered(kind: SourceKind) -> DiscoveredSource:
 
 def test_source_declarations_are_immutable_and_descriptive() -> None:
     application = Source.application("PocketStation Fixture")
+    system_audio = Source.system_audio()
     microphone = Source.microphone_default()
 
     assert application.kind is SourceKind.APPLICATION
     assert application.selector_kind is SourceSelectorKind.APPLICATION_NAME
     assert application.selector_value == "PocketStation Fixture"
+    assert system_audio.kind is SourceKind.SYSTEM_MIX
+    assert system_audio.selector_kind is SourceSelectorKind.SYSTEM_MIX
+    assert system_audio.selector_value is None
     assert microphone.kind is SourceKind.INPUT_DEVICE
     assert microphone.selector_kind is SourceSelectorKind.MICROPHONE_DEFAULT
     with pytest.raises(FrozenInstanceError):
@@ -79,6 +83,13 @@ def test_discovered_input_device_lowers_to_microphone_id() -> None:
 
     assert selected.selector_kind is SourceSelectorKind.MICROPHONE_ID
     assert selected.selector_value == "device-42"
+
+
+def test_discovered_system_mix_lowers_to_system_audio() -> None:
+    selected = Source.from_discovered(_discovered(SourceKind.SYSTEM_MIX))
+
+    assert selected.selector_kind is SourceSelectorKind.SYSTEM_MIX
+    assert selected.kind is SourceKind.SYSTEM_MIX
 
 
 def test_discovered_source_projects_typed_pre_open_authorization_evidence() -> None:

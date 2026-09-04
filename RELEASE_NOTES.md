@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 0.1.4 — 2026-09-04
+
+Capture the complete desktop output mix with the same Python Session used for
+selected applications and microphones:
+
+```python
+session = pocketstation.Session()
+system_audio = session.capture(pocketstation.Source.system_audio())
+system_audio.send(session.polled_audio())
+```
+
+Use `Source.application(...)` when the user selected one application. Use
+`Source.system_audio()` when the workflow intentionally needs every sound
+playing through the computer. Both preserve source and stem identity for
+iteration, Connectors, Relay, and recording.
+
+This release uses PocketStation Core 1.1.9 and Relay Connector 0.1.5.
+
+```console
+python -m pip install --upgrade pocketstation==0.1.4
+```
+
 ## 0.1.3 — 2026-09-03
 
 Configure route delivery with one consistent set of names across Python and

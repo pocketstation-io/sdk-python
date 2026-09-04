@@ -322,7 +322,7 @@ from .streams import (
     SignalStream,
 )
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 __all__ = [
     "RUNTIME_COMPATIBILITY",
     "STREAM_EOF",

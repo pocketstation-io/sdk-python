@@ -40,6 +40,28 @@ exits. The iterator receives audio through a native queue that holds 32 frames
 by default. If Python stops reading and the queue fills, PocketStation drops
 new frames and reports the loss.
 
+## Capture all desktop output
+
+Use `Source.system_audio()` when the workflow needs every sound playing
+through the computer. This is an explicit choice because notifications, music,
+and unrelated applications can be included.
+
+```python
+import pocketstation as pks
+
+session = pks.Session()
+desktop = session.capture(pks.Source.system_audio())
+desktop.send(session.polled_audio())
+
+with session.start() as running:
+    for frame in running.audio:
+        print(frame.source_id, frame.stem_id)
+```
+
+Use `Source.application("Zoom")` when the user selected one application and
+other desktop audio must remain private. Do not open both sources unless the
+application needs both; their audio can overlap.
+
 ## Add a microphone or recording
 
 ```python

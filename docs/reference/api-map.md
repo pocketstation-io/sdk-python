@@ -8,6 +8,7 @@ provider, Relay, and diagnostic APIs from the module that implements them.
 | Task | API |
 |---|---|
 | Capture one application | `pocketstation.capture` |
+| Capture all desktop output | `Session.capture(Source.system_audio())` |
 | Declare a synchronous Session | `pocketstation.Session` |
 | Declare an asyncio Session | `pocketstation.aio.Session` |
 | Select a source | `pocketstation.Source` |

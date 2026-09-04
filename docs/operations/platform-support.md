@@ -6,7 +6,7 @@ follow the host operating system.
 
 ## Supported Python
 
-PocketStation 0.1.2 supports CPython 3.11 and newer through one ABI3 extension
+PocketStation 0.1.4 supports CPython 3.11 and newer through one ABI3 extension
 per operating system and architecture. Install the wheel that matches the host;
 do not rely on a sibling Rust checkout.
 
@@ -96,6 +96,8 @@ Choose fallback behavior explicitly:
 ## macOS
 
 Application capture needs screen and system-audio recording permission.
+System-audio capture uses the same operating-system recording permission and
+includes the complete output mix.
 Microphone capture needs microphone permission. Restart the application after
 changing consent when macOS does not update the running process.
 
@@ -105,15 +107,17 @@ microphone, the 10 ms voice profile, Relay, Chromium, and three recordings.
 ## Windows
 
 The release workflow builds Windows x64 and ARM64 wheels. Core selector and
-10 ms correctness have been exercised in Windows 11 ARM64. VM scheduling is
-not a physical-device latency result.
+system-audio correctness at 10 ms and 20 ms have been exercised in an
+interactive Windows 11 ARM64 VM. VM scheduling is not a physical-device
+latency result.
 
 ## Linux
 
 The release workflow builds manylinux x86_64 and ARM64 wheels. Application
-capture requires access to the logged-in PipeWire session. Microphone capture
-uses ALSA. A service or container must receive those devices and session
-permissions explicitly.
+and system-audio capture require access to the logged-in PipeWire session.
+System audio follows the default output monitor. Microphone capture uses ALSA.
+A service or container must receive those devices and session permissions
+explicitly.
 
 ## Separate correctness from performance
 

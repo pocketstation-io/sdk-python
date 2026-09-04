@@ -25,6 +25,7 @@ pub(crate) enum SourceDeclaration {
         platform: Platform,
         stable_key: String,
     },
+    SystemAudio,
     MicrophoneDefault,
     MicrophoneId(String),
 }
@@ -57,6 +58,7 @@ impl SourceDeclaration {
                 ProcessId::new(*process_id),
                 StableSourceId::new(*platform, SourceKind::Application, stable_key.clone()),
             )),
+            Self::SystemAudio => Source::system_audio(),
             Self::MicrophoneDefault => Source::microphone_default(),
             Self::MicrophoneId(device_id) => {
                 Source::microphone(DeviceSelector::id(DeviceId::new(device_id.clone())))
@@ -288,6 +290,13 @@ impl PythonSource {
                 stable_key,
             },
         })
+    }
+
+    #[staticmethod]
+    const fn system_audio() -> Self {
+        Self {
+            declaration: SourceDeclaration::SystemAudio,
+        }
     }
 
     #[staticmethod]

@@ -10,9 +10,9 @@ delivery, and one recording file per stem.
 
 ```text
 desktop application ─┐
-microphone ──────────┼─ native Session ─┬─ Python model code
-generated PCM ───────┘                  ├─ Relay and a browser
-                                       └─ separate recording stems
+system audio ────────┼─ native Session ─┬─ Python model code
+microphone ──────────┤                  ├─ Relay and a browser
+generated PCM ───────┘                  └─ separate recording stems
 ```
 
 PocketStation runs capture, frame timing, routing, recording, and Relay
@@ -43,6 +43,26 @@ match.
 
 The context manager starts one native Session and joins it when the block
 exits. No microphone opens and no file is written unless you request them.
+
+## Capture the complete output mix
+
+Use a Session directly when the workflow intentionally needs every sound
+playing through the computer:
+
+```python
+import pocketstation as pks
+
+session = pks.Session()
+system_audio = session.capture(pks.Source.system_audio())
+system_audio.send(session.polled_audio())
+
+with session.start() as running:
+    for frame in running.audio:
+        print(frame.source_id, frame.stem_id)
+```
+
+Use `Source.application(...)` instead when unrelated desktop audio must remain
+outside the Session.
 
 ## Add a microphone or recording
 
@@ -307,7 +327,7 @@ Rust code.
 | Windows x86-64 and ARM64 | published wheels; Core selection and 10 ms capture in a Windows 11 ARM64 VM; physical-device and latency qualification remain separate |
 | WAN and TURN | not yet qualified |
 
-Version 0.1.3 uses PocketStation Core 1.1.7 and the shared Relay Connector
+Version 0.1.4 uses PocketStation Core 1.1.9 and the shared Relay Connector
 0.1.5.
 
 Reading native audio into Python copies samples into Python-owned bytes before
