@@ -25,6 +25,43 @@ def test_audio_input_rejects_empty_names(name: str) -> None:
 
 
 @pytest.mark.parametrize(
+    ("frame_duration_ms", "sample_rate_hz", "expected_samples"),
+    [(10, 48_000, 480), (20, 48_000, 960), (20, 44_100, 882)],
+)
+def test_audio_input_defaults_to_session_frame_duration(
+    frame_duration_ms: int, sample_rate_hz: int, expected_samples: int
+) -> None:
+    session = Session(
+        frame_duration_ms=frame_duration_ms, sample_rate_hz=sample_rate_hz
+    )
+    audio = session.audio_input("owned")
+
+    assert audio.config.frame_samples_per_channel == expected_samples
+    assert audio.config.sample_rate_hz == sample_rate_hz
+
+
+def test_audio_input_explicit_frame_samples_override_session_duration() -> None:
+    session = Session(frame_duration_ms=20)
+    audio = session.audio_input("owned", frame_samples_per_channel=480)
+
+    assert audio.config.frame_samples_per_channel == 480
+
+
+def test_audio_input_delivers_the_inherited_twenty_millisecond_frame() -> None:
+    session = Session(frame_duration_ms=20)
+    audio = session.audio_input("owned")
+    audio.output.send(session.polled_audio())
+    running = session.start()
+
+    audio.try_write(array("f", [0.25] * 960))
+    frame = running.audio.read(timeout_s=1.0)
+
+    assert frame is not None
+    assert len(frame.samples.cast("f")) == 960
+    assert running.stop().success
+
+
+@pytest.mark.parametrize(
     "samples",
     [
         array("d", [0.0] * 4),

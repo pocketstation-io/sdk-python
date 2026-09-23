@@ -14,6 +14,15 @@ from .graph import Endpoint, SourceOutput
 from .identity import SourceId, StreamId
 
 
+def _frame_samples_for_duration(sample_rate_hz: int, frame_duration_ms: int) -> int:
+    samples, remainder = divmod(sample_rate_hz * frame_duration_ms, 1_000)
+    if remainder:
+        raise ValueError(
+            "sample_rate_hz and frame_duration_ms must yield a whole number of samples"
+        )
+    return samples
+
+
 @dataclass(frozen=True, slots=True)
 class AudioInputConfig:
     """Finite PCM configuration shared by the concise and advanced APIs."""

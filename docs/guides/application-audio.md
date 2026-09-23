@@ -19,10 +19,7 @@ session = pocketstation.Session(
     recording_root="recordings",
     frame_duration_ms=10,
 )
-assistant = session.audio_input(
-    "assistant",
-    frame_samples_per_channel=480,
-)
+assistant = session.audio_input("assistant")
 assistant.output.record("assistant")
 
 with session.start():
@@ -33,6 +30,10 @@ with session.start():
 Declare routes before starting the Session. Call `close()` after the producer
 has submitted its last frame so normal Session shutdown can drain accepted
 audio.
+
+By default, `audio_input()` uses the Session's sample rate and frame duration:
+10 ms at 48 kHz is 480 samples per channel, while 20 ms is 960. Pass
+`frame_samples_per_channel=` only when an explicit frame size is intended.
 
 ## Handle backpressure explicitly
 
