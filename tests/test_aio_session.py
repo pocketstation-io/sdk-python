@@ -33,6 +33,44 @@ from pocketstation.aio._api import (
 from pocketstation.errors import AudioInputFullError
 
 
+@pytest.mark.parametrize(
+    ("frame_duration_ms", "sample_rate_hz", "expected_samples"),
+    [(10, 48_000, 480), (20, 48_000, 960), (20, 44_100, 882)],
+)
+def test_async_audio_input_defaults_to_session_frame_duration(
+    frame_duration_ms: int, sample_rate_hz: int, expected_samples: int
+) -> None:
+    session = Session(
+        frame_duration_ms=frame_duration_ms, sample_rate_hz=sample_rate_hz
+    )
+    audio = session.audio_input("owned")
+
+    assert audio.config.frame_samples_per_channel == expected_samples
+    assert audio.config.sample_rate_hz == sample_rate_hz
+
+
+def test_async_audio_input_explicit_frame_samples_override_session_duration() -> None:
+    session = Session(frame_duration_ms=20)
+    audio = session.audio_input("owned", frame_samples_per_channel=480)
+
+    assert audio.config.frame_samples_per_channel == 480
+
+
+@pytest.mark.asyncio
+async def test_async_audio_input_delivers_inherited_twenty_ms_frame() -> None:
+    session = Session(frame_duration_ms=20)
+    audio = session.audio_input("owned")
+    audio.output.send(session.polled_audio())
+    running = await session.start()
+
+    await audio.write(array("f", [0.25] * 960))
+    frame = await running.audio.read(timeout_s=1.0)
+
+    assert frame is not None
+    assert len(frame.samples.cast("f")) == 960
+    assert (await running.stop()).success
+
+
 @pytest.mark.asyncio
 async def test_cancelled_start_requests_the_native_token() -> None:
     native_started = threading.Event()

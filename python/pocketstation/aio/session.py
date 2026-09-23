@@ -20,7 +20,7 @@ from .._native import (
 )
 from .._native import _RegisteredConnector as _NativeRegisteredConnector
 from .._native import _RegisteredEndpoint as _NativeRegisteredEndpoint
-from ..audio_input import AudioInputConfig
+from ..audio_input import AudioInputConfig, _frame_samples_for_duration
 from ..audio_input import PcmSource as SyncPcmSource
 from ..connector import Connector as SyncConnector
 from ..connector import ConnectorConfigurationInput
@@ -365,16 +365,23 @@ class Session(_GraphSessionDeclarations):
         sample_rate_hz: int | None = None,
         channels: int | None = None,
         capacity_frames: int = 8,
-        frame_samples_per_channel: int = 480,
+        frame_samples_per_channel: int | None = None,
     ) -> AudioInput:
+        resolved_sample_rate_hz = (
+            self._sample_rate_hz if sample_rate_hz is None else sample_rate_hz
+        )
         config = AudioInputConfig(
             name=name,
-            sample_rate_hz=(
-                self._sample_rate_hz if sample_rate_hz is None else sample_rate_hz
-            ),
+            sample_rate_hz=resolved_sample_rate_hz,
             channels=self._channels if channels is None else channels,
             capacity_frames=capacity_frames,
-            frame_samples_per_channel=frame_samples_per_channel,
+            frame_samples_per_channel=(
+                _frame_samples_for_duration(
+                    resolved_sample_rate_hz, self._frame_duration_ms
+                )
+                if frame_samples_per_channel is None
+                else frame_samples_per_channel
+            ),
         )
         native = _native_call(
             lambda: self._native.audio_input(
