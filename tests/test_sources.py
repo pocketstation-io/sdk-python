@@ -96,6 +96,15 @@ def test_discovered_input_device_lowers_to_microphone_id() -> None:
     assert selected.selector_value == "device-42"
 
 
+def test_empty_discovered_device_uid_is_invalid_instead_of_falling_back() -> None:
+    discovered = replace(_discovered(SourceKind.INPUT_DEVICE), device_uid="")
+
+    with pytest.raises(PocketStationError) as failure:
+        Source.from_discovered(discovered)
+
+    assert failure.value.code == "session.invalid_selector"
+
+
 def test_discovered_system_mix_lowers_to_system_audio() -> None:
     selected = Source.from_discovered(_discovered(SourceKind.SYSTEM_MIX))
 

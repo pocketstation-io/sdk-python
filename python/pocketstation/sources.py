@@ -506,7 +506,10 @@ class Source:
             # ID only as public discovery metadata, as JavaScript does.
             return replace(selected, selector_value=stable_id)
         if stable_id.kind is SourceKind.INPUT_DEVICE:
-            return cls.microphone_id(source.device_uid or stable_id.stable_key)
+            device_id = (
+                stable_id.stable_key if source.device_uid is None else source.device_uid
+            )
+            return cls.microphone_id(device_id)
         if stable_id.kind is SourceKind.SYSTEM_MIX:
             return cls.system_audio()
         raise PocketStationError(
