@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from typing import cast
+
+import pocketstation._api as public_api
 import pocketstation._native as native
 import pytest
 from pocketstation import aio
@@ -9,10 +12,14 @@ from pocketstation._api import Session, Source
 from pocketstation.errors import SourceError
 from pocketstation.source_truth import (
     SampleRepresentation,
+    SourceActivityObservation,
     SourceActivityPolicy,
     SourceActivityState,
+    SourceSignalObservation,
     SourceSignalPolicy,
     SourceSignalState,
+    evaluate_source_activity,
+    evaluate_source_signal,
 )
 from pocketstation.sources import SourceSelectorKind
 
@@ -115,9 +122,236 @@ async def test_async_source_truth_and_recovery(tmp_path) -> None:
         await running.stop()
 
 
-def test_source_policies_reject_invalid_thresholds() -> None:
-    with pytest.raises(ValueError, match="positive"):
-        SourceActivityPolicy(0, 1)
-    with pytest.raises(ValueError, match="thresholds"):
-        SourceSignalPolicy(float("nan"), -30.0, 1)
+_U64_MAX = (1 << 64) - 1
+
+
+def _activity_observation(
+    *,
+    session_started_at_ns: int = 100,
+    observed_at_ns: int = 200,
+    first_frame_received_at_ns: int | None = None,
+    latest_frame_received_at_ns: int | None = None,
+    frames_received_total: int = 0,
+) -> SourceActivityObservation:
+    return SourceActivityObservation(
+        session_started_at_ns=session_started_at_ns,
+        observed_at_ns=observed_at_ns,
+        first_frame_received_at_ns=first_frame_received_at_ns,
+        latest_frame_received_at_ns=latest_frame_received_at_ns,
+        frames_received_total=frames_received_total,
+    )
+
+
+def _signal_observation(
+    *,
+    window_samples_total: int = 0,
+    window_exact_zero_samples_total: int = 0,
+    window_nonzero_samples_total: int = 0,
+    window_nonfinite_samples_total: int = 0,
+    consecutive_exact_zero_duration_ns: int = 0,
+    window_peak_dbfs: float | None = None,
+    window_rms_dbfs: float | None = None,
+) -> SourceSignalObservation:
+    return SourceSignalObservation(
+        observed_at_ns=200,
+        samples_observed_total=window_samples_total,
+        exact_zero_samples_observed_total=window_exact_zero_samples_total,
+        nonzero_samples_observed_total=window_nonzero_samples_total,
+        nonfinite_samples_observed_total=window_nonfinite_samples_total,
+        window_timestamp_start_ns=None,
+        window_duration_ns=0,
+        window_observed_at_ns=None,
+        window_sequence_number=None,
+        window_source_generation=0,
+        window_discontinuity_epoch=0,
+        window_samples_total=window_samples_total,
+        window_exact_zero_samples_total=window_exact_zero_samples_total,
+        window_nonzero_samples_total=window_nonzero_samples_total,
+        window_nonfinite_samples_total=window_nonfinite_samples_total,
+        consecutive_exact_zero_duration_ns=consecutive_exact_zero_duration_ns,
+        window_peak_linear=None,
+        window_rms_linear=None,
+        window_peak_dbfs=window_peak_dbfs,
+        window_rms_dbfs=window_rms_dbfs,
+        window_exact_zero_ratio=None,
+    )
+
+
+def test_source_policies_accept_unsigned_64_bit_boundaries() -> None:
+    activity = SourceActivityPolicy(1, _U64_MAX)
+    assert activity.first_frame_timeout_ns == 1
+    assert activity.stall_timeout_ns == _U64_MAX
+    assert SourceSignalPolicy(0.0, -30.0, 1).exact_zero_timeout_ns == 1
+    assert SourceSignalPolicy(-30, -40, _U64_MAX).exact_zero_timeout_ns == _U64_MAX
     assert SampleRepresentation.FLOAT_32 == "float-32"
+
+
+def test_pure_source_evaluators_are_available_from_flat_api() -> None:
+    assert public_api.evaluate_source_activity is evaluate_source_activity
+    assert public_api.evaluate_source_signal is evaluate_source_signal
+
+
+@pytest.mark.parametrize(
+    "value",
+    [0, _U64_MAX + 1, True, False, 1.0, "1", None],
+    ids=["zero", "u64-overflow", "true", "false", "float", "string", "none"],
+)
+def test_activity_policy_rejects_non_u64_nanoseconds(value: object) -> None:
+    invalid = cast(int, value)
+    with pytest.raises(ValueError, match="first_frame_timeout_ns"):
+        SourceActivityPolicy(invalid, 1)
+    with pytest.raises(ValueError, match="stall_timeout_ns"):
+        SourceActivityPolicy(1, invalid)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [True, False, "-30", None, float("nan"), float("inf"), float("-inf"), 0.1],
+    ids=[
+        "true",
+        "false",
+        "string",
+        "none",
+        "nan",
+        "positive-infinity",
+        "negative-infinity",
+        "positive-dbfs",
+    ],
+)
+def test_signal_policy_rejects_non_finite_or_positive_dbfs(value: object) -> None:
+    invalid = cast(float, value)
+    with pytest.raises(ValueError, match="minimum_peak_dbfs"):
+        SourceSignalPolicy(invalid, -30.0, 1)
+    with pytest.raises(ValueError, match="minimum_rms_dbfs"):
+        SourceSignalPolicy(-30.0, invalid, 1)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [0, _U64_MAX + 1, True, False, 1.0, "1", None],
+    ids=["zero", "u64-overflow", "true", "false", "float", "string", "none"],
+)
+def test_signal_policy_rejects_non_u64_nanoseconds(value: object) -> None:
+    invalid = cast(int, value)
+    with pytest.raises(ValueError, match="exact_zero_timeout_ns"):
+        SourceSignalPolicy(-30.0, -40.0, invalid)
+
+
+def test_evaluate_source_activity_matches_core_boundary_precedence() -> None:
+    awaiting = evaluate_source_activity(
+        _activity_observation(), SourceActivityPolicy(101, 20)
+    )
+    assert awaiting.state is SourceActivityState.AWAITING_FIRST_FRAME
+    assert awaiting.session_age_ns == 100
+    assert awaiting.latest_frame_age_ns is None
+
+    timed_out_observation = _activity_observation()
+    timed_out = evaluate_source_activity(
+        timed_out_observation, SourceActivityPolicy(100, 20)
+    )
+    assert timed_out.state is SourceActivityState.FIRST_FRAME_TIMED_OUT
+    assert timed_out_observation.evaluate(SourceActivityPolicy(100, 20)) == timed_out
+
+    active = evaluate_source_activity(
+        _activity_observation(
+            first_frame_received_at_ns=150,
+            latest_frame_received_at_ns=181,
+            frames_received_total=1,
+        ),
+        SourceActivityPolicy(100, 20),
+    )
+    assert active.state is SourceActivityState.ACTIVE
+    assert active.latest_frame_age_ns == 19
+
+    stalled = evaluate_source_activity(
+        _activity_observation(
+            first_frame_received_at_ns=150,
+            latest_frame_received_at_ns=180,
+            frames_received_total=1,
+        ),
+        SourceActivityPolicy(100, 20),
+    )
+    assert stalled.state is SourceActivityState.STALLED
+    assert stalled.latest_frame_age_ns == 20
+
+
+def test_evaluate_source_activity_saturates_future_timestamps_at_zero() -> None:
+    awaiting = evaluate_source_activity(
+        _activity_observation(session_started_at_ns=201),
+        SourceActivityPolicy(1, 1),
+    )
+    assert awaiting.state is SourceActivityState.AWAITING_FIRST_FRAME
+    assert awaiting.session_age_ns == 0
+
+    active = evaluate_source_activity(
+        _activity_observation(
+            session_started_at_ns=201,
+            first_frame_received_at_ns=201,
+            latest_frame_received_at_ns=201,
+            frames_received_total=1,
+        ),
+        SourceActivityPolicy(1, 1),
+    )
+    assert active.state is SourceActivityState.ACTIVE
+    assert active.session_age_ns == 0
+    assert active.latest_frame_age_ns == 0
+
+
+def test_evaluate_source_signal_matches_core_state_precedence() -> None:
+    policy = SourceSignalPolicy(-40.0, -50.0, 40)
+    no_samples = _signal_observation(window_nonfinite_samples_total=1)
+    assert (
+        evaluate_source_signal(no_samples, policy).state
+        is SourceSignalState.NO_SAMPLES_OBSERVED
+    )
+
+    nonfinite = _signal_observation(
+        window_samples_total=2,
+        window_exact_zero_samples_total=2,
+        window_nonfinite_samples_total=1,
+    )
+    assert (
+        evaluate_source_signal(nonfinite, policy).state
+        is SourceSignalState.NONFINITE_SAMPLES_OBSERVED
+    )
+
+    pending = _signal_observation(
+        window_samples_total=2,
+        window_exact_zero_samples_total=2,
+        consecutive_exact_zero_duration_ns=39,
+    )
+    assert (
+        evaluate_source_signal(pending, policy).state
+        is SourceSignalState.EXACT_DIGITAL_ZERO_PENDING
+    )
+
+    sustained = _signal_observation(
+        window_samples_total=2,
+        window_exact_zero_samples_total=2,
+        consecutive_exact_zero_duration_ns=40,
+    )
+    sustained_result = evaluate_source_signal(sustained, policy)
+    assert sustained_result.state is SourceSignalState.SUSTAINED_EXACT_DIGITAL_ZERO
+    assert sustained.evaluate(policy) == sustained_result
+
+    below = _signal_observation(
+        window_samples_total=2,
+        window_nonzero_samples_total=2,
+        window_peak_dbfs=-40.0,
+    )
+    assert (
+        evaluate_source_signal(below, policy).state
+        is SourceSignalState.BELOW_CALLER_THRESHOLDS
+    )
+
+    meets = _signal_observation(
+        window_samples_total=2,
+        window_nonzero_samples_total=2,
+        window_peak_dbfs=-40.0,
+        window_rms_dbfs=-50.0,
+    )
+    meets_result = evaluate_source_signal(meets, policy)
+    assert meets_result.state is SourceSignalState.MEETS_CALLER_THRESHOLDS
+    assert meets_result.peak_dbfs == -40.0
+    assert meets_result.rms_dbfs == -50.0
+    assert meets_result.consecutive_exact_zero_duration_ns == 0

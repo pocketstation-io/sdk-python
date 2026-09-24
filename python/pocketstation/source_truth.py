@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass
 from enum import StrEnum
+from numbers import Real
 
 from ._native import (
     _OpenedNativeFormat,
@@ -13,9 +15,35 @@ from ._native import (
     _SourceReplacementObservation,
     _SourceSignalObservation,
 )
-from .errors import _native_call
 from .identity import SourceId, StemId
 from .sources import Source, SourceSelectorKind
+
+_U64_MAX = (1 << 64) - 1
+
+
+def _require_positive_u64_nanoseconds(value: object, name: str) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value <= 0
+        or value > _U64_MAX
+    ):
+        raise ValueError(f"{name} must be a nonzero unsigned 64-bit nanosecond value")
+
+
+def _require_dbfs(value: object, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(f"{name} must be finite and no greater than 0 dBFS")
+    try:
+        numeric_value = float(value)
+    except (OverflowError, ValueError) as error:
+        raise ValueError(f"{name} must be finite and no greater than 0 dBFS") from error
+    if not math.isfinite(numeric_value) or numeric_value > 0:
+        raise ValueError(f"{name} must be finite and no greater than 0 dBFS")
+
+
+def _saturating_elapsed(observed_at_ns: int, earlier_at_ns: int) -> int:
+    return observed_at_ns - earlier_at_ns if observed_at_ns >= earlier_at_ns else 0
 
 
 class SampleRepresentation(StrEnum):
@@ -145,8 +173,10 @@ class SourceActivityPolicy:
     stall_timeout_ns: int
 
     def __post_init__(self) -> None:
-        if self.first_frame_timeout_ns <= 0 or self.stall_timeout_ns <= 0:
-            raise ValueError("activity timeouts must be positive nanoseconds")
+        _require_positive_u64_nanoseconds(
+            self.first_frame_timeout_ns, "first_frame_timeout_ns"
+        )
+        _require_positive_u64_nanoseconds(self.stall_timeout_ns, "stall_timeout_ns")
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +193,6 @@ class SourceActivityObservation:
     first_frame_received_at_ns: int | None
     latest_frame_received_at_ns: int | None
     frames_received_total: int
-    _native: _SourceActivityObservation = field(repr=False, compare=False)
 
     @classmethod
     def _from_native(
@@ -175,20 +204,39 @@ class SourceActivityObservation:
             value.first_frame_received_at_ns,
             value.latest_frame_received_at_ns,
             value.frames_received_total,
-            value,
         )
 
     def evaluate(self, policy: SourceActivityPolicy) -> SourceActivityEvaluation:
-        result = _native_call(
-            lambda: self._native.evaluate(
-                policy.first_frame_timeout_ns, policy.stall_timeout_ns
-            )
+        return evaluate_source_activity(self, policy)
+
+
+def evaluate_source_activity(
+    observation: SourceActivityObservation,
+    policy: SourceActivityPolicy,
+) -> SourceActivityEvaluation:
+    """Evaluate measured frame delivery without starting recovery."""
+
+    session_age_ns = _saturating_elapsed(
+        observation.observed_at_ns, observation.session_started_at_ns
+    )
+    latest_frame_received_at_ns = observation.latest_frame_received_at_ns
+    if latest_frame_received_at_ns is None:
+        state = (
+            SourceActivityState.FIRST_FRAME_TIMED_OUT
+            if session_age_ns >= policy.first_frame_timeout_ns
+            else SourceActivityState.AWAITING_FIRST_FRAME
         )
-        return SourceActivityEvaluation(
-            SourceActivityState(result.state),
-            result.session_age_ns,
-            result.latest_frame_age_ns,
-        )
+        return SourceActivityEvaluation(state, session_age_ns, None)
+
+    latest_frame_age_ns = _saturating_elapsed(
+        observation.observed_at_ns, latest_frame_received_at_ns
+    )
+    state = (
+        SourceActivityState.STALLED
+        if latest_frame_age_ns >= policy.stall_timeout_ns
+        else SourceActivityState.ACTIVE
+    )
+    return SourceActivityEvaluation(state, session_age_ns, latest_frame_age_ns)
 
 
 class SourceSignalState(StrEnum):
@@ -207,18 +255,11 @@ class SourceSignalPolicy:
     exact_zero_timeout_ns: int
 
     def __post_init__(self) -> None:
-        import math
-
-        if (
-            not math.isfinite(self.minimum_peak_dbfs)
-            or self.minimum_peak_dbfs > 0
-            or not math.isfinite(self.minimum_rms_dbfs)
-            or self.minimum_rms_dbfs > 0
-            or self.exact_zero_timeout_ns <= 0
-        ):
-            raise ValueError(
-                "signal thresholds must be finite dBFS <= 0 and timeout positive"
-            )
+        _require_dbfs(self.minimum_peak_dbfs, "minimum_peak_dbfs")
+        _require_dbfs(self.minimum_rms_dbfs, "minimum_rms_dbfs")
+        _require_positive_u64_nanoseconds(
+            self.exact_zero_timeout_ns, "exact_zero_timeout_ns"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,7 +293,6 @@ class SourceSignalObservation:
     window_peak_dbfs: float | None
     window_rms_dbfs: float | None
     window_exact_zero_ratio: float | None
-    _native: _SourceSignalObservation = field(repr=False, compare=False)
 
     @classmethod
     def _from_native(cls, value: _SourceSignalObservation) -> SourceSignalObservation:
@@ -278,20 +318,51 @@ class SourceSignalObservation:
             window_peak_dbfs=value.window_peak_dbfs,
             window_rms_dbfs=value.window_rms_dbfs,
             window_exact_zero_ratio=value.window_exact_zero_ratio,
-            _native=value,
         )
 
     def evaluate(self, policy: SourceSignalPolicy) -> SourceSignalEvaluation:
-        result = _native_call(
-            lambda: self._native.evaluate(
-                policy.minimum_peak_dbfs,
-                policy.minimum_rms_dbfs,
-                policy.exact_zero_timeout_ns,
-            )
+        return evaluate_source_signal(self, policy)
+
+
+def evaluate_source_signal(
+    observation: SourceSignalObservation,
+    policy: SourceSignalPolicy,
+) -> SourceSignalEvaluation:
+    """Evaluate measured PCM without inferring speech, permission, or routing."""
+
+    if observation.window_samples_total == 0:
+        state = SourceSignalState.NO_SAMPLES_OBSERVED
+    elif observation.window_nonfinite_samples_total > 0:
+        state = SourceSignalState.NONFINITE_SAMPLES_OBSERVED
+    elif (
+        observation.window_exact_zero_samples_total == observation.window_samples_total
+    ):
+        state = (
+            SourceSignalState.SUSTAINED_EXACT_DIGITAL_ZERO
+            if observation.consecutive_exact_zero_duration_ns
+            >= policy.exact_zero_timeout_ns
+            else SourceSignalState.EXACT_DIGITAL_ZERO_PENDING
         )
-        return SourceSignalEvaluation(
-            SourceSignalState(result.state),
-            result.peak_dbfs,
-            result.rms_dbfs,
-            result.consecutive_exact_zero_duration_ns,
+    else:
+        peak_dbfs = (
+            observation.window_peak_dbfs
+            if observation.window_peak_dbfs is not None
+            else float("-inf")
         )
+        rms_dbfs = (
+            observation.window_rms_dbfs
+            if observation.window_rms_dbfs is not None
+            else float("-inf")
+        )
+        state = (
+            SourceSignalState.MEETS_CALLER_THRESHOLDS
+            if peak_dbfs >= policy.minimum_peak_dbfs
+            and rms_dbfs >= policy.minimum_rms_dbfs
+            else SourceSignalState.BELOW_CALLER_THRESHOLDS
+        )
+    return SourceSignalEvaluation(
+        state,
+        observation.window_peak_dbfs,
+        observation.window_rms_dbfs,
+        observation.consecutive_exact_zero_duration_ns,
+    )

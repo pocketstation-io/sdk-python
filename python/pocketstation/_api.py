@@ -299,6 +299,8 @@ from .source_truth import (
     SourceSignalObservation,
     SourceSignalPolicy,
     SourceSignalState,
+    evaluate_source_activity,
+    evaluate_source_signal,
 )
 from .sources import (
     ApplicationPolicyObservation,
@@ -643,6 +645,8 @@ __all__ = [
     "capture",
     "connector",
     "discover_sources",
+    "evaluate_source_activity",
+    "evaluate_source_signal",
     "microphone_permission_observation",
     "operator",
     "source",
