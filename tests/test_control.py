@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from pocketstation._api import (
@@ -25,6 +27,14 @@ CREATE_RESPONSE = {
             "credential": "turn-secret",
         }
     ],
+}
+
+PUBLISH_RESPONSE = {
+    "session_id": "session_123",
+    "bus_id": "microphone",
+    "publisher_token": "media-only-secret",
+    "signal_url": "wss://relay.example/v1/signal",
+    "ice_servers": CREATE_RESPONSE["ice_servers"],
 }
 
 
@@ -179,6 +189,163 @@ async def test_async_client_has_the_same_wire_contract() -> None:
         ("POST", "/v1/sessions/session_123/subscribe"),
         ("DELETE", "/v1/sessions/session_123"),
     ]
+
+
+def test_sync_publisher_credentials_have_exact_wire_and_redacted_secrets() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=PUBLISH_RESPONSE)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        publisher = client.issue_publisher_credentials(
+            "session_123", SecretToken("source-secret"), bus_id="microphone"
+        )
+
+    assert publisher.session_id == SessionId("session_123")
+    assert publisher.bus_id == "microphone"
+    assert publisher.signal_url == "wss://relay.example/v1/signal"
+    assert publisher.ice_servers[0].urls == ("turn:turn.example:3478",)
+    assert publisher.publisher_token.expose_secret() == "media-only-secret"
+    assert "media-only-secret" not in repr(publisher)
+    assert "turn-secret" not in repr(publisher)
+    assert len(requests) == 1
+    assert requests[0].method == "POST"
+    assert requests[0].url.path == "/v1/sessions/session_123/publish"
+    assert requests[0].headers["authorization"] == "Bearer source-secret"
+    assert json.loads(requests[0].content) == {"bus_id": "microphone"}
+
+
+@pytest.mark.asyncio
+async def test_async_client_issues_exact_bus_publisher_credentials() -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=PUBLISH_RESPONSE)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = AsyncControlClient("https://control.example", http_client=http_client)
+        publisher = await client.issue_publisher_credentials(
+            "session_123", SecretToken("source-secret"), bus_id="microphone"
+        )
+
+    assert publisher.publisher_token.expose_secret() == "media-only-secret"
+    assert publisher.bus_id == "microphone"
+    assert "media-only-secret" not in repr(publisher)
+    assert len(requests) == 1
+    assert requests[0].url.path == "/v1/sessions/session_123/publish"
+    assert requests[0].headers["authorization"] == "Bearer source-secret"
+    assert json.loads(requests[0].content) == {"bus_id": "microphone"}
+
+
+@pytest.mark.parametrize("bus_id", ["", "with/slash", "x" * 65])
+def test_publisher_rejects_invalid_bus_before_network(bus_id: str) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("invalid bus ID reached the network")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(ValueError):
+            client.issue_publisher_credentials(
+                "session_123", SecretToken("source-secret"), bus_id=bus_id
+            )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bus_id", ["", "with/slash", "x" * 65])
+async def test_async_publisher_rejects_invalid_bus_before_network(bus_id: str) -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("invalid bus ID reached the network")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = AsyncControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(ValueError):
+            await client.issue_publisher_credentials(
+                "session_123", SecretToken("source-secret"), bus_id=bus_id
+            )
+
+
+@pytest.mark.parametrize(
+    "field,value,expected_code",
+    [
+        ("bus_id", "with/slash", "control.response_decode"),
+        ("publisher_token", "", "control.response_decode"),
+        ("publisher_token", "x" * 4_097, "control.response_decode"),
+        ("session_id", "with/slash", "control.response_decode"),
+        ("signal_url", "https://relay.example/v1/signal", "control.response_decode"),
+        ("ice_servers", [{}] * 33, "control.response_too_large"),
+        (
+            "ice_servers",
+            [{"urls": ["turn:turn.example:3478"], "credential": ""}],
+            "control.response_decode",
+        ),
+    ],
+)
+def test_publisher_rejects_invalid_control_response(
+    field: str, value: object, expected_code: str
+) -> None:
+    response = {**PUBLISH_RESPONSE, field: value}
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json=response)
+        )
+    ) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(ControlPlaneError) as raised:
+            client.issue_publisher_credentials(
+                "session_123", SecretToken("source-secret"), bus_id="microphone"
+            )
+    assert raised.value.code == expected_code
+
+
+def test_publisher_http_failure_redacts_source_capability() -> None:
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(403, text="denied source-secret")
+        )
+    ) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(ControlPlaneError) as raised:
+            client.issue_publisher_credentials(
+                "session_123", SecretToken("source-secret"), bus_id="microphone"
+            )
+    assert raised.value.code == "control.http_status"
+    assert raised.value.status_code == 403
+    assert "source-secret" not in str(raised.value)
+    assert "[redacted]" in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_async_publisher_rejects_bad_response_and_redacts_denial() -> None:
+    async def malformed(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={**PUBLISH_RESPONSE, "signal_url": "http://bad"}
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(malformed)
+    ) as http_client:
+        client = AsyncControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(ControlPlaneError) as raised:
+            await client.issue_publisher_credentials(
+                "session_123", SecretToken("source-secret"), bus_id="microphone"
+            )
+    assert raised.value.code == "control.response_decode"
+
+    async def denied(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, text="denied source-secret")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(denied)) as http_client:
+        client = AsyncControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(ControlPlaneError) as raised:
+            await client.issue_publisher_credentials(
+                "session_123", SecretToken("source-secret"), bus_id="microphone"
+            )
+    assert raised.value.status_code == 403
+    assert "source-secret" not in str(raised.value)
 
 
 def test_control_client_bounds_response_bodies() -> None:
