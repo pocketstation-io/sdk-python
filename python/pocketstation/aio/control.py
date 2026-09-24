@@ -14,6 +14,7 @@ from ..control import (
     _MAX_JSON_BODY_BYTES,
     ControlPlaneError,
     Invitation,
+    PublisherCredentials,
     SecretToken,
     SessionCredentials,
     SessionId,
@@ -23,6 +24,7 @@ from ..control import (
     _bus_ids,
     _invitation,
     _normalize_base_url,
+    _publisher_credentials,
     _resolve_timeout,
     _session_credentials,
     _session_snapshot,
@@ -99,6 +101,28 @@ class ControlClient:
             json_body={"bus_id": bus_id},
         )
         return _subscriber_credentials(payload)
+
+    async def issue_publisher_credentials(
+        self,
+        session_id: str | SessionId,
+        source_token: SecretToken,
+        *,
+        bus_id: str,
+        timeout_seconds: float | None = None,
+    ) -> PublisherCredentials:
+        """Issue a media-only capability for one exact AudioBus."""
+
+        identifier = SessionId(str(session_id))
+        bus_id = _bus_id(bus_id, "bus_id")
+        payload = await self._json_request(
+            "POST",
+            f"v1/sessions/{quote(identifier, safe='')}/publish",
+            expected_status=200,
+            timeout_seconds=timeout_seconds,
+            authorization=source_token,
+            json_body={"bus_id": bus_id},
+        )
+        return _publisher_credentials(payload)
 
     async def create_invitation(
         self,

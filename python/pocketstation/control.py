@@ -133,6 +133,17 @@ class SubscriberCredentials:
     subscriber_token: SecretToken
 
 
+@dataclass(frozen=True, slots=True)
+class PublisherCredentials:
+    """Media-only publisher capability scoped to one AudioBus."""
+
+    session_id: SessionId
+    bus_id: str
+    publisher_token: SecretToken
+    signal_url: str
+    ice_servers: tuple[IceServer, ...]
+
+
 class ControlClient:
     """Reusable, bounded HTTP client for Session lifecycle operations."""
 
@@ -201,6 +212,28 @@ class ControlClient:
             json_body={"bus_id": bus_id},
         )
         return _subscriber_credentials(payload)
+
+    def issue_publisher_credentials(
+        self,
+        session_id: str | SessionId,
+        source_token: SecretToken,
+        *,
+        bus_id: str,
+        timeout_seconds: float | None = None,
+    ) -> PublisherCredentials:
+        """Issue a media-only capability for one exact AudioBus."""
+
+        identifier = SessionId(str(session_id))
+        bus_id = _bus_id(bus_id, "bus_id")
+        payload = self._json_request(
+            "POST",
+            f"v1/sessions/{quote(identifier, safe='')}/publish",
+            expected_status=200,
+            timeout_seconds=timeout_seconds,
+            authorization=source_token,
+            json_body={"bus_id": bus_id},
+        )
+        return _publisher_credentials(payload)
 
     def create_invitation(
         self,
@@ -489,6 +522,26 @@ def _subscriber_credentials(payload: dict[str, Any]) -> SubscriberCredentials:
         bus_id=_bus_id(_required(payload, "bus_id", str), "bus_id"),
         subscriber_token=SecretToken(_required(payload, "subscriber_token", str)),
     )
+
+
+def _publisher_credentials(payload: dict[str, Any]) -> PublisherCredentials:
+    signal_url = _required(payload, "signal_url", str)
+    parsed_signal_url = urlparse(signal_url)
+    if parsed_signal_url.scheme not in {"ws", "wss"} or not parsed_signal_url.netloc:
+        raise ControlPlaneError(
+            "control-plane signal_url must be an absolute ws or wss URL",
+            "control.response_decode",
+        )
+    try:
+        return PublisherCredentials(
+            session_id=SessionId(_required(payload, "session_id", str)),
+            bus_id=_required_identifier(payload, "bus_id", maximum=64),
+            publisher_token=SecretToken(_required(payload, "publisher_token", str)),
+            signal_url=signal_url,
+            ice_servers=_ice_servers(payload),
+        )
+    except ValueError as error:
+        raise ControlPlaneError(str(error), "control.response_decode") from error
 
 
 def _invitation(payload: dict[str, Any], session_id: SessionId) -> Invitation:
