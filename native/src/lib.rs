@@ -13,6 +13,7 @@ pub(crate) mod session;
 pub(crate) mod sidecar;
 pub(crate) mod signals;
 pub(crate) mod source_authoring;
+pub(crate) mod source_truth;
 pub(crate) mod sources;
 pub(crate) mod streams;
 
@@ -26,6 +27,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     extensions::register(module)?;
     operator_authoring::register(module)?;
     source_authoring::register(module)?;
+    source_truth::register(module)?;
     sources::register(module)?;
     graph::register(module)?;
     signals::register(module)?;

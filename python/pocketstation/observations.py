@@ -39,6 +39,12 @@ from .identity import (
     StemId,
 )
 from .sidecar import SidecarSnapshot
+from .source_truth import (
+    SourceActivityObservation,
+    SourceNativeFormatObservation,
+    SourceReplacementObservation,
+    SourceSignalObservation,
+)
 from .sources import SourceRuntimeEvent
 from .streams import (
     _DEFAULT_ITERATION_TIMEOUT_SECONDS,
@@ -718,6 +724,10 @@ class SessionMetrics:
     event_queue: EventQueueMetrics
     polled_audio: PolledAudioMetrics
     sources: tuple[SourceMetrics, ...]
+    source_native_formats: tuple[SourceNativeFormatObservation, ...]
+    source_replacements: tuple[SourceReplacementObservation, ...]
+    source_activities: tuple[SourceActivityObservation, ...]
+    source_signals: tuple[SourceSignalObservation, ...]
     external_sources: tuple[ExternalSourceMetrics, ...]
     routes: tuple[RouteMetrics, ...]
     operators: tuple[OperatorMetrics, ...]
@@ -742,6 +752,44 @@ class SessionMetrics:
 
     @classmethod
     def _from_native(cls, value: _NativeSessionMetrics) -> SessionMetrics:
+        expected = (
+            value.source_count,
+            value.external_source_count,
+            value.route_count,
+            value.operator_count,
+            value.derived_route_count,
+            value.audio_reentry_count,
+        )
+        actual = (
+            len(value.sources),
+            len(value.external_sources),
+            len(value.routes),
+            len(value.operators),
+            len(value.derived_routes),
+            len(value.audio_reentries),
+        )
+        if actual != expected:
+            raise PocketStationError(
+                "native Session metrics counts are inconsistent",
+                "session.invalid_metrics_snapshot",
+            )
+        try:
+            source_truth_counts = (
+                len(value.source_native_formats),
+                len(value.source_replacements),
+                len(value.source_activities),
+                len(value.source_signals),
+            )
+        except AttributeError as error:
+            raise PocketStationError(
+                "native Session source observations are missing",
+                "session.invalid_metrics_snapshot",
+            ) from error
+        if source_truth_counts != (value.source_count,) * 4:
+            raise PocketStationError(
+                "native Session source observation counts are inconsistent",
+                "session.invalid_metrics_snapshot",
+            )
         result = cls(
             event_queue=EventQueueMetrics(
                 capacity_count=value.event_capacity_count,
@@ -774,6 +822,22 @@ class SessionMetrics:
                 frames_polled_total=value.audio_frames_polled_total,
             ),
             sources=tuple(SourceMetrics._from_native(item) for item in value.sources),
+            source_native_formats=tuple(
+                SourceNativeFormatObservation._from_native(item)
+                for item in value.source_native_formats
+            ),
+            source_replacements=tuple(
+                SourceReplacementObservation._from_native(item)
+                for item in value.source_replacements
+            ),
+            source_activities=tuple(
+                SourceActivityObservation._from_native(item)
+                for item in value.source_activities
+            ),
+            source_signals=tuple(
+                SourceSignalObservation._from_native(item)
+                for item in value.source_signals
+            ),
             external_sources=tuple(
                 ExternalSourceMetrics._from_native(item)
                 for item in value.external_sources

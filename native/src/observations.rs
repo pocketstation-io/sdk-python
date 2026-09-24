@@ -638,6 +638,14 @@ pub(crate) struct PythonSessionMetrics {
     #[pyo3(get)]
     sources: Vec<Py<PythonSessionSourceMetrics>>,
     #[pyo3(get)]
+    source_native_formats: Vec<Py<crate::source_truth::PythonSourceNativeFormatObservation>>,
+    #[pyo3(get)]
+    source_replacements: Vec<Py<crate::source_truth::PythonSourceReplacementObservation>>,
+    #[pyo3(get)]
+    source_activities: Vec<Py<crate::source_truth::PythonSourceActivityObservation>>,
+    #[pyo3(get)]
+    source_signals: Vec<Py<crate::source_truth::PythonSourceSignalObservation>>,
+    #[pyo3(get)]
     external_sources: Vec<Py<PythonExternalSourceMetrics>>,
     #[pyo3(get)]
     operators: Vec<Py<PythonOperatorMetrics>>,
@@ -1015,6 +1023,10 @@ pub(crate) struct OwnedSessionMetrics {
     audio_reentry_count: usize,
     pub(crate) routes: Vec<OwnedRouteMetrics>,
     sources: Vec<pocketstation::SessionSourceMetrics>,
+    source_native_formats: Vec<pocketstation::SessionSourceNativeFormatObservation>,
+    source_replacements: Vec<pocketstation::SessionSourceReplacementObservations>,
+    source_activities: Vec<pocketstation::SessionSourceActivityObservations>,
+    source_signals: Vec<pocketstation::SessionSourceSignalObservations>,
     external_sources: Vec<pocketstation::SessionExternalSourceMetrics>,
     operators: Vec<pocketstation::SessionOperatorMetrics>,
     derived_routes: Vec<pocketstation::SessionDerivedRouteMetrics>,
@@ -1232,6 +1244,18 @@ pub(crate) fn copy_metrics(
     let sources = (0..snapshot.source_count())
         .filter_map(|index| snapshot.source(index).copied())
         .collect();
+    let source_native_formats = (0..snapshot.source_native_format_count())
+        .filter_map(|index| snapshot.source_native_format(index).copied())
+        .collect();
+    let source_replacements = (0..snapshot.source_replacement_count())
+        .filter_map(|index| snapshot.source_replacement(index).copied())
+        .collect();
+    let source_activities = (0..snapshot.source_activity_count())
+        .filter_map(|index| snapshot.source_activity(index).copied())
+        .collect();
+    let source_signals = (0..snapshot.source_signal_count())
+        .filter_map(|index| snapshot.source_signal(index).copied())
+        .collect();
     let external_sources = running.external_source_metrics().into_vec();
     let operators = running.operator_metrics().into_vec();
     let derived_routes = running.derived_route_metrics().into_vec();
@@ -1271,6 +1295,10 @@ pub(crate) fn copy_metrics(
         audio_reentry_count: audio_reentries.len(),
         routes,
         sources,
+        source_native_formats,
+        source_replacements,
+        source_activities,
+        source_signals,
         external_sources,
         operators,
         derived_routes,
@@ -2053,6 +2081,46 @@ pub(crate) fn python_session_metrics(
         .into_iter()
         .map(|source| Py::new(py, PythonSessionSourceMetrics::from(source)))
         .collect::<PyResult<Vec<_>>>()?;
+    let source_native_formats = metrics
+        .source_native_formats
+        .into_iter()
+        .map(|value| {
+            Py::new(
+                py,
+                crate::source_truth::native_format_observation(py, value)?,
+            )
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let source_replacements = metrics
+        .source_replacements
+        .into_iter()
+        .map(|value| {
+            Py::new(
+                py,
+                crate::source_truth::PythonSourceReplacementObservation::from(value),
+            )
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let source_activities = metrics
+        .source_activities
+        .into_iter()
+        .map(|value| {
+            Py::new(
+                py,
+                crate::source_truth::PythonSourceActivityObservation::from(value),
+            )
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let source_signals = metrics
+        .source_signals
+        .into_iter()
+        .map(|value| {
+            Py::new(
+                py,
+                crate::source_truth::PythonSourceSignalObservation::from(value),
+            )
+        })
+        .collect::<PyResult<Vec<_>>>()?;
     let external_sources = metrics
         .external_sources
         .into_iter()
@@ -2178,6 +2246,10 @@ pub(crate) fn python_session_metrics(
         audio_reentry_count: metrics.audio_reentry_count,
         routes,
         sources,
+        source_native_formats,
+        source_replacements,
+        source_activities,
+        source_signals,
         external_sources,
         operators,
         derived_routes,

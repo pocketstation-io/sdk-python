@@ -49,7 +49,8 @@ use crate::signals::{
     PythonSignalSubscriptionMetrics, SignalReceipts,
 };
 use crate::source_authoring::{register_source, PythonRegisteredSource, PythonSourceManifest};
-use crate::sources::PythonSource;
+use crate::source_truth::{source_replacement, PythonSourceReplacement};
+use crate::sources::{PythonSource, SourceDeclaration};
 use crate::streams::{
     copy_audio_batch, copy_audio_batch_until, python_audio_batch, request_audio_batch,
     request_audio_batch_wait, OwnedAudioFrame, PythonAudioBatch,
@@ -75,6 +76,12 @@ pub(crate) enum SessionCommand {
     },
     Metrics {
         response: SyncSender<Result<OwnedSessionMetrics, String>>,
+    },
+    ReplaceMicrophone {
+        stem_id: u64,
+        selector: pocketstation::DeviceSelector,
+        reopen: bool,
+        response: SyncSender<Result<pocketstation::SessionSourceReplacement, String>>,
     },
     SignalMetrics {
         route_id: u64,
@@ -876,6 +883,24 @@ impl PythonRunningSession {
         python_session_metrics(py, metrics)
     }
 
+    fn replace_microphone_source(
+        &self,
+        py: Python<'_>,
+        stem_id: u64,
+        source: &PythonSource,
+    ) -> PyResult<PythonSourceReplacement> {
+        self.request_microphone_replacement(py, stem_id, source, false)
+    }
+
+    fn reopen_microphone_source(
+        &self,
+        py: Python<'_>,
+        stem_id: u64,
+        source: &PythonSource,
+    ) -> PyResult<PythonSourceReplacement> {
+        self.request_microphone_replacement(py, stem_id, source, true)
+    }
+
     fn stop(&self, py: Python<'_>) -> PyResult<PythonStopResult> {
         let worker = self
             .worker
@@ -1008,6 +1033,52 @@ impl PythonRunningSession {
 }
 
 impl PythonRunningSession {
+    fn request_microphone_replacement(
+        &self,
+        py: Python<'_>,
+        stem_id: u64,
+        source: &PythonSource,
+        reopen: bool,
+    ) -> PyResult<PythonSourceReplacement> {
+        let selector = match &source.declaration {
+            SourceDeclaration::MicrophoneDefault => pocketstation::DeviceSelector::Default,
+            SourceDeclaration::MicrophoneId(device_id) => {
+                pocketstation::DeviceSelector::id(pocketstation::DeviceId::new(device_id.clone()))
+            }
+            _ => {
+                return Err(PyValueError::new_err(coded_reason(
+                    "source.not_microphone",
+                    "replacement requires a microphone Source",
+                )))
+            }
+        };
+        let commands = self.commands()?;
+        let (response, receiver) = sync_channel(1);
+        commands
+            .send(SessionCommand::ReplaceMicrophone {
+                stem_id,
+                selector,
+                reopen,
+                response,
+            })
+            .map_err(|_| {
+                PyRuntimeError::new_err(coded_reason(
+                    "source.replacement_unavailable",
+                    "native Session worker has stopped",
+                ))
+            })?;
+        let replacement = py
+            .detach(move || receiver.recv())
+            .map_err(|_| {
+                PyRuntimeError::new_err(coded_reason(
+                    "source.replacement_unavailable",
+                    "native Session worker did not return source replacement",
+                ))
+            })?
+            .map_err(PyRuntimeError::new_err)?;
+        source_replacement(py, replacement)
+    }
+
     fn cache_terminal_state(&self, state: &'static str) -> PyResult<()> {
         *self
             .terminal_state
@@ -1098,6 +1169,26 @@ impl Drop for PythonRunningSession {
     }
 }
 
+fn source_replacement_error_code(
+    error: &pocketstation::SessionSourceReplacementError,
+) -> &'static str {
+    use pocketstation::SessionSourceReplacementError;
+
+    match error {
+        SessionSourceReplacementError::SessionNotRunning => "source.session_not_running",
+        SessionSourceReplacementError::UnknownStem { .. } => "source.unknown_stem",
+        SessionSourceReplacementError::NotMicrophone { .. } => "source.not_microphone",
+        SessionSourceReplacementError::Prepare { .. } => "source.replacement_prepare_failed",
+        SessionSourceReplacementError::Open { .. } => "source.replacement_open_failed",
+        SessionSourceReplacementError::Reopen { .. } => "source.reopen_failed",
+        SessionSourceReplacementError::ControlQueueFull => "source.replacement_queue_full",
+        SessionSourceReplacementError::RuntimeStopped => "source.runtime_stopped",
+        SessionSourceReplacementError::ResponseTimedOut { .. } => {
+            "source.replacement_response_timed_out"
+        }
+    }
+}
+
 #[allow(clippy::needless_pass_by_value)] // Thread entry owns receiver and relay lifetime.
 fn session_worker(
     mut running: pocketstation::RunningSession,
@@ -1123,6 +1214,22 @@ fn session_worker(
             }
             SessionCommand::Metrics { response } => {
                 let _ = response.send(copy_metrics(&running));
+            }
+            SessionCommand::ReplaceMicrophone {
+                stem_id,
+                selector,
+                reopen,
+                response,
+            } => {
+                let stem_id = pocketstation::StemId::new(stem_id);
+                let result = if reopen {
+                    running.reopen_microphone_source(stem_id, selector)
+                } else {
+                    running.replace_microphone_source(stem_id, selector)
+                };
+                let _ = response.send(result.map_err(|error| {
+                    coded_reason(source_replacement_error_code(&error), error.to_string())
+                }));
             }
             SessionCommand::SignalMetrics { route_id, response } => {
                 let _ = response.send(copy_signal_metrics(&running, route_id));

@@ -61,7 +61,8 @@ from .operator_authoring import (
 from .sidecar import SidecarConnection, SidecarHandle, SidecarProcessSpec
 from .signal import BusSubscription
 from .source_authoring import RegisteredSource, SourceProvider, _NativeFactoryAdapter
-from .sources import Source
+from .source_truth import SourceReplacement
+from .sources import Source, SourceKind
 from .streams import AudioStream, SignalStream
 
 if TYPE_CHECKING:
@@ -204,6 +205,31 @@ class RunningSession:
         """Return a complete immutable point-in-time metrics snapshot."""
         self._require_running()
         return SessionMetrics._from_native(_native_call(self._native.metrics))
+
+    def replace_microphone_source(
+        self, stem: Stem, source: Source
+    ) -> SourceReplacement:
+        """Attach the host-selected microphone before detaching the prior one."""
+        self._validate_microphone_replacement(stem, source)
+        native = _native_call(
+            lambda: self._native.replace_microphone_source(int(stem.id), source._native)
+        )
+        return SourceReplacement._from_native(native, source)
+
+    def reopen_microphone_source(self, stem: Stem, source: Source) -> SourceReplacement:
+        """Detach then reopen the selected mic; failure leaves it detached."""
+        self._validate_microphone_replacement(stem, source)
+        native = _native_call(
+            lambda: self._native.reopen_microphone_source(int(stem.id), source._native)
+        )
+        return SourceReplacement._from_native(native, source)
+
+    def _validate_microphone_replacement(self, stem: Stem, source: Source) -> None:
+        self._require_running()
+        if stem.session_id != self.session_id:
+            raise ValueError("stem belongs to another Session")
+        if source.kind is not SourceKind.INPUT_DEVICE:
+            raise ValueError("replacement requires a microphone Source")
 
     def stop(self) -> StopResult:
         """Stop once, finalize endpoints/recording, and cache the outcome."""
