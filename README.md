@@ -297,10 +297,28 @@ permission without prompting with
 opening report the operating system's final result. Application and microphone
 capture use separate permissions.
 
-If an application or microphone disappears, PocketStation reports the change
-and does not choose a replacement. Stop the Session, discover sources again,
-confirm the new selection, and start another Session. Store a discovered source
-only for its reported persistence scope.
+PocketStation reports a missing or stalled source; it does not choose a
+replacement. For a microphone in a running Session, the host can select a
+device and explicitly replace it without changing the logical stem or routes:
+
+```python
+from pocketstation import Source
+
+device_id = input("Selected microphone device ID: ")
+selected_microphone = Source.microphone_id(device_id)
+replacement = running.replace_microphone_source(microphone, selected_microphone)
+print(replacement.source_id, replacement.source_generation)
+```
+
+`reopen_microphone_source(microphone, selected_microphone)` instead closes the
+old capture before reacquiring; if reopening fails, that microphone remains
+detached while unrelated sources continue. Both calls also accept a deliberate
+`Source.microphone_default()` selector. A successful call means the new source
+attached, not that a frame has arrived: inspect `running.metrics().source_activities`
+and evaluate it with your own `SourceActivityPolicy`. After a timeout, inspect
+`source_replacements` because the runtime may complete the operation later.
+Application-source recovery still requires a new Session. Store a discovered
+source only for its reported persistence scope.
 
 See [platform operations](docs/operations/platform-support.md) for permission
 states, persistence, recovery, and native dependencies.

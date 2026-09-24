@@ -903,6 +903,10 @@ class SessionMetrics:
     audio_reentry_count: int
     routes: list[RouteMetrics]
     sources: list[_SessionSourceMetrics]
+    source_native_formats: list[_SourceNativeFormatObservation]
+    source_replacements: list[_SourceReplacementObservation]
+    source_activities: list[_SourceActivityObservation]
+    source_signals: list[_SourceSignalObservation]
     external_sources: list[_ExternalSourceMetrics]
     operators: list[_OperatorMetrics]
     derived_routes: list[_DerivedRouteMetrics]
@@ -1352,5 +1356,89 @@ class RunningSession:
     ) -> _SidecarRead: ...
     def sidecar_snapshot(self, sidecar_id: int) -> _SidecarSnapshot: ...
     def metrics(self) -> SessionMetrics: ...
+    def replace_microphone_source(
+        self, stem_id: int, source: Source
+    ) -> _SourceReplacement: ...
+    def reopen_microphone_source(
+        self, stem_id: int, source: Source
+    ) -> _SourceReplacement: ...
     def stop(self) -> StopResult: ...
     def cancel(self) -> StopResult: ...
+
+class _OpenedNativeFormat:
+    sample_rate_hz: int
+    channel_count: int
+    sample_representation: str
+
+class _SourceNativeFormatObservation:
+    stem_id: int
+    opened_native_format: _OpenedNativeFormat | None
+
+class _SourceReplacementObservation:
+    stem_id: int
+    attempts_total: int
+    completed_total: int
+    failed_before_attach_total: int
+    response_timeouts_total: int
+    attached_source_id: int | None
+    source_generation: int
+    discontinuity_epoch: int
+    latest_completed_at_ns: int | None
+
+class _SourceReplacement:
+    stem_id: int
+    previous_source_id: int
+    source_id: int
+    source_generation: int
+    discontinuity_epoch: int
+    opened_native_format: _OpenedNativeFormat | None
+
+class _SourceActivityEvaluation:
+    state: str
+    session_age_ns: int
+    latest_frame_age_ns: int | None
+
+class _SourceActivityObservation:
+    session_started_at_ns: int
+    observed_at_ns: int
+    first_frame_received_at_ns: int | None
+    latest_frame_received_at_ns: int | None
+    frames_received_total: int
+    def evaluate(
+        self, first_frame_timeout_ns: int, stall_timeout_ns: int
+    ) -> _SourceActivityEvaluation: ...
+
+class _SourceSignalEvaluation:
+    state: str
+    peak_dbfs: float | None
+    rms_dbfs: float | None
+    consecutive_exact_zero_duration_ns: int
+
+class _SourceSignalObservation:
+    observed_at_ns: int
+    samples_observed_total: int
+    exact_zero_samples_observed_total: int
+    nonzero_samples_observed_total: int
+    nonfinite_samples_observed_total: int
+    window_timestamp_start_ns: int | None
+    window_duration_ns: int
+    window_observed_at_ns: int | None
+    window_sequence_number: int | None
+    window_source_generation: int
+    window_discontinuity_epoch: int
+    window_samples_total: int
+    window_exact_zero_samples_total: int
+    window_nonzero_samples_total: int
+    window_nonfinite_samples_total: int
+    consecutive_exact_zero_duration_ns: int
+    window_peak_linear: float | None
+    window_rms_linear: float | None
+    window_peak_dbfs: float | None
+    window_rms_dbfs: float | None
+    window_exact_zero_ratio: float | None
+    def evaluate(
+        self,
+        minimum_peak_dbfs: float,
+        minimum_rms_dbfs: float,
+        exact_zero_timeout_ns: int,
+    ) -> _SourceSignalEvaluation: ...

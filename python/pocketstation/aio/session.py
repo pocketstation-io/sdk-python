@@ -60,6 +60,7 @@ from ..source_authoring import SourceProvider as SyncSourceProvider
 from ..source_authoring import (
     _NativeFactoryAdapter as _NativeSourceFactoryAdapter,
 )
+from ..source_truth import SourceReplacement
 from ..sources import Source
 from .audio_input import AudioInput, PcmSource
 from .connector import Connector, RegisteredConnector
@@ -235,6 +236,35 @@ class RunningSession:
         self._require_running()
         native = await _native_async(self._native.metrics)
         return SessionMetrics._from_native(native)
+
+    async def replace_microphone_source(
+        self, stem: Stem, source: Source
+    ) -> SourceReplacement:
+        """Attach the host-selected microphone before detaching the prior one."""
+        self._validate_microphone_replacement(stem, source)
+        native = await _native_async(
+            lambda: self._native.replace_microphone_source(int(stem.id), source._native)
+        )
+        return SourceReplacement._from_native(native, source)
+
+    async def reopen_microphone_source(
+        self, stem: Stem, source: Source
+    ) -> SourceReplacement:
+        """Detach then reopen the host-selected microphone."""
+        self._validate_microphone_replacement(stem, source)
+        native = await _native_async(
+            lambda: self._native.reopen_microphone_source(int(stem.id), source._native)
+        )
+        return SourceReplacement._from_native(native, source)
+
+    def _validate_microphone_replacement(self, stem: Stem, source: Source) -> None:
+        from ..sources import SourceKind
+
+        self._require_running()
+        if stem.session_id != self.session_id:
+            raise ValueError("stem belongs to another Session")
+        if source.kind is not SourceKind.INPUT_DEVICE:
+            raise ValueError("replacement requires a microphone Source")
 
     async def stop(self) -> StopResult:
         """Stop once, finalize endpoints/recording, and cache the outcome."""
