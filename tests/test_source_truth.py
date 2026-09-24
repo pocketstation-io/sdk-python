@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import cast
 
 import pocketstation._api as public_api
@@ -9,7 +10,7 @@ import pocketstation._native as native
 import pytest
 from pocketstation import aio
 from pocketstation._api import Session, Source
-from pocketstation.errors import SourceError
+from pocketstation.errors import PocketStationError, SourceError
 from pocketstation.source_truth import (
     OpenedNativeFormat,
     SampleRepresentation,
@@ -128,6 +129,39 @@ async def test_async_source_truth_and_recovery(tmp_path) -> None:
         await running.stop()
 
 
+def test_sync_recovery_after_stop_uses_core_source_error(tmp_path) -> None:
+    session, _, microphone = _declared_session(tmp_path)
+    running = session.start()
+    running.stop()
+
+    for operation in (
+        lambda: running.replace_microphone_source(
+            microphone, Source.microphone_default()
+        ),
+        lambda: running.reopen_microphone_source(
+            microphone, Source.microphone_default()
+        ),
+    ):
+        with pytest.raises(SourceError) as failure:
+            operation()
+        assert failure.value.code == "source.session_not_running"
+
+
+@pytest.mark.asyncio
+async def test_async_recovery_after_cancel_uses_core_source_error(tmp_path) -> None:
+    session, _, microphone = _declared_session(tmp_path)
+    running = aio.RunningSession(session.start()._native)
+    await running.cancel()
+
+    for operation in (
+        running.replace_microphone_source,
+        running.reopen_microphone_source,
+    ):
+        with pytest.raises(SourceError) as failure:
+            await operation(microphone, Source.microphone_default())
+        assert failure.value.code == "source.session_not_running"
+
+
 _U64_MAX = (1 << 64) - 1
 
 
@@ -195,6 +229,23 @@ def test_source_policies_accept_unsigned_64_bit_boundaries() -> None:
 def test_pure_source_evaluators_are_available_from_flat_api() -> None:
     assert public_api.evaluate_source_activity is evaluate_source_activity
     assert public_api.evaluate_source_signal is evaluate_source_signal
+
+
+def test_unknown_native_sample_representation_is_a_typed_observation_error() -> None:
+    unknown = cast(
+        native._OpenedNativeFormat,
+        SimpleNamespace(
+            sample_rate_hz=48_000,
+            channel_count=1,
+            sample_representation="future-packed-pcm",
+        ),
+    )
+
+    with pytest.raises(PocketStationError) as failure:
+        OpenedNativeFormat._from_native(unknown)
+
+    assert failure.value.code == "session.invalid_observation"
+    assert "future-packed-pcm" in str(failure.value)
 
 
 @pytest.mark.parametrize(
