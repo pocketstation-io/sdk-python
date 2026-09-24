@@ -11,6 +11,7 @@ from pocketstation import aio
 from pocketstation._api import Session, Source
 from pocketstation.errors import SourceError
 from pocketstation.source_truth import (
+    OpenedNativeFormat,
     SampleRepresentation,
     SourceActivityObservation,
     SourceActivityPolicy,
@@ -51,7 +52,12 @@ def test_core_source_truth_and_explicit_recovery(tmp_path) -> None:
             application.id,
             microphone.id,
         ]
-        assert metrics.source_native_formats[1].opened_native_format is None
+        assert [
+            item.opened_native_format for item in metrics.source_native_formats
+        ] == [
+            OpenedNativeFormat(48_000, 2, SampleRepresentation.FLOAT_32),
+            OpenedNativeFormat(48_000, 1, SampleRepresentation.FLOAT_32),
+        ]
         assert metrics.source_activities[1].frames_received_total > 0
         assert (
             metrics.source_activities[1]
