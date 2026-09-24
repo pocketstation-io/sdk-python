@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 from typing import cast
 
@@ -104,6 +105,53 @@ def test_core_source_truth_and_explicit_recovery(tmp_path) -> None:
         assert final.attempts_total == 2
         assert final.completed_total == 2
         assert final.discontinuity_epoch == reopened.discontinuity_epoch
+    finally:
+        running.stop()
+
+
+def test_hfp_shaped_replacement_preserves_native_format_and_new_lineage(
+    tmp_path,
+) -> None:
+    session, _, microphone = _declared_session(tmp_path)
+    running = session.start()
+    try:
+        replacement = running.replace_microphone_source(
+            microphone, Source.microphone_id("fixture-hfp-16khz-i16")
+        )
+
+        assert int(replacement.previous_source_id) == 202
+        assert int(replacement.source_id) == 204
+        assert replacement.source_generation == 2
+        assert replacement.discontinuity_epoch == 1
+        assert replacement.opened_native_format == OpenedNativeFormat(
+            16_000,
+            1,
+            SampleRepresentation.SIGNED_INTEGER_16,
+        )
+        assert replacement.requested_selector_kind is SourceSelectorKind.MICROPHONE_ID
+        assert replacement.requested_device_id == "fixture-hfp-16khz-i16"
+
+        deadline = time.monotonic() + 1.0
+        while True:
+            metrics = running.metrics()
+            microphone_index = next(
+                index
+                for index, item in enumerate(metrics.source_native_formats)
+                if item.stem_id == microphone.id
+            )
+            signal = metrics.source_signals[microphone_index]
+            if signal.window_source_generation == 2:
+                break
+            assert time.monotonic() < deadline
+            time.sleep(0.001)
+        native_format = metrics.source_native_formats[
+            microphone_index
+        ].opened_native_format
+        recovery = metrics.source_replacements[microphone_index]
+        assert native_format == replacement.opened_native_format
+        assert recovery.attached_source_id == replacement.source_id
+        assert signal.window_source_generation == 2
+        assert signal.window_discontinuity_epoch == 1
     finally:
         running.stop()
 
