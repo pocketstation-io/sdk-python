@@ -78,6 +78,17 @@ def test_discovered_application_uses_exact_process_and_stable_identity() -> None
     assert selected.kind is SourceKind.APPLICATION
 
 
+def test_no_pid_application_retains_discovery_identity_as_selector_metadata() -> None:
+    discovered = replace(_discovered(SourceKind.APPLICATION), process_id=None)
+
+    selected = Source.from_discovered(discovered)
+
+    assert selected.selector_kind is SourceSelectorKind.APPLICATION_STABLE_ID
+    assert selected.selector_value == discovered.stable_id
+    assert isinstance(selected.selector_value, StableSourceId)
+    assert selected.selector_value.source_id == 42
+
+
 def test_discovered_input_device_lowers_to_microphone_id() -> None:
     selected = Source.from_discovered(_discovered(SourceKind.INPUT_DEVICE))
 

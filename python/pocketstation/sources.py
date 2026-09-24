@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 from ._native import CaptureAuthorizationSnapshot as _NativeCaptureAuthorizationSnapshot
@@ -498,10 +498,13 @@ class Source:
                     stable_id.platform,
                     stable_id.stable_key,
                 )
-            return cls.application_stable_id(
+            selected = cls.application_stable_id(
                 stable_id.platform,
                 stable_id.stable_key,
             )
+            # Native selection uses the stable key; retain the observed source
+            # ID only as public discovery metadata, as JavaScript does.
+            return replace(selected, selector_value=stable_id)
         if stable_id.kind is SourceKind.INPUT_DEVICE:
             return cls.microphone_id(source.device_uid or stable_id.stable_key)
         if stable_id.kind is SourceKind.SYSTEM_MIX:
