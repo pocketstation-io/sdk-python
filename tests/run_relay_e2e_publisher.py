@@ -232,7 +232,10 @@ def main() -> int:
                 application_frames = _wav_frames(application_fixture)
                 microphone_frames = _wav_frames(microphone_fixture)
             else:
-                session = pks.Session(recording_root=arguments.recording_root)
+                session = pks.Session(
+                    recording_root=arguments.recording_root,
+                    frame_duration_ms=10,
+                )
                 application_audio = session.audio_input("application")
                 microphone_audio = session.audio_input("microphone")
             application = application_audio.output
