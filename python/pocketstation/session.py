@@ -225,7 +225,6 @@ class RunningSession:
         return SourceReplacement._from_native(native, source)
 
     def _validate_microphone_replacement(self, stem: Stem, source: Source) -> None:
-        self._require_running()
         if stem.session_id != self.session_id:
             raise ValueError("stem belongs to another Session")
         if source.kind is not SourceKind.INPUT_DEVICE:

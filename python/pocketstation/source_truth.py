@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass
 from enum import StrEnum
 from numbers import Real
+from typing import Literal, cast
 
 from ._native import (
     _OpenedNativeFormat,
@@ -15,6 +16,7 @@ from ._native import (
     _SourceReplacementObservation,
     _SourceSignalObservation,
 )
+from .errors import PocketStationError
 from .identity import SourceId, StemId
 from .sources import Source, SourceSelectorKind
 
@@ -69,10 +71,18 @@ class OpenedNativeFormat:
 
     @classmethod
     def _from_native(cls, value: _OpenedNativeFormat) -> OpenedNativeFormat:
+        try:
+            sample_representation = SampleRepresentation(value.sample_representation)
+        except ValueError as error:
+            raise PocketStationError(
+                "Native Session returned an unknown native PCM sample representation: "
+                f"{value.sample_representation}",
+                "session.invalid_observation",
+            ) from error
         return cls(
             value.sample_rate_hz,
             value.channel_count,
-            SampleRepresentation(value.sample_representation),
+            sample_representation,
         )
 
 
@@ -133,7 +143,10 @@ class SourceReplacement:
     source_generation: int
     discontinuity_epoch: int
     opened_native_format: OpenedNativeFormat | None
-    requested_selector_kind: SourceSelectorKind
+    requested_selector_kind: Literal[
+        SourceSelectorKind.MICROPHONE_DEFAULT,
+        SourceSelectorKind.MICROPHONE_ID,
+    ]
     requested_device_id: str | None
 
     @classmethod
@@ -141,8 +154,15 @@ class SourceReplacement:
         cls, value: _SourceReplacement, source: Source
     ) -> SourceReplacement:
         native_format = value.opened_native_format
+        selector_kind = cast(
+            Literal[
+                SourceSelectorKind.MICROPHONE_DEFAULT,
+                SourceSelectorKind.MICROPHONE_ID,
+            ],
+            source.selector_kind,
+        )
         device_id = None
-        if source.selector_kind is SourceSelectorKind.MICROPHONE_ID:
+        if selector_kind is SourceSelectorKind.MICROPHONE_ID:
             if not isinstance(source.selector_value, str):
                 raise ValueError("microphone ID Source has no device identifier")
             device_id = source.selector_value
@@ -155,7 +175,7 @@ class SourceReplacement:
             None
             if native_format is None
             else OpenedNativeFormat._from_native(native_format),
-            source.selector_kind,
+            selector_kind,
             device_id,
         )
 

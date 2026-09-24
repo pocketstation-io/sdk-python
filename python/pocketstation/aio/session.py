@@ -260,7 +260,6 @@ class RunningSession:
     def _validate_microphone_replacement(self, stem: Stem, source: Source) -> None:
         from ..sources import SourceKind
 
-        self._require_running()
         if stem.session_id != self.session_id:
             raise ValueError("stem belongs to another Session")
         if source.kind is not SourceKind.INPUT_DEVICE:

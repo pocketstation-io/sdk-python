@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -1052,27 +1052,39 @@ impl PythonRunningSession {
                 )))
             }
         };
-        let commands = self.commands()?;
+        let commands = self.commands().map_err(|_| {
+            PyRuntimeError::new_err(coded_reason(
+                "source.session_not_running",
+                "source replacement requires a running Session",
+            ))
+        })?;
         let (response, receiver) = sync_channel(1);
         commands
-            .send(SessionCommand::ReplaceMicrophone {
+            .try_send(SessionCommand::ReplaceMicrophone {
                 stem_id,
                 selector,
                 reopen,
                 response,
             })
-            .map_err(|_| {
-                PyRuntimeError::new_err(coded_reason(
-                    "source.replacement_unavailable",
-                    "native Session worker has stopped",
-                ))
+            .map_err(|failure| {
+                let (code, message) = match failure {
+                    TrySendError::Full(_) => (
+                        "source.replacement_queue_full",
+                        "Session replacement control queue is full",
+                    ),
+                    TrySendError::Disconnected(_) => (
+                        "source.runtime_stopped",
+                        "Session runtime stopped before source replacement completed",
+                    ),
+                };
+                PyRuntimeError::new_err(coded_reason(code, message))
             })?;
         let replacement = py
             .detach(move || receiver.recv())
             .map_err(|_| {
                 PyRuntimeError::new_err(coded_reason(
-                    "source.replacement_unavailable",
-                    "native Session worker did not return source replacement",
+                    "source.runtime_stopped",
+                    "Session runtime stopped before source replacement completed",
                 ))
             })?
             .map_err(PyRuntimeError::new_err)?;
