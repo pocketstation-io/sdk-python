@@ -35,6 +35,8 @@ def verify_signal_types(
     text_subscription = session.subscribe(source, signal=text_spec)
     assert_type(audio_subscription, BusSubscription[SignalAudioPayload])
     assert_type(text_subscription, BusSubscription[str])
+    assert_type(audio_subscription.session_id, RuntimeSessionId)
+    assert_type(audio_subscription.route_id, RouteId)
     assert_type(source.send_to(connector), RouteId)
     assert_type(source.send_to(async_connector), RouteId)
 

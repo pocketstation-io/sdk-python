@@ -61,6 +61,85 @@ async def test_async_iteration_flattens_native_batches() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_iteration_drains_a_terminal_batch_before_eof() -> None:
+    state = {"closed": False, "waits": 0}
+
+    async def terminal_batch(_timeout_ms: int):
+        state["waits"] += 1
+        state["closed"] = True
+        return ["first", "second"]
+
+    async def poll_empty():
+        return None
+
+    stream = AudioStream(
+        poll_batch=poll_empty,
+        wait_batch=terminal_batch,
+        is_closed=lambda: state["closed"],
+    )
+
+    assert [frame async for frame in stream.frames()] == ["first", "second"]
+    assert state["waits"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method_name", ["read", "read_batch", "read_result"])
+async def test_async_direct_audio_wait_defaults_forward_exactly_100_milliseconds(
+    method_name: str,
+) -> None:
+    observed: list[int] = []
+
+    async def wait_batch(timeout_ms: int):
+        observed.append(timeout_ms)
+        return None
+
+    async def poll_batch():
+        return None
+
+    stream = AudioStream(
+        poll_batch=poll_batch,
+        wait_batch=wait_batch,
+        is_closed=lambda: False,
+    )
+
+    assert await getattr(stream, method_name)() is None
+    assert observed == [100]
+
+
+@pytest.mark.asyncio
+async def test_async_audio_read_distinguishes_timeout_from_repeated_eof() -> None:
+    async def empty(_timeout_ms: int):
+        return None
+
+    async def poll_empty():
+        return None
+
+    timeout_stream = AudioStream(
+        poll_batch=poll_empty,
+        wait_batch=empty,
+        is_closed=lambda: False,
+    )
+    assert await timeout_stream.read() is None
+
+    observed: list[int] = []
+    state = {"closed": False}
+
+    async def close_after_wait(timeout_ms: int):
+        observed.append(timeout_ms)
+        state["closed"] = True
+        return None
+
+    terminal_stream = AudioStream(
+        poll_batch=poll_empty,
+        wait_batch=close_after_wait,
+        is_closed=lambda: state["closed"],
+    )
+    assert await terminal_stream.read() is STREAM_EOF
+    assert await terminal_stream.read() is STREAM_EOF
+    assert observed == [100]
+
+
+@pytest.mark.asyncio
 async def test_async_running_session_exposes_the_same_exclusive_stream() -> None:
     class NativeRunning:
         def __init__(self) -> None:
@@ -139,6 +218,41 @@ async def test_cancelled_reader_settles_before_releasing_ownership() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cancelled_native_audio_batch_is_returned_by_the_next_read() -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    class NativeRunning:
+        lifecycle_state = "running"
+
+        def __init__(self) -> None:
+            self.waits = 0
+
+        def wait_audio(self, _timeout_ms):
+            self.waits += 1
+            entered.set()
+            assert release.wait(1.0)
+            return ["first", "second"]
+
+        def poll_audio(self):
+            return None
+
+    native = NativeRunning()
+    running = RunningSession(native)
+    reader = asyncio.create_task(running.audio.read())
+    assert await asyncio.to_thread(entered.wait, 1.0)
+
+    reader.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await reader
+
+    assert await running.audio.read() == "first"
+    assert await running.audio.read() == "second"
+    assert native.waits == 1
+
+
+@pytest.mark.asyncio
 async def test_async_reader_mode_cannot_change() -> None:
     stream, _ = _stream_from_batches([["a"]])
     assert await stream.read() == "a"
@@ -168,6 +282,19 @@ async def test_native_cancellation_waits_for_bounded_thread_cleanup() -> None:
         await task
 
     assert finished.is_set()
+
+
+@pytest.mark.asyncio
+async def test_native_operation_is_not_started_when_cancelled_before_dispatch() -> None:
+    started = threading.Event()
+    task = asyncio.create_task(_native_async(lambda: started.set()))
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(0)
+
+    assert not started.is_set()
 
 
 @pytest.mark.asyncio

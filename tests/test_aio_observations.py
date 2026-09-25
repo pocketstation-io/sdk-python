@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from types import SimpleNamespace
 
 import pocketstation._native as _native
@@ -56,6 +57,27 @@ async def test_async_event_modes_cannot_be_mixed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_event_read_default_forwards_exactly_100_milliseconds() -> None:
+    observed: list[int] = []
+
+    async def poll_event():
+        return None
+
+    async def wait_event(timeout_ms: int):
+        observed.append(timeout_ms)
+        return None
+
+    stream = EventStream(
+        poll_event=poll_event,
+        wait_event=wait_event,
+        is_closed=lambda: False,
+    )
+
+    assert await stream.read() is None
+    assert observed == [100]
+
+
+@pytest.mark.asyncio
 async def test_concurrent_async_event_reader_fails_immediately() -> None:
     entered = asyncio.Event()
     release = asyncio.Event()
@@ -81,6 +103,53 @@ async def test_concurrent_async_event_reader_fails_immediately() -> None:
 
     release.set()
     assert await first == "started"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_native_event_is_returned_by_the_next_read() -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    class NativeRunning:
+        lifecycle_state = "running"
+
+        def __init__(self) -> None:
+            self.waits = 0
+
+        def wait_event(self, _timeout_ms):
+            self.waits += 1
+            entered.set()
+            assert release.wait(1.0)
+            return SimpleNamespace(
+                kind="lifecycle",
+                lifecycle_state="running",
+                session_id=1,
+                stem_id=None,
+                endpoint_id=None,
+                route_id=None,
+                failures_total=0,
+                terminal_state=None,
+                source_event_kind=None,
+                failures=lambda: [],
+            )
+
+        def poll_event(self):
+            return None
+
+    native = NativeRunning()
+    running = RunningSession(native)
+    reader = asyncio.create_task(running.events.read())
+    assert await asyncio.to_thread(entered.wait, 1.0)
+
+    reader.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await reader
+
+    retained = await running.events.read()
+    assert retained is not None
+    assert retained.lifecycle_state == "running"
+    assert native.waits == 1
 
 
 @pytest.mark.asyncio
@@ -136,6 +205,16 @@ async def test_async_event_wait_uses_the_canonical_native_session(tmp_path) -> N
         event = await running.events.read(timeout_s=1.0)
         assert event is not None
         assert event.session_id > 0
-        assert event.kind
+        assert event.type
     finally:
-        assert (await running.stop()).success
+        stopped = await running.stop()
+    retained = []
+    while (event := await running.events.read(timeout_s=0.0)) is not None:
+        retained.append(event)
+
+    assert stopped.success
+    assert stopped.metrics is not None
+    assert stopped.metrics_unavailable_reason is None
+    assert stopped.terminal_event is not None
+    assert retained[-1] == stopped.terminal_event
+    assert running.events.is_closed

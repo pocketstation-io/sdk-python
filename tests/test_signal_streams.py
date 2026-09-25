@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from time import monotonic
+from types import SimpleNamespace
+from typing import get_type_hints
 
 import pocketstation._native as _native
 import pytest
@@ -11,13 +13,17 @@ from pocketstation._api import (
     STREAM_EOF,
     BackpressurePolicy,
     BinaryFormat,
+    BusSubscription,
     Operator,
-    PocketStationError,
+    RouteId,
+    RunningSession,
+    RuntimeSessionId,
     Session,
     SignalAudioPayload,
     SignalEnvelope,
     SignalSpec,
     Source,
+    StreamError,
     TextFormat,
     aio,
 )
@@ -25,6 +31,29 @@ from pocketstation._api import (
 AUDIO_OPERATOR = "org.pocketstation.python.conformance.audio-pass-through.v1"
 TEXT_OPERATOR = "org.pocketstation.python.conformance.audio-to-text.v1"
 BYTES_OPERATOR = "org.pocketstation.python.conformance.audio-to-bytes.v1"
+
+
+@pytest.mark.parametrize(
+    ("payload_type", "field"),
+    [("audio", "audio"), ("text", "text"), ("bytes", "bytes")],
+)
+def test_malformed_native_signal_payload_uses_the_stream_error_contract(
+    payload_type: str,
+    field: str,
+) -> None:
+    value = SimpleNamespace(payload_kind=payload_type, **{field: None})
+
+    with pytest.raises(StreamError) as failure:
+        SignalEnvelope._from_native(value)
+
+    assert failure.value.code == "stream.invalid_read"
+
+
+def test_unknown_native_signal_payload_type_uses_the_stream_error_contract() -> None:
+    with pytest.raises(StreamError) as failure:
+        SignalEnvelope._from_native(SimpleNamespace(payload_kind="future"))
+
+    assert failure.value.code == "stream.invalid_read"
 
 
 def _native_conformance_session(recording_root: Path):
@@ -178,17 +207,45 @@ def test_external_source_outputs_have_the_same_subscription_declaration() -> Non
     assert subscription.route_settings.media.supports_signal(subscription.signal)
     assert subscription.route_id > 0
 
+    session_id_getter = BusSubscription.session_id.fget
+    route_id_getter = BusSubscription.route_id.fget
+    assert session_id_getter is not None
+    assert route_id_getter is not None
+    assert get_type_hints(session_id_getter)["return"] is RuntimeSessionId
+    assert get_type_hints(route_id_getter)["return"] is RouteId
+    assert subscription.session_id == RuntimeSessionId(int(session.id))
+    assert subscription.route_id == RouteId(int(subscription.route_id))
+
 
 def test_running_session_rejects_a_foreign_subscription(tmp_path: Path) -> None:
     session, _ = _declared_session(tmp_path / "local")
     _, foreign = _declared_session(tmp_path / "foreign")
     running = session.start()
     try:
-        with pytest.raises(PocketStationError) as failure:
-            running.signals(foreign["text"]).poll()
-        assert failure.value.code == "session.invalid_route"
+        with pytest.raises(
+            ValueError,
+            match="BusSubscription belongs to a different Session",
+        ):
+            running.signals(foreign["text"])
     finally:
         assert running.stop().success
+
+
+def test_running_session_rejects_a_foreign_subscription_before_cache_lookup() -> None:
+    native = SimpleNamespace(session_id=41, lifecycle_state="running")
+    running = RunningSession(native)
+    local = BusSubscription(SimpleNamespace(id=7, session_id=41))
+    foreign = BusSubscription(SimpleNamespace(id=7, session_id=42))
+
+    local_stream = running.signals(local)
+
+    with pytest.raises(
+        ValueError,
+        match="BusSubscription belongs to a different Session",
+    ):
+        running.signals(foreign)
+
+    assert running.signals(local) is local_stream
 
 
 @pytest.mark.asyncio
@@ -213,3 +270,22 @@ async def test_async_real_session_preserves_the_same_signal_contract(
     assert envelope.derivation is not None
     assert (await running.stop()).success
     assert await stream.read(timeout_s=0.0) is STREAM_EOF
+
+
+def test_async_running_session_rejects_a_foreign_subscription_before_cache_lookup() -> (
+    None
+):
+    native = SimpleNamespace(session_id=51, lifecycle_state="running")
+    running = aio.RunningSession(native)
+    local = BusSubscription(SimpleNamespace(id=9, session_id=51))
+    foreign = BusSubscription(SimpleNamespace(id=9, session_id=52))
+
+    local_stream = running.signals(local)
+
+    with pytest.raises(
+        ValueError,
+        match="BusSubscription belongs to a different Session",
+    ):
+        running.signals(foreign)
+
+    assert running.signals(local) is local_stream

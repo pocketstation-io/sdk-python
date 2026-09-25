@@ -65,6 +65,65 @@ def test_direct_reads_reuse_one_batch_without_another_native_poll() -> None:
     assert stream.reader_mode == "read"
 
 
+def test_frame_iteration_drains_a_terminal_batch_before_eof() -> None:
+    state = {"closed": False, "waits": 0}
+
+    def terminal_batch(_timeout_ms: int):
+        state["waits"] += 1
+        state["closed"] = True
+        return ["first", "second"]
+
+    stream = AudioStream(
+        poll_batch=lambda: None,
+        wait_batch=terminal_batch,
+        is_closed=lambda: state["closed"],
+    )
+
+    assert list(stream.frames()) == ["first", "second"]
+    assert state["waits"] == 1
+
+
+@pytest.mark.parametrize("method_name", ["read", "read_batch", "read_result"])
+def test_direct_audio_wait_defaults_forward_exactly_100_milliseconds(
+    method_name: str,
+) -> None:
+    observed: list[int] = []
+    stream = AudioStream(
+        poll_batch=lambda: None,
+        wait_batch=lambda timeout_ms: observed.append(timeout_ms),
+        is_closed=lambda: False,
+    )
+
+    assert getattr(stream, method_name)() is None
+    assert observed == [100]
+
+
+def test_audio_read_distinguishes_timeout_from_repeated_eof() -> None:
+    timeout_stream = AudioStream(
+        poll_batch=lambda: None,
+        wait_batch=lambda _timeout_ms: None,
+        is_closed=lambda: False,
+    )
+    assert timeout_stream.read() is None
+
+    observed: list[int] = []
+    state = {"closed": False}
+
+    def close_after_wait(timeout_ms: int):
+        observed.append(timeout_ms)
+        state["closed"] = True
+        return None
+
+    terminal_stream = AudioStream(
+        poll_batch=lambda: None,
+        wait_batch=close_after_wait,
+        is_closed=lambda: state["closed"],
+    )
+    assert terminal_stream.read() is STREAM_EOF
+    assert terminal_stream.read() is STREAM_EOF
+    assert observed == [100]
+
+
 def test_running_session_exposes_the_same_exclusive_stream() -> None:
     class NativeRunning:
         def __init__(self) -> None:

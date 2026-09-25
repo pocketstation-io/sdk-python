@@ -48,7 +48,7 @@ def _native_source_event():
         **source,
     )
     return SimpleNamespace(
-        kind="source_failure",
+        kind="source-failure",
         lifecycle_state=None,
         terminal_state=None,
         session_id=9,

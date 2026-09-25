@@ -249,6 +249,8 @@ def _normalize_native_error(error: Exception) -> PocketStationError:
         return OperatorError(detail, code)
     if code.startswith("connector."):
         return ConnectorRuntimeError(detail, code)
+    if code.startswith("stream."):
+        return StreamError(detail, code)
     if code.startswith("session.start_") or code in {
         "session.host_setup_failed",
         "session.unsupported_platform",

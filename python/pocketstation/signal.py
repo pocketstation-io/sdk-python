@@ -13,10 +13,12 @@ from ._native import _SignalEnvelope as _NativeSignalEnvelope
 from ._native import _SignalLineage as _NativeSignalLineage
 from ._native import _SignalSubscriptionMetrics as _NativeSignalSubscriptionMetrics
 from ._native import _SignalTiming as _NativeSignalTiming
+from .errors import StreamError
 from .graph import RouteSettings, SignalSpec
 from .identity import (
     ClockDomainId,
     ConnectorId,
+    RouteId,
     RuntimeSessionId,
     SourceId,
     StreamId,
@@ -184,19 +186,29 @@ class SignalEnvelope(Generic[_PayloadT_co]):
     ) -> SignalEnvelope[SignalPayload]:
         if value.payload_kind == "audio":
             if value.audio is None:
-                raise RuntimeError("native audio signal omitted its payload")
+                raise StreamError(
+                    "native audio signal omitted its payload",
+                    "stream.invalid_read",
+                )
             payload: SignalPayload = SignalAudioPayload._from_native(value.audio)
         elif value.payload_kind == "text":
             if value.text is None:
-                raise RuntimeError("native text signal omitted its payload")
+                raise StreamError(
+                    "native text signal omitted its payload",
+                    "stream.invalid_read",
+                )
             payload = value.text
         elif value.payload_kind == "bytes":
             if value.bytes is None:
-                raise RuntimeError("native bytes signal omitted its payload")
+                raise StreamError(
+                    "native bytes signal omitted its payload",
+                    "stream.invalid_read",
+                )
             payload = value.bytes
         else:
-            raise RuntimeError(
-                f"native signal has unknown payload kind {value.payload_kind!r}"
+            raise StreamError(
+                f"native signal has unknown payload type {value.payload_kind!r}",
+                "stream.invalid_read",
             )
         return SignalEnvelope[SignalPayload](
             signal=cast(
@@ -230,12 +242,12 @@ class BusSubscription(Generic[_PayloadT_co]):
         return self._native.id
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     @property
-    def route_id(self) -> int:
-        return self._native.route_id
+    def route_id(self) -> RouteId:
+        return RouteId(self._native.route_id)
 
     @property
     def signal(self) -> SignalSpec[_PayloadT_co]:

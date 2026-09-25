@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pocketstation._native as _native
@@ -44,6 +45,8 @@ def test_stop_and_cancel_have_distinct_typed_dispositions(tmp_path) -> None:
     assert cancelled_running.session_id > 0
     stopped = stopped_running.stop()
     cancelled = cancelled_running.cancel()
+    stopped_events = tuple(stopped_running.events)
+    cancelled_events = tuple(cancelled_running.events)
 
     declared = Session()
     assert declared.id > 0
@@ -52,6 +55,8 @@ def test_stop_and_cancel_have_distinct_typed_dispositions(tmp_path) -> None:
     assert stopped.disposition is TerminationDisposition.STOPPED
     assert cancelled.success
     assert cancelled.disposition is TerminationDisposition.CANCELLED
+    assert stopped.session_state is SessionTerminalState.STOPPED
+    assert cancelled.session_state is SessionTerminalState.STOPPED
     assert not stopped.runtime_worker_panicked
     assert not cancelled.runtime_worker_panicked
     assert stopped.terminal_event is not None
@@ -60,6 +65,16 @@ def test_stop_and_cancel_have_distinct_typed_dispositions(tmp_path) -> None:
     assert cancelled.terminal_event.terminal_state is SessionTerminalState.STOPPED
     assert stopped.terminal_event.failures == ()
     assert cancelled.terminal_event.failures == ()
+    assert stopped.metrics is not None
+    assert stopped.metrics_unavailable_reason is None
+    assert stopped.metrics.event_queue.depth_count == 0
+    assert cancelled.metrics is not None
+    assert cancelled.metrics_unavailable_reason is None
+    assert cancelled.metrics.event_queue.depth_count == 0
+    assert stopped_events[-1] == stopped.terminal_event
+    assert cancelled_events[-1] == cancelled.terminal_event
+    assert stopped_running.events.is_closed
+    assert cancelled_running.events.is_closed
 
 
 def test_trace_round_trip_preserves_terminal_lifecycle_and_hash(tmp_path) -> None:
@@ -85,16 +100,47 @@ def test_trace_round_trip_preserves_terminal_lifecycle_and_hash(tmp_path) -> Non
     assert validation.endpoint_failures_total == 0
     assert len(trace.records) == trace.records_total
     assert trace.records[0].sequence_index == 0
-    assert trace.records[0].kind is SessionTraceRecordType.LIFECYCLE
-    assert trace.records[-1].kind is SessionTraceRecordType.TERMINAL
+    assert trace.records[0].type is SessionTraceRecordType.LIFECYCLE
+    assert trace.records[-1].type is SessionTraceRecordType.TERMINAL
     assert trace.records[-1].terminal_state is SessionTerminalState.STOPPED
 
 
-def test_trace_configuration_rejects_unbounded_or_zero_capacity(tmp_path) -> None:
-    with pytest.raises(ValueError, match="positive integer"):
-        SessionTraceConfiguration(tmp_path / "trace", capacity_records=0)
-    with pytest.raises(ValueError, match="positive integer"):
-        SessionTraceConfiguration(tmp_path / "trace", capacity_records=1.5)  # type: ignore[arg-type]
+@pytest.mark.parametrize("path", ["", "   ", Path("\t")])
+def test_trace_configuration_rejects_blank_path(path) -> None:
+    with pytest.raises(ValueError, match="trace path cannot be empty"):
+        SessionTraceConfiguration(path)
+
+
+@pytest.mark.parametrize("capacity", [0, 1_000_001, True, 1.5])
+def test_trace_configuration_rejects_capacity_outside_finite_bounds(
+    tmp_path, capacity
+) -> None:
+    with pytest.raises(ValueError, match="integer between 1 and 1000000"):
+        SessionTraceConfiguration(  # type: ignore[arg-type]
+            tmp_path / "trace",
+            capacity_records=capacity,
+        )
+
+
+@pytest.mark.parametrize("path", ["", "   ", Path("\t")])
+def test_trace_reader_rejects_blank_path_before_native_io(path) -> None:
+    with pytest.raises(ValueError, match="trace path cannot be empty"):
+        SessionTrace.read(path)
+
+
+def test_trace_configuration_accepts_capacity_bounds(tmp_path) -> None:
+    assert (
+        SessionTraceConfiguration(
+            tmp_path / "lower.trace", capacity_records=1
+        ).capacity_records
+        == 1
+    )
+    assert (
+        SessionTraceConfiguration(
+            tmp_path / "upper.trace", capacity_records=1_000_000
+        ).capacity_records
+        == 1_000_000
+    )
 
 
 def test_terminal_event_keeps_fault_categories_and_owner_ids_separate() -> None:

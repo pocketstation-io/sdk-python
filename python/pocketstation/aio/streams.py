@@ -18,6 +18,7 @@ from ..signal import (
 from ..streams import (
     _DEFAULT_ITERATION_TIMEOUT_SECONDS,
     AudioBatchReadResult,
+    AudioReadResult,
     _iteration_timeout_milliseconds,
     _ReaderState,
     _timeout_milliseconds,
@@ -41,6 +42,7 @@ class AudioStream:
         self._is_closed = is_closed
         self._state = _ReaderState()
         self._pending_frames: deque[AudioFrame] = deque()
+        self._pending_batches: deque[AudioBatch] = deque(maxlen=1)
 
     @property
     def reader_mode(self) -> str | None:
@@ -50,8 +52,12 @@ class AudioStream:
     def is_closed(self) -> bool:
         return self._is_closed()
 
-    async def read(self, *, timeout_s: float = 1.0) -> AudioFrame | None:
-        """Read one frame without blocking the event-loop thread."""
+    async def read(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> AudioReadResult:
+        """Read a frame, time out, or report terminal state without blocking."""
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("read")
         try:
@@ -63,6 +69,8 @@ class AudioStream:
         """Advanced non-blocking batch read using the exclusive batch mode."""
         token = self._state.claim("batches")
         try:
+            if self._pending_batches:
+                return self._pending_batches.popleft()
             return None if self.is_closed else await self._poll_batch()
         finally:
             self._state.release(token)
@@ -71,6 +79,8 @@ class AudioStream:
         """Read immediately with distinct batch, empty, and closed outcomes."""
         token = self._state.claim("batches")
         try:
+            if self._pending_batches:
+                return self._pending_batches.popleft()
             if self.is_closed:
                 return STREAM_EOF
             batch = await self._poll_batch()
@@ -78,20 +88,32 @@ class AudioStream:
         finally:
             self._state.release(token)
 
-    async def read_batch(self, *, timeout_s: float = 1.0) -> AudioBatch | None:
+    async def read_batch(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> AudioBatch | None:
         """Advanced bounded batch read using the exclusive batch mode."""
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("batches")
         try:
+            if self._pending_batches:
+                return self._pending_batches.popleft()
             return None if self.is_closed else await self._wait_batch(timeout_ms)
         finally:
             self._state.release(token)
 
-    async def read_result(self, *, timeout_s: float = 1.0) -> AudioBatchReadResult:
+    async def read_result(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> AudioBatchReadResult:
         """Wait finitely with distinct batch, timeout, and closed outcomes."""
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("batches")
         try:
+            if self._pending_batches:
+                return self._pending_batches.popleft()
             if self.is_closed:
                 return STREAM_EOF
             batch = await self._wait_batch(timeout_ms)
@@ -113,8 +135,10 @@ class AudioStream:
         async def iterate() -> AsyncIterator[AudioFrame]:
             token = self._state.claim("frames")
             try:
-                while not self.is_closed:
+                while True:
                     frame = await self._read_frame(timeout_ms)
+                    if isinstance(frame, EndOfStream):
+                        break
                     if frame is not None:
                         yield frame
             finally:
@@ -133,8 +157,12 @@ class AudioStream:
         async def iterate() -> AsyncIterator[AudioBatch]:
             token = self._state.claim("batches")
             try:
-                while not self.is_closed:
-                    batch = await self._wait_batch(timeout_ms)
+                while self._pending_batches or not self.is_closed:
+                    batch = (
+                        self._pending_batches.popleft()
+                        if self._pending_batches
+                        else await self._wait_batch(timeout_ms)
+                    )
                     if batch is not None:
                         yield batch
             finally:
@@ -142,18 +170,27 @@ class AudioStream:
 
         return iterate()
 
-    async def _read_frame(self, timeout_ms: int) -> AudioFrame | None:
+    async def _read_frame(self, timeout_ms: int) -> AudioReadResult:
         if self._pending_frames:
             return self._pending_frames.popleft()
         if self.is_closed:
-            return None
+            return STREAM_EOF
         batch = await self._wait_batch(timeout_ms)
         if batch is None:
-            return None
+            return STREAM_EOF if self.is_closed else None
         self._pending_frames.extend(batch)
         if not self._pending_frames:
-            return None
+            return STREAM_EOF if self.is_closed else None
         return self._pending_frames.popleft()
+
+    def _retain_cancelled_batch(self, batch: AudioBatch | None) -> None:
+        """Retain one accepted native batch when its await is cancelled."""
+        if batch is None:
+            return
+        if self._state.mode in {"read", "frames"}:
+            self._pending_frames.extend(batch)
+        else:
+            self._pending_batches.append(batch)
 
 
 class SignalStream(Generic[_PayloadT]):
@@ -173,6 +210,7 @@ class SignalStream(Generic[_PayloadT]):
         self._signal_metrics = signal_metrics
         self._state = _ReaderState()
         self._closed = False
+        self._pending_reads: deque[_SignalRead] = deque(maxlen=1)
 
     @property
     def reader_mode(self) -> str | None:
@@ -185,21 +223,19 @@ class SignalStream(Generic[_PayloadT]):
     async def poll(self) -> SignalReadResult[_PayloadT]:
         token = self._state.claim("signal_read")
         try:
-            return (
-                STREAM_EOF if self._closed else self._decode(await self._poll_signal())
-            )
+            return await self._read_once(self._poll_signal)
         finally:
             self._state.release(token)
 
-    async def read(self, *, timeout_s: float = 1.0) -> SignalReadResult[_PayloadT]:
+    async def read(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> SignalReadResult[_PayloadT]:
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("signal_read")
         try:
-            return (
-                STREAM_EOF
-                if self._closed
-                else self._decode(await self._wait_signal(timeout_ms))
-            )
+            return await self._read_once(lambda: self._wait_signal(timeout_ms))
         finally:
             self._state.release(token)
 
@@ -216,8 +252,10 @@ class SignalStream(Generic[_PayloadT]):
         async def iterate() -> AsyncIterator[SignalEnvelope[_PayloadT]]:
             token = self._state.claim("signals")
             try:
-                while not self._closed:
-                    result = self._decode(await self._wait_signal(timeout_ms))
+                while self._pending_reads or not self._closed:
+                    result = await self._read_once(
+                        lambda: self._wait_signal(timeout_ms)
+                    )
                     if isinstance(result, EndOfStream):
                         break
                     if result is not None:
@@ -236,6 +274,20 @@ class SignalStream(Generic[_PayloadT]):
     async def metrics(self) -> SignalSubscriptionMetrics:
         """Snapshot capacity, payload-byte bounds, depth, delivery, and drops."""
         return SignalSubscriptionMetrics._from_native(await self._signal_metrics())
+
+    async def _read_once(
+        self,
+        read: Callable[[], Awaitable[_SignalRead]],
+    ) -> SignalReadResult[_PayloadT]:
+        if self._pending_reads:
+            return self._decode(self._pending_reads.popleft())
+        if self._closed:
+            return STREAM_EOF
+        return self._decode(await read())
+
+    def _retain_cancelled_read(self, result: _SignalRead) -> None:
+        """Retain one native result accepted before asyncio cancellation."""
+        self._pending_reads.append(result)
 
     def _decode(self, result: _SignalRead) -> SignalReadResult[_PayloadT]:
         if result.status == "item":
@@ -265,4 +317,9 @@ class SignalStream(Generic[_PayloadT]):
         )
 
 
-__all__ = ["AudioBatchReadResult", "AudioStream", "SignalStream"]
+__all__ = [
+    "AudioBatchReadResult",
+    "AudioReadResult",
+    "AudioStream",
+    "SignalStream",
+]

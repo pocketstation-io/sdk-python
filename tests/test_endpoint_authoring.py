@@ -149,7 +149,7 @@ def test_endpoint_failure_preserves_structure_in_terminal_outcome() -> None:
                 "provider did not drain",
                 code="provider.drain_timeout",
                 stage=EndpointFailureStage.REQUEST_STOP,
-                retryability=EndpointFailureRetryability.RETRYABLE,
+                retryability=EndpointFailureRetryability.RECONFIGURATION_REQUIRED,
             )
 
     class FailingPrepared(PreparedEndpointDriver):
@@ -176,7 +176,8 @@ def test_endpoint_failure_preserves_structure_in_terminal_outcome() -> None:
         if value.error_code == "provider.drain_timeout"
     )
     assert failure.stage is EndpointFailureStage.REQUEST_STOP
-    assert failure.retryability is EndpointFailureRetryability.RETRYABLE
+    assert failure.retryability is EndpointFailureRetryability.RECONFIGURATION_REQUIRED
+    assert failure.retryability.value == "reconfiguration-required"
 
 
 def test_endpoint_prepare_failure_rolls_back_prepared_peer() -> None:

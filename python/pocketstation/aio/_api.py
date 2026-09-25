@@ -112,12 +112,13 @@ from .sources import (
     discover_sources,
     microphone_permission_observation,
 )
-from .streams import AudioBatchReadResult, AudioStream, SignalStream
+from .streams import AudioBatchReadResult, AudioReadResult, AudioStream, SignalStream
 
 __all__ = [
     "AudioBatchReadResult",
     "AudioConnectorHandler",
     "AudioInput",
+    "AudioReadResult",
     "AudioStream",
     "Capture",
     "Connector",

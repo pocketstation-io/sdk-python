@@ -21,6 +21,7 @@ from pocketstation.conversation import (
     ConversationTurn,
     TranscriptUpdate,
 )
+from pocketstation.signal import STREAM_EOF
 
 
 @pytest.mark.asyncio
@@ -206,7 +207,7 @@ async def test_given_queued_output_when_interrupted_then_only_replacement_is_rea
     assert frame is not None
     assert memoryview(frame.samples).cast("f")[0] == pytest.approx(0.5)
     assert frame.output_generation_id is not None
-    assert await running.audio.read(timeout_s=0.01) is None
+    assert await running.audio.read(timeout_s=0.01) is STREAM_EOF
     discarded_output_frames_total = (
         metrics.polled_audio.discarded_output_frames_total
         + sum(
