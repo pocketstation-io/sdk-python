@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
@@ -35,7 +36,10 @@ from .identity import (
     EndpointId,
     OperatorInstanceId,
     RouteId,
+    RuntimeSessionId,
     SidecarId,
+    SourceId,
+    SourceInstanceId,
     StemId,
 )
 from .sidecar import SidecarSnapshot
@@ -58,10 +62,10 @@ class SessionEventType(StrEnum):
     """Stable variants of the authoritative Session event stream."""
 
     LIFECYCLE = "lifecycle"
-    SOURCE_FAILURE = "source_failure"
-    ENDPOINT_FAILURE = "endpoint_failure"
-    ROLLBACK_FAILURE = "rollback_failure"
-    FINALIZATION_FAILURE = "finalization_failure"
+    SOURCE_FAILURE = "source-failure"
+    ENDPOINT_FAILURE = "endpoint-failure"
+    ROLLBACK_FAILURE = "rollback-failure"
+    FINALIZATION_FAILURE = "finalization-failure"
     TERMINAL = "terminal"
 
 
@@ -104,7 +108,25 @@ class EndpointFailureStage(StrEnum):
 class EndpointFailureRetryability(StrEnum):
     NEVER = "never"
     RETRYABLE = "retryable"
-    RECONFIGURATION_REQUIRED = "retry-after-reconfiguration"
+    RECONFIGURATION_REQUIRED = "reconfiguration-required"
+
+
+def _session_event_type_from_native(value: str) -> SessionEventType:
+    legacy_values = {
+        "source_failure": SessionEventType.SOURCE_FAILURE,
+        "endpoint_failure": SessionEventType.ENDPOINT_FAILURE,
+        "rollback_failure": SessionEventType.ROLLBACK_FAILURE,
+        "finalization_failure": SessionEventType.FINALIZATION_FAILURE,
+    }
+    if value in legacy_values:
+        return legacy_values[value]
+    return SessionEventType(value)
+
+
+def _endpoint_retryability_from_native(value: str) -> EndpointFailureRetryability:
+    if value == "retry-after-reconfiguration":
+        return EndpointFailureRetryability.RECONFIGURATION_REQUIRED
+    return EndpointFailureRetryability(value)
 
 
 class SessionRollbackStage(StrEnum):
@@ -250,7 +272,7 @@ class SessionFailure:
             retryability=(
                 None
                 if retryability is None
-                else EndpointFailureRetryability(retryability)
+                else _endpoint_retryability_from_native(retryability)
             ),
             component=component,
             component_diagnostic=failure.component,
@@ -276,12 +298,12 @@ class SessionFailure:
 class SessionEvent:
     """One immutable Python view of a native Session event."""
 
-    kind: SessionEventType
+    type: SessionEventType
     lifecycle_state: SessionLifecycleState | None
-    session_id: int
-    stem_id: int | None
-    endpoint_id: int | None
-    route_id: int | None
+    session_id: RuntimeSessionId
+    stem_id: StemId | None
+    endpoint_id: EndpointId | None
+    route_id: RouteId | None
     failures: tuple[SessionFailure, ...]
     terminal_state: SessionTerminalState | None
     source: SourceRuntimeEvent | None
@@ -311,12 +333,14 @@ class SessionEvent:
                 "session.invalid_event",
             )
         return cls(
-            kind=SessionEventType(event.kind),
+            type=_session_event_type_from_native(event.kind),
             lifecycle_state=lifecycle_state,
-            session_id=event.session_id,
-            stem_id=event.stem_id,
-            endpoint_id=event.endpoint_id,
-            route_id=event.route_id,
+            session_id=RuntimeSessionId(event.session_id),
+            stem_id=None if event.stem_id is None else StemId(event.stem_id),
+            endpoint_id=(
+                None if event.endpoint_id is None else EndpointId(event.endpoint_id)
+            ),
+            route_id=None if event.route_id is None else RouteId(event.route_id),
             failures=failures,
             terminal_state=terminal_state,
             source=SourceRuntimeEvent._from_native(event),
@@ -457,8 +481,8 @@ class EndpointMetrics:
 
 @dataclass(frozen=True, slots=True)
 class RouteMetrics:
-    route_id: int
-    endpoint_id: int
+    route_id: RouteId
+    endpoint_id: EndpointId
     delivery: RouteDeliveryMetrics
     endpoint: EndpointMetrics
     frames_attempted_total: int
@@ -485,8 +509,8 @@ class RouteMetrics:
             cast(_NativeRouteDeliveryMetrics, value)
         )
         return cls(
-            route_id=value.route_id,
-            endpoint_id=value.endpoint_id,
+            route_id=RouteId(value.route_id),
+            endpoint_id=EndpointId(value.endpoint_id),
             delivery=delivery,
             endpoint=EndpointMetrics(
                 observation_stage=EndpointObservationStage(
@@ -513,7 +537,7 @@ class RouteMetrics:
 
 @dataclass(frozen=True, slots=True)
 class SourceMetrics:
-    stem_id: int
+    stem_id: StemId
     callback_buffers_total: int
     capture_frames_enqueued_total: int
     capture_pool_exhausted_total: int
@@ -538,7 +562,7 @@ class SourceMetrics:
     @classmethod
     def _from_native(cls, value: _NativeSessionSourceMetrics) -> SourceMetrics:
         return cls(
-            stem_id=value.stem_id,
+            stem_id=StemId(value.stem_id),
             callback_buffers_total=value.callback_buffers_total,
             capture_frames_enqueued_total=value.capture_frames_enqueued_total,
             capture_pool_exhausted_total=value.capture_pool_exhausted_total,
@@ -576,8 +600,8 @@ class SourceMetrics:
 
 @dataclass(frozen=True, slots=True)
 class ExternalSourceMetrics:
-    source_instance_id: int
-    source_id: int
+    source_instance_id: SourceInstanceId
+    source_id: SourceId
     emitted_total: int
     dropped_total: int
     failure_total: int
@@ -590,7 +614,19 @@ class ExternalSourceMetrics:
 
     @classmethod
     def _from_native(cls, value: _NativeExternalSourceMetrics) -> ExternalSourceMetrics:
-        return cls(**{name: getattr(value, name) for name in cls.__dataclass_fields__})
+        return cls(
+            source_instance_id=SourceInstanceId(value.source_instance_id),
+            source_id=SourceId(value.source_id),
+            emitted_total=value.emitted_total,
+            dropped_total=value.dropped_total,
+            failure_total=value.failure_total,
+            cancellation_total=value.cancellation_total,
+            discontinuity_total=value.discontinuity_total,
+            recovery_total=value.recovery_total,
+            policy_change_total=value.policy_change_total,
+            ready=value.ready,
+            joined=value.joined,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -646,7 +682,7 @@ class OperatorInputMetrics:
 
 @dataclass(frozen=True, slots=True)
 class OperatorMetrics:
-    operator_instance_id: int
+    operator_instance_id: OperatorInstanceId
     input_delivery: RouteDeliveryMetrics
     worker: OperatorWorkerMetrics
     finalization_failures_total: int
@@ -655,7 +691,7 @@ class OperatorMetrics:
     @classmethod
     def _from_native(cls, value: _NativeOperatorMetrics) -> OperatorMetrics:
         return cls(
-            operator_instance_id=value.operator_instance_id,
+            operator_instance_id=OperatorInstanceId(value.operator_instance_id),
             input_delivery=RouteDeliveryMetrics._from_native(value.input_delivery),
             worker=OperatorWorkerMetrics._from_native(value.worker),
             finalization_failures_total=value.finalization_failures_total,
@@ -667,16 +703,16 @@ class OperatorMetrics:
 
 @dataclass(frozen=True, slots=True)
 class DerivedRouteMetrics:
-    route_id: int
-    endpoint_id: int
+    route_id: RouteId
+    endpoint_id: EndpointId
     output: SignalQueueMetrics
     endpoint: EndpointMetrics
 
     @classmethod
     def _from_native(cls, value: _NativeDerivedRouteMetrics) -> DerivedRouteMetrics:
         return cls(
-            route_id=value.route_id,
-            endpoint_id=value.endpoint_id,
+            route_id=RouteId(value.route_id),
+            endpoint_id=EndpointId(value.endpoint_id),
             output=SignalQueueMetrics._from_native(value.output),
             endpoint=EndpointMetrics(
                 observation_stage=EndpointObservationStage(
@@ -694,8 +730,8 @@ class DerivedRouteMetrics:
 
 @dataclass(frozen=True, slots=True)
 class AudioReentryMetrics:
-    operator_instance_id: int
-    stem_id: int
+    operator_instance_id: OperatorInstanceId
+    stem_id: StemId
     queue_capacity_signals: int
     queue_depth_signals: int
     queue_peak_signals: int
@@ -716,7 +752,27 @@ class AudioReentryMetrics:
 
     @classmethod
     def _from_native(cls, value: _NativeAudioReentryMetrics) -> AudioReentryMetrics:
-        return cls(**{name: getattr(value, name) for name in cls.__dataclass_fields__})
+        return cls(
+            operator_instance_id=OperatorInstanceId(value.operator_instance_id),
+            stem_id=StemId(value.stem_id),
+            queue_capacity_signals=value.queue_capacity_signals,
+            queue_depth_signals=value.queue_depth_signals,
+            queue_peak_signals=value.queue_peak_signals,
+            signals_enqueued_total=value.signals_enqueued_total,
+            signals_received_total=value.signals_received_total,
+            signals_dropped_total=value.signals_dropped_total,
+            pool_slots=value.pool_slots,
+            frame_capacity_samples=value.frame_capacity_samples,
+            maximum_buffered_audio_bytes=value.maximum_buffered_audio_bytes,
+            normalized_total=value.normalized_total,
+            invalid_total=value.invalid_total,
+            shared_audio_rejected_total=value.shared_audio_rejected_total,
+            pool_exhausted_total=value.pool_exhausted_total,
+            ingress_rejected_total=value.ingress_rejected_total,
+            audio_frames_enqueued_total=value.audio_frames_enqueued_total,
+            cancellation_total=value.cancellation_total,
+            joined=value.joined,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -879,7 +935,7 @@ class SessionMetrics:
 
 @dataclass(frozen=True, slots=True)
 class RecordingDiscontinuity:
-    stem_id: int
+    stem_id: StemId
     label: str
     kind: RecordingDiscontinuityKind
     timestamp_start_ns: int
@@ -892,7 +948,7 @@ class RecordingDiscontinuity:
         cls, value: _NativeRecordingDiscontinuity
     ) -> RecordingDiscontinuity:
         return cls(
-            stem_id=value.stem_id,
+            stem_id=StemId(value.stem_id),
             label=value.label,
             kind=RecordingDiscontinuityKind(value.kind),
             timestamp_start_ns=value.timestamp_start_ns,
@@ -938,7 +994,7 @@ class RecordingStemOutcome:
 
 @dataclass(frozen=True, slots=True)
 class RecordingOutcome:
-    session_id: int
+    session_id: RuntimeSessionId
     group_id: str
     state: RecordingState
     completed_stems: int
@@ -956,7 +1012,7 @@ class RecordingOutcome:
     @classmethod
     def _from_native(cls, value: _NativeRecordingOutcome) -> RecordingOutcome:
         result = cls(
-            session_id=value.session_id,
+            session_id=RuntimeSessionId(value.session_id),
             group_id=value.group_id,
             state=RecordingState(value.state),
             completed_stems=value.completed_stems,
@@ -980,8 +1036,8 @@ class RecordingOutcome:
 @dataclass(frozen=True, slots=True)
 class RelayPublishOutcome:
     bus_id: str
-    endpoint_id: int
-    route_id: int
+    endpoint_id: EndpointId
+    route_id: RouteId
     frames_received_total: int
     rtp_packets_sent_total: int
     rtp_payload_bytes_sent_total: int
@@ -994,7 +1050,20 @@ class RelayPublishOutcome:
 
     @classmethod
     def _from_native(cls, value: _NativeRelayPublishOutcome) -> RelayPublishOutcome:
-        return cls(**{name: getattr(value, name) for name in cls.__dataclass_fields__})
+        return cls(
+            bus_id=value.bus_id,
+            endpoint_id=EndpointId(value.endpoint_id),
+            route_id=RouteId(value.route_id),
+            frames_received_total=value.frames_received_total,
+            rtp_packets_sent_total=value.rtp_packets_sent_total,
+            rtp_payload_bytes_sent_total=value.rtp_payload_bytes_sent_total,
+            ingress_queue_drops_total=value.ingress_queue_drops_total,
+            publisher_stale_drops_total=value.publisher_stale_drops_total,
+            cancelled_output_frames_total=value.cancelled_output_frames_total,
+            cancelled_output_samples_total=value.cancelled_output_samples_total,
+            failures_total=value.failures_total,
+            error=value.error,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1005,12 +1074,17 @@ class SessionTraceConfiguration:
     capacity_records: int = 256
 
     def __init__(self, path: str | Path, capacity_records: int = 256) -> None:
+        if not str(path).strip():
+            raise ValueError("trace path cannot be empty")
         if (
             isinstance(capacity_records, bool)
             or not isinstance(capacity_records, int)
             or capacity_records <= 0
+            or capacity_records > 1_000_000
         ):
-            raise ValueError("capacity_records must be a positive integer")
+            raise ValueError(
+                "capacity_records must be an integer between 1 and 1000000"
+            )
         object.__setattr__(self, "path", Path(path))
         object.__setattr__(self, "capacity_records", capacity_records)
 
@@ -1042,7 +1116,7 @@ class SessionTraceRecorderOutcome:
 
 @dataclass(frozen=True, slots=True)
 class SessionTraceValidation:
-    session_id: int
+    session_id: RuntimeSessionId
     lifecycle: tuple[SessionLifecycleState, ...]
     terminal_state: SessionTerminalState
     source_failures_total: int
@@ -1054,7 +1128,7 @@ class SessionTraceValidation:
     @classmethod
     def _from_native(cls, value: _NativeTraceValidation) -> SessionTraceValidation:
         return cls(
-            session_id=value.session_id,
+            session_id=RuntimeSessionId(value.session_id),
             lifecycle=tuple(SessionLifecycleState(state) for state in value.lifecycle),
             terminal_state=SessionTerminalState(value.terminal_state),
             source_failures_total=value.source_failures_total,
@@ -1080,8 +1154,8 @@ class SessionTraceRecord:
 
     sequence_index: int
     observed_at_ns: int
-    session_id: int
-    kind: SessionTraceRecordType
+    session_id: RuntimeSessionId
+    type: SessionTraceRecordType
     lifecycle_state: SessionLifecycleState | None
     terminal_state: SessionTerminalState | None
     stem_id: StemId | None
@@ -1100,8 +1174,8 @@ class SessionTraceRecord:
         return cls(
             sequence_index=value.sequence_index,
             observed_at_ns=value.observed_at_ns,
-            session_id=value.session_id,
-            kind=SessionTraceRecordType(value.kind),
+            session_id=RuntimeSessionId(value.session_id),
+            type=SessionTraceRecordType(value.kind),
             lifecycle_state=(
                 None
                 if value.lifecycle_state is None
@@ -1147,11 +1221,13 @@ class SessionTrace:
 
     @classmethod
     def read(cls, path: str | Path) -> SessionTrace:
+        if not str(path).strip():
+            raise ValueError("trace path cannot be empty")
         return cls(_native_call(lambda: _NativeSessionTrace.read(Path(path))))
 
     @property
-    def session_id(self) -> int:
-        return self._native.session_id
+    def session_id(self) -> RuntimeSessionId:
+        return RuntimeSessionId(self._native.session_id)
 
     @property
     def records_total(self) -> int:
@@ -1176,6 +1252,7 @@ class StopResult:
     success: bool
     already_stopped: bool
     disposition: TerminationDisposition
+    session_state: SessionTerminalState
     runtime_worker_panicked: bool
     capture_finalization_failures_total: int
     operator_finalization_failures_total: int
@@ -1188,15 +1265,46 @@ class StopResult:
     trace: SessionTraceRecorderOutcome | None
     trace_error: str | None
     terminal_event: SessionEvent | None
+    metrics: SessionMetrics | None
+    metrics_unavailable_reason: str | None
     relay_outcomes: tuple[RelayPublishOutcome, ...]
     sidecar_outcomes: tuple[SidecarSnapshot, ...]
 
     @classmethod
-    def _from_native(cls, value: _NativeStopResult) -> StopResult:
+    def _from_native(
+        cls,
+        value: _NativeStopResult,
+        *,
+        remaining_events: tuple[SessionEvent, ...] | None = None,
+    ) -> StopResult:
+        if remaining_events is None:
+            remaining_events = tuple(
+                SessionEvent._from_native(event) for event in value.remaining_events()
+            )
+        terminal_event = next(
+            (
+                event
+                for event in reversed(remaining_events)
+                if event.type is SessionEventType.TERMINAL
+            ),
+            None,
+        )
+        metrics = (
+            None
+            if value.metrics is None
+            else SessionMetrics._from_native(value.metrics)
+        )
+        if (metrics is None) == (value.metrics_unavailable_reason is None):
+            raise PocketStationError(
+                "native stop result must contain final metrics or an "
+                "unavailable reason",
+                "session.invalid_stop_result",
+            )
         return cls(
             success=value.success,
             already_stopped=value.already_stopped,
             disposition=TerminationDisposition(value.disposition),
+            session_state=SessionTerminalState(value.session_state),
             runtime_worker_panicked=value.runtime_worker_panicked,
             capture_finalization_failures_total=value.capture_finalization_failures_total,
             operator_finalization_failures_total=value.operator_finalization_failures_total,
@@ -1216,11 +1324,9 @@ class StopResult:
                 else SessionTraceRecorderOutcome._from_native(value.trace)
             ),
             trace_error=value.trace_error,
-            terminal_event=(
-                None
-                if value.terminal_event is None
-                else SessionEvent._from_native(value.terminal_event)
-            ),
+            terminal_event=terminal_event,
+            metrics=metrics,
+            metrics_unavailable_reason=value.metrics_unavailable_reason,
             relay_outcomes=tuple(
                 RelayPublishOutcome._from_native(outcome)
                 for outcome in value.relay_outcomes()
@@ -1236,7 +1342,8 @@ class EventStream:
     """Exclusive bounded view of authoritative native Session events.
 
     Iteration waits in the native worker while the GIL is released. It creates
-    no Python queue, polling thread, or unbounded event buffer.
+    no polling thread or unbounded event buffer. Shutdown retains only the
+    bounded native queue tail returned by Session finalization.
     """
 
     def __init__(
@@ -1248,8 +1355,10 @@ class EventStream:
     ) -> None:
         self._poll_event = poll_event
         self._wait_event = wait_event
-        self._is_closed = is_closed
+        self._producer_is_closed = is_closed
         self._state = _ReaderState()
+        self._finished = False
+        self._pending: deque[SessionEvent] = deque()
 
     @property
     def reader_mode(self) -> str | None:
@@ -1257,20 +1366,24 @@ class EventStream:
 
     @property
     def is_closed(self) -> bool:
-        return self._is_closed()
+        return not self._pending and (self._finished or self._producer_is_closed())
 
     def poll(self) -> SessionEvent | None:
         token = self._state.claim("event_read")
         try:
-            return None if self.is_closed else self._poll_event()
+            return self._read_once(timeout_ms=None)
         finally:
             self._state.release(token)
 
-    def read(self, *, timeout_s: float = 1.0) -> SessionEvent | None:
+    def read(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> SessionEvent | None:
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("event_read")
         try:
-            return None if self.is_closed else self._wait_event(timeout_ms)
+            return self._read_once(timeout_ms=timeout_ms)
         finally:
             self._state.release(token)
 
@@ -1288,13 +1401,27 @@ class EventStream:
             token = self._state.claim("events")
             try:
                 while not self.is_closed:
-                    event = self._wait_event(timeout_ms)
+                    event = self._read_once(timeout_ms=timeout_ms)
                     if event is not None:
                         yield event
             finally:
                 self._state.release(token)
 
         return iterate()
+
+    def _finish(self, events: tuple[SessionEvent, ...]) -> None:
+        """Retain the bounded native event tail and close after it drains."""
+        self._pending.extend(events)
+        self._finished = True
+
+    def _read_once(self, *, timeout_ms: int | None) -> SessionEvent | None:
+        if self._pending:
+            return self._pending.popleft()
+        if self.is_closed:
+            return None
+        if timeout_ms is None:
+            return self._poll_event()
+        return self._wait_event(timeout_ms)
 
 
 __all__ = [

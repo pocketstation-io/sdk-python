@@ -105,6 +105,8 @@ pub(crate) struct PythonStopResult {
     #[pyo3(get)]
     pub(crate) disposition: String,
     #[pyo3(get)]
+    pub(crate) session_state: String,
+    #[pyo3(get)]
     pub(crate) runtime_worker_panicked: bool,
     #[pyo3(get)]
     pub(crate) capture_finalization_failures_total: u64,
@@ -128,6 +130,11 @@ pub(crate) struct PythonStopResult {
     pub(crate) trace_error: Option<String>,
     #[pyo3(get)]
     pub(crate) terminal_event: Option<Py<PythonSessionEvent>>,
+    #[pyo3(get)]
+    pub(crate) metrics: Option<Py<PythonSessionMetrics>>,
+    #[pyo3(get)]
+    pub(crate) metrics_unavailable_reason: Option<String>,
+    pub(crate) remaining_events: Vec<Py<PythonSessionEvent>>,
     pub(crate) relay: Vec<Py<PythonRelayPublishOutcome>>,
     pub(crate) sidecars: Vec<Py<crate::sidecar::PythonSidecarSnapshot>>,
 }
@@ -188,6 +195,13 @@ pub(crate) struct PythonSessionFailure {
 
 #[pymethods]
 impl PythonStopResult {
+    fn remaining_events(&self, py: Python<'_>) -> Vec<Py<PythonSessionEvent>> {
+        self.remaining_events
+            .iter()
+            .map(|event| event.clone_ref(py))
+            .collect()
+    }
+
     fn relay_outcomes(&self, py: Python<'_>) -> Vec<Py<PythonRelayPublishOutcome>> {
         self.relay
             .iter()
@@ -931,7 +945,9 @@ pub(crate) struct OwnedStopResult {
     pub(crate) recording: Option<OwnedRecordingOutcome>,
     pub(crate) trace: Option<pocketstation::SessionTraceRecorderOutcome>,
     pub(crate) trace_error: Option<String>,
-    pub(crate) terminal_event: Option<OwnedSessionEvent>,
+    pub(crate) metrics: Option<OwnedSessionMetrics>,
+    pub(crate) metrics_unavailable_reason: Option<String>,
+    pub(crate) remaining_events: Vec<OwnedSessionEvent>,
     pub(crate) relay: Vec<OwnedRelayPublishOutcome>,
     pub(crate) sidecars: Vec<pocketstation::SessionSidecarMetrics>,
 }
@@ -1122,17 +1138,12 @@ pub(crate) fn request_metrics(
         .map_err(PyRuntimeError::new_err)
 }
 
-pub(crate) fn drain_terminal_event(
-    running: &pocketstation::RunningSession,
-) -> Option<OwnedSessionEvent> {
-    let mut terminal = None;
+pub(crate) fn drain_events(running: &pocketstation::RunningSession) -> Vec<OwnedSessionEvent> {
+    let mut events = Vec::new();
     while let pocketstation::SessionEventReceive::Event(event) = running.try_recv_event() {
-        let projected = owned_session_event(&event);
-        if projected.kind == "terminal" {
-            terminal = Some(projected);
-        }
+        events.push(owned_session_event(&event));
     }
-    terminal
+    events
 }
 
 pub(crate) fn copy_event(
@@ -1376,7 +1387,7 @@ fn owned_session_event(event: &pocketstation::SessionEvent) -> OwnedSessionEvent
             output.lifecycle_state = Some(lifecycle_state_name(*state).to_owned());
         }
         pocketstation::SessionEventKind::Source(failure) => {
-            "source_failure".clone_into(&mut output.kind);
+            "source-failure".clone_into(&mut output.kind);
             output.stem_id = Some(failure.stem_id().get());
             output.failures_total = 1;
             populate_source_runtime_event(&mut output, failure.event());
@@ -1386,7 +1397,7 @@ fn owned_session_event(event: &pocketstation::SessionEvent) -> OwnedSessionEvent
             ));
         }
         pocketstation::SessionEventKind::Endpoint(failure) => {
-            "endpoint_failure".clone_into(&mut output.kind);
+            "endpoint-failure".clone_into(&mut output.kind);
             output.endpoint_id = Some(failure.endpoint_id().get());
             output.route_id = Some(failure.route_id().get());
             output.failures_total = 1;
@@ -1398,7 +1409,7 @@ fn owned_session_event(event: &pocketstation::SessionEvent) -> OwnedSessionEvent
             ));
         }
         pocketstation::SessionEventKind::Rollback(failure) => {
-            "rollback_failure".clone_into(&mut output.kind);
+            "rollback-failure".clone_into(&mut output.kind);
             output.failures_total = 1;
             output.failures.push(owned_control_failure(
                 "rollback",
@@ -1407,7 +1418,7 @@ fn owned_session_event(event: &pocketstation::SessionEvent) -> OwnedSessionEvent
             ));
         }
         pocketstation::SessionEventKind::Finalization(failure) => {
-            "finalization_failure".clone_into(&mut output.kind);
+            "finalization-failure".clone_into(&mut output.kind);
             output.failures_total = 1;
             output.failures.push(owned_control_failure(
                 "finalization",
@@ -1523,7 +1534,7 @@ fn owned_endpoint_failure(
             pocketstation::EndpointFailureRetryability::Never => "never",
             pocketstation::EndpointFailureRetryability::Retryable => "retryable",
             pocketstation::EndpointFailureRetryability::ReconfigurationRequired => {
-                "retry-after-reconfiguration"
+                "reconfiguration-required"
             }
         }
         .to_owned()

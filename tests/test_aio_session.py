@@ -6,6 +6,7 @@ import asyncio
 import threading
 import time
 from array import array
+from types import SimpleNamespace
 
 import pytest
 from pocketstation._api import (
@@ -13,6 +14,7 @@ from pocketstation._api import (
     ConnectorDeliveryOutcome,
     ConnectorManifest,
     SessionLifecycleState,
+    StopResult,
 )
 from pocketstation.aio._api import (
     Connector as AsyncConnector,
@@ -28,6 +30,7 @@ from pocketstation.aio._api import (
     EndpointStartGate,
     PreparedEndpointDriver,
     RunningEndpointDriver,
+    RunningSession,
     Session,
 )
 from pocketstation.errors import AudioInputTimeoutError
@@ -94,6 +97,108 @@ async def test_cancelled_start_requests_the_native_token() -> None:
         await start
 
     assert await asyncio.to_thread(native_cancelled.wait, 1.0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("winning_operation", "later_operation", "expected_disposition"),
+    [
+        ("stop", "cancel", "stopped"),
+        ("cancel", "stop", "cancelled"),
+    ],
+)
+async def test_cancelled_finalization_retains_the_winning_native_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    winning_operation: str,
+    later_operation: str,
+    expected_disposition: str,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    metrics = object()
+    recording = object()
+    terminal_event = SimpleNamespace(
+        kind="terminal",
+        lifecycle_state="stopped",
+        session_id=1,
+        stem_id=None,
+        endpoint_id=None,
+        route_id=None,
+        failures_total=0,
+        terminal_state="stopped",
+        source_event_kind=None,
+        failures=lambda: [],
+    )
+
+    class NativeRunning:
+        lifecycle_state = "running"
+
+        def __init__(self) -> None:
+            self.stop_calls = 0
+            self.cancel_calls = 0
+
+        def _finish(self, disposition: str):
+            entered.set()
+            assert release.wait(1.0)
+            return SimpleNamespace(
+                disposition=disposition,
+                metrics=metrics,
+                recording=recording,
+                remaining_events=lambda: [terminal_event],
+            )
+
+        def stop(self):
+            self.stop_calls += 1
+            return self._finish("stopped")
+
+        def cancel(self):
+            self.cancel_calls += 1
+            return self._finish("cancelled")
+
+    def project_final_outcome(_cls, value, *, remaining_events):
+        return SimpleNamespace(
+            disposition=value.disposition,
+            metrics=value.metrics,
+            recording=value.recording,
+            terminal_event=remaining_events[-1],
+        )
+
+    monkeypatch.setattr(
+        StopResult,
+        "_from_native",
+        classmethod(project_final_outcome),
+    )
+    native = NativeRunning()
+    running = RunningSession(native)  # type: ignore[arg-type]
+    finish_calls: list[tuple[object, ...]] = []
+    finish_events = running.events._finish
+
+    def observe_finish(events):
+        finish_calls.append(events)
+        finish_events(events)
+
+    monkeypatch.setattr(running.events, "_finish", observe_finish)
+    initiating = asyncio.create_task(getattr(running, winning_operation)())
+    assert await asyncio.to_thread(entered.wait, 1.0)
+
+    initiating.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await initiating
+    release.set()
+
+    result = await getattr(running, later_operation)()
+    repeated = await getattr(running, winning_operation)()
+
+    assert result is repeated
+    assert running.stop_result is result
+    assert result.disposition == expected_disposition
+    assert result.metrics is metrics
+    assert result.recording is recording
+    assert native.stop_calls == (1 if winning_operation == "stop" else 0)
+    assert native.cancel_calls == (1 if winning_operation == "cancel" else 0)
+    assert finish_calls == [(result.terminal_event,)]
+    assert await running.events.read() is result.terminal_event
+    assert running.events.is_closed
 
 
 @pytest.mark.asyncio

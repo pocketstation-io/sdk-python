@@ -124,6 +124,8 @@ class RunningSession:
         self, subscription: BusSubscription[_PayloadT]
     ) -> SignalStream[_PayloadT]:
         """Return the one exclusive stream for a declared subscription."""
+        if subscription.session_id != self.session_id:
+            raise ValueError("BusSubscription belongs to a different Session")
         stream = self._signals.get(subscription.id)
         if stream is None:
             native = subscription._native
@@ -233,14 +235,28 @@ class RunningSession:
     def stop(self) -> StopResult:
         """Stop once, finalize endpoints/recording, and cache the outcome."""
         if self._stop_result is None:
-            self._stop_result = StopResult._from_native(_native_call(self._native.stop))
+            native = _native_call(self._native.stop)
+            remaining_events = tuple(
+                SessionEvent._from_native(event) for event in native.remaining_events()
+            )
+            self._events._finish(remaining_events)
+            self._stop_result = StopResult._from_native(
+                native,
+                remaining_events=remaining_events,
+            )
         return self._stop_result
 
     def cancel(self) -> StopResult:
         """Cancel asynchronous work and sidecars, then join and reap once."""
         if self._stop_result is None:
+            native = _native_call(self._native.cancel)
+            remaining_events = tuple(
+                SessionEvent._from_native(event) for event in native.remaining_events()
+            )
+            self._events._finish(remaining_events)
             self._stop_result = StopResult._from_native(
-                _native_call(self._native.cancel)
+                native,
+                remaining_events=remaining_events,
             )
         return self._stop_result
 

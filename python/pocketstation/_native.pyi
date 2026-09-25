@@ -588,6 +588,7 @@ class StopResult:
     success: bool
     already_stopped: bool
     disposition: str
+    session_state: str
     runtime_worker_panicked: bool
     capture_finalization_failures_total: int
     operator_finalization_failures_total: int
@@ -600,6 +601,9 @@ class StopResult:
     trace: SessionTraceRecorderOutcome | None
     trace_error: str | None
     terminal_event: SessionEvent | None
+    metrics: SessionMetrics | None
+    metrics_unavailable_reason: str | None
+    def remaining_events(self) -> list[SessionEvent]: ...
     def relay_outcomes(self) -> list[RelayPublishOutcome]: ...
     def sidecar_outcomes(self) -> list[_SidecarSnapshot]: ...
 

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, TypeVar, cast
 from .._native import (
     AudioBatch,
     _SessionStartCancellation,
+    _SignalRead,
 )
 from .._native import (
     RunningSession as _NativeRunningSession,
@@ -18,6 +19,10 @@ from .._native import (
 from .._native import (
     Session as _NativeSession,
 )
+from .._native import (
+    SessionEvent as _NativeSessionEvent,
+)
+from .._native import StopResult as _NativeStopResult
 from .._native import _RegisteredConnector as _NativeRegisteredConnector
 from .._native import _RegisteredEndpoint as _NativeRegisteredEndpoint
 from ..audio_input import AudioInputConfig, _frame_samples_for_duration
@@ -102,6 +107,7 @@ class RunningSession:
     def __init__(self, native: _NativeRunningSession) -> None:
         self._native = native
         self._stop_result: StopResult | None = None
+        self._finish_task: asyncio.Task[StopResult] | None = None
         self._stop_lock = asyncio.Lock()
         self._audio = AudioStream(
             poll_batch=self._poll_audio_native,
@@ -150,16 +156,28 @@ class RunningSession:
         self, subscription: BusSubscription[_PayloadT]
     ) -> SignalStream[_PayloadT]:
         """Return the one exclusive asyncio stream for a subscription."""
+        if subscription.session_id != self.session_id:
+            raise ValueError("BusSubscription belongs to a different Session")
         stream = self._signals.get(subscription.id)
         if stream is None:
             native = subscription._native
-            stream = SignalStream(
-                poll_signal=lambda: _native_async(
-                    lambda: self._native.poll_signal(native)
-                ),
-                wait_signal=lambda timeout_ms: _native_async(
-                    lambda: self._native.wait_signal(native, timeout_ms)
-                ),
+            signal_stream: SignalStream[object]
+
+            async def poll_signal() -> _SignalRead:
+                return await _native_async(
+                    lambda: self._native.poll_signal(native),
+                    cancelled_result=signal_stream._retain_cancelled_read,
+                )
+
+            async def wait_signal(timeout_ms: int) -> _SignalRead:
+                return await _native_async(
+                    lambda: self._native.wait_signal(native, timeout_ms),
+                    cancelled_result=signal_stream._retain_cancelled_read,
+                )
+
+            signal_stream = SignalStream(
+                poll_signal=poll_signal,
+                wait_signal=wait_signal,
                 close_signal=lambda: _native_async(
                     lambda: self._native.close_signal(native)
                 ),
@@ -167,6 +185,7 @@ class RunningSession:
                     lambda: self._native.signal_metrics(native)
                 ),
             )
+            stream = signal_stream
             self._signals[subscription.id] = stream
         return cast(SignalStream[_PayloadT], stream)
 
@@ -267,19 +286,45 @@ class RunningSession:
 
     async def stop(self) -> StopResult:
         """Stop once, finalize endpoints/recording, and cache the outcome."""
-        async with self._stop_lock:
-            if self._stop_result is None:
-                native = await _native_async(self._native.stop)
-                self._stop_result = StopResult._from_native(native)
-            return self._stop_result
+        return await self._finish_session(self._native.stop)
 
     async def cancel(self) -> StopResult:
         """Cancel asynchronous work and sidecars, then join and reap once."""
+        return await self._finish_session(self._native.cancel)
+
+    async def _finish_session(
+        self,
+        operation: Callable[[], _NativeStopResult],
+    ) -> StopResult:
         async with self._stop_lock:
-            if self._stop_result is None:
-                native = await _native_async(self._native.cancel)
-                self._stop_result = StopResult._from_native(native)
-            return self._stop_result
+            if self._stop_result is not None:
+                return self._stop_result
+            finish_task = self._finish_task
+            if finish_task is None:
+                finish_task = asyncio.create_task(self._run_finalization(operation))
+                self._finish_task = finish_task
+        return await asyncio.shield(finish_task)
+
+    async def _run_finalization(
+        self,
+        operation: Callable[[], _NativeStopResult],
+    ) -> StopResult:
+        try:
+            native = await _native_async(operation)
+            remaining_events = tuple(
+                SessionEvent._from_native(event) for event in native.remaining_events()
+            )
+            result = StopResult._from_native(
+                native,
+                remaining_events=remaining_events,
+            )
+            self._events._finish(remaining_events)
+            self._stop_result = result
+            return result
+        except BaseException:
+            if self._finish_task is asyncio.current_task():
+                self._finish_task = None
+            raise
 
     async def aclose(self) -> None:
         await self.stop()
@@ -302,21 +347,37 @@ class RunningSession:
 
     async def _poll_audio_native(self) -> AudioBatch | None:
         self._require_running()
-        return await _native_async(self._native.poll_audio)
+        return await _native_async(
+            self._native.poll_audio,
+            cancelled_result=self._audio._retain_cancelled_batch,
+        )
 
     async def _wait_audio_native(self, timeout_ms: int) -> AudioBatch | None:
         self._require_running()
-        return await _native_async(lambda: self._native.wait_audio(timeout_ms))
+        return await _native_async(
+            lambda: self._native.wait_audio(timeout_ms),
+            cancelled_result=self._audio._retain_cancelled_batch,
+        )
 
     async def _poll_event_native(self) -> SessionEvent | None:
         self._require_running()
-        event = await _native_async(self._native.poll_event)
+        event = await _native_async(
+            self._native.poll_event,
+            cancelled_result=self._retain_cancelled_native_event,
+        )
         return None if event is None else SessionEvent._from_native(event)
 
     async def _wait_event_native(self, timeout_ms: int) -> SessionEvent | None:
         self._require_running()
-        event = await _native_async(lambda: self._native.wait_event(timeout_ms))
+        event = await _native_async(
+            lambda: self._native.wait_event(timeout_ms),
+            cancelled_result=self._retain_cancelled_native_event,
+        )
         return None if event is None else SessionEvent._from_native(event)
+
+    def _retain_cancelled_native_event(self, event: _NativeSessionEvent | None) -> None:
+        if event is not None:
+            self._events._retain_cancelled_event(SessionEvent._from_native(event))
 
 
 class Session(_GraphSessionDeclarations):
@@ -714,15 +775,22 @@ async def _settle_cancelled_start(
     await asyncio.to_thread(native.stop)
 
 
-async def _native_async(operation: Callable[[], _Result]) -> _Result:
+async def _native_async(
+    operation: Callable[[], _Result],
+    *,
+    cancelled_result: Callable[[_Result], None] | None = None,
+) -> _Result:
     native_task = asyncio.create_task(asyncio.to_thread(operation))
     try:
         return await asyncio.shield(native_task)
     except asyncio.CancelledError:
         try:
-            await native_task
+            result = await native_task
         except Exception:
             pass
+        else:
+            if cancelled_result is not None:
+                cancelled_result(result)
         raise
     except (RuntimeError, ValueError) as error:
         raise _normalize_native_error(error) from error

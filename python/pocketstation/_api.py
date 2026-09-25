@@ -340,6 +340,7 @@ from .sources import (
 )
 from .streams import (
     AudioBatchReadResult,
+    AudioReadResult,
     AudioStream,
     ClockDomainDescriptor,
     SignalStream,
@@ -365,6 +366,7 @@ __all__ = [
     "AudioInputFullError",
     "AudioInputObservations",
     "AudioInputTimeoutError",
+    "AudioReadResult",
     "AudioReentryMetrics",
     "AudioStream",
     "BackpressurePolicy",

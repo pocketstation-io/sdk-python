@@ -27,7 +27,7 @@ use crate::graph::{
     PythonSignalSpec, PythonSourceInstance, PythonSourceOutput, PythonStem,
 };
 use crate::observations::{
-    copy_event, copy_event_until, copy_metrics, drain_terminal_event, owned_recording_outcome,
+    copy_event, copy_event_until, copy_metrics, drain_events, owned_recording_outcome,
     python_recording_outcome, python_session_event, python_session_metrics, OwnedSessionEvent,
     OwnedSessionMetrics, OwnedStopResult, PythonSessionEvent, PythonSessionMetrics,
     PythonStopResult,
@@ -916,54 +916,7 @@ impl PythonRunningSession {
             }
         };
         self.cache_terminal_state(owned.lifecycle_state)?;
-        let recording = owned
-            .recording
-            .map(|recording| python_recording_outcome(py, recording))
-            .transpose()?;
-        let relay = owned
-            .relay
-            .into_iter()
-            .map(|outcome| python_relay_outcome(py, outcome))
-            .collect::<PyResult<Vec<_>>>()?;
-        let sidecars = owned
-            .sidecars
-            .into_iter()
-            .map(|outcome| Py::new(py, PythonSidecarSnapshot::from(outcome)))
-            .collect::<PyResult<Vec<_>>>()?;
-        let trace = owned
-            .trace
-            .map(|outcome| {
-                Py::new(
-                    py,
-                    crate::observations::PythonSessionTraceRecorderOutcome::from(outcome),
-                )
-            })
-            .transpose()?;
-        let terminal_event = owned
-            .terminal_event
-            .map(|event| python_session_event(py, event))
-            .transpose()?
-            .map(|event| Py::new(py, event))
-            .transpose()?;
-        Ok(PythonStopResult {
-            success: owned.success,
-            already_stopped: owned.already_stopped,
-            disposition: owned.disposition,
-            runtime_worker_panicked: owned.runtime_worker_panicked,
-            capture_finalization_failures_total: owned.capture_finalization_failures_total,
-            operator_finalization_failures_total: owned.operator_finalization_failures_total,
-            endpoint_finalization_failures_total: owned.endpoint_finalization_failures_total,
-            runtime_failures_total: owned.runtime_failures_total,
-            lineage_failures_total: owned.lineage_failures_total,
-            source_send_rejections_total: owned.source_send_rejections_total,
-            runtime_events_total: owned.runtime_events_total,
-            recording,
-            trace,
-            trace_error: owned.trace_error,
-            terminal_event,
-            relay,
-            sidecars,
-        })
+        python_stop_result(py, owned)
     }
 
     fn cancel(&self, py: Python<'_>) -> PyResult<PythonStopResult> {
@@ -981,55 +934,74 @@ impl PythonRunningSession {
             }
         };
         self.cache_terminal_state(owned.lifecycle_state)?;
-        let recording = owned
-            .recording
-            .map(|recording| python_recording_outcome(py, recording))
-            .transpose()?;
-        let relay = owned
-            .relay
-            .into_iter()
-            .map(|outcome| python_relay_outcome(py, outcome))
-            .collect::<PyResult<Vec<_>>>()?;
-        let sidecars = owned
-            .sidecars
-            .into_iter()
-            .map(|outcome| Py::new(py, PythonSidecarSnapshot::from(outcome)))
-            .collect::<PyResult<Vec<_>>>()?;
-        let trace = owned
-            .trace
-            .map(|outcome| {
-                Py::new(
-                    py,
-                    crate::observations::PythonSessionTraceRecorderOutcome::from(outcome),
-                )
-            })
-            .transpose()?;
-        let terminal_event = owned
-            .terminal_event
-            .map(|event| python_session_event(py, event))
-            .transpose()?
-            .map(|event| Py::new(py, event))
-            .transpose()?;
-        Ok(PythonStopResult {
-            success: owned.success,
-            already_stopped: owned.already_stopped,
-            disposition: owned.disposition,
-            runtime_worker_panicked: owned.runtime_worker_panicked,
-            capture_finalization_failures_total: owned.capture_finalization_failures_total,
-            operator_finalization_failures_total: owned.operator_finalization_failures_total,
-            endpoint_finalization_failures_total: owned.endpoint_finalization_failures_total,
-            runtime_failures_total: owned.runtime_failures_total,
-            lineage_failures_total: owned.lineage_failures_total,
-            source_send_rejections_total: owned.source_send_rejections_total,
-            runtime_events_total: owned.runtime_events_total,
-            recording,
-            trace,
-            trace_error: owned.trace_error,
-            terminal_event,
-            relay,
-            sidecars,
-        })
+        python_stop_result(py, owned)
     }
+}
+
+fn python_stop_result(py: Python<'_>, owned: OwnedStopResult) -> PyResult<PythonStopResult> {
+    let recording = owned
+        .recording
+        .map(|recording| python_recording_outcome(py, recording))
+        .transpose()?;
+    let relay = owned
+        .relay
+        .into_iter()
+        .map(|outcome| python_relay_outcome(py, outcome))
+        .collect::<PyResult<Vec<_>>>()?;
+    let sidecars = owned
+        .sidecars
+        .into_iter()
+        .map(|outcome| Py::new(py, PythonSidecarSnapshot::from(outcome)))
+        .collect::<PyResult<Vec<_>>>()?;
+    let trace = owned
+        .trace
+        .map(|outcome| {
+            Py::new(
+                py,
+                crate::observations::PythonSessionTraceRecorderOutcome::from(outcome),
+            )
+        })
+        .transpose()?;
+    let metrics = owned
+        .metrics
+        .map(|metrics| python_session_metrics(py, metrics))
+        .transpose()?
+        .map(|metrics| Py::new(py, metrics))
+        .transpose()?;
+    let terminal_event_index = owned
+        .remaining_events
+        .iter()
+        .rposition(|event| event.kind == "terminal");
+    let remaining_events = owned
+        .remaining_events
+        .into_iter()
+        .map(|event| python_session_event(py, event))
+        .map(|event| event.and_then(|event| Py::new(py, event)))
+        .collect::<PyResult<Vec<_>>>()?;
+    let terminal_event = terminal_event_index.map(|index| remaining_events[index].clone_ref(py));
+    Ok(PythonStopResult {
+        success: owned.success,
+        already_stopped: owned.already_stopped,
+        disposition: owned.disposition,
+        session_state: owned.lifecycle_state.to_owned(),
+        runtime_worker_panicked: owned.runtime_worker_panicked,
+        capture_finalization_failures_total: owned.capture_finalization_failures_total,
+        operator_finalization_failures_total: owned.operator_finalization_failures_total,
+        endpoint_finalization_failures_total: owned.endpoint_finalization_failures_total,
+        runtime_failures_total: owned.runtime_failures_total,
+        lineage_failures_total: owned.lineage_failures_total,
+        source_send_rejections_total: owned.source_send_rejections_total,
+        runtime_events_total: owned.runtime_events_total,
+        recording,
+        trace,
+        trace_error: owned.trace_error,
+        terminal_event,
+        metrics,
+        metrics_unavailable_reason: owned.metrics_unavailable_reason,
+        remaining_events,
+        relay,
+        sidecars,
+    })
 }
 
 impl PythonRunningSession {
@@ -1318,6 +1290,11 @@ fn session_worker(
                     stop.disposition(),
                     pocketstation::SessionStopDisposition::AlreadyStopped
                 );
+                let remaining_events = drain_events(&running);
+                let (metrics, metrics_unavailable_reason) = match copy_metrics(&running) {
+                    Ok(metrics) => (Some(metrics), None),
+                    Err(reason) => (None, Some(reason)),
+                };
                 let _ = response.send(OwnedStopResult {
                     lifecycle_state: core_lifecycle_state_name(running.state()),
                     success: stop.is_success(),
@@ -1347,7 +1324,9 @@ fn session_worker(
                         .session_trace_outcome()
                         .and_then(Result::err)
                         .map(ToString::to_string),
-                    terminal_event: drain_terminal_event(&running),
+                    metrics,
+                    metrics_unavailable_reason,
+                    remaining_events,
                     relay: owned_relay_outcomes(relay.as_ref()),
                     sidecars: running.sidecar_metrics().into_vec(),
                 });
@@ -1360,6 +1339,11 @@ fn session_worker(
                     cancel.disposition(),
                     pocketstation::SessionCancelDisposition::AlreadyStopped
                 );
+                let remaining_events = drain_events(&running);
+                let (metrics, metrics_unavailable_reason) = match copy_metrics(&running) {
+                    Ok(metrics) => (Some(metrics), None),
+                    Err(reason) => (None, Some(reason)),
+                };
                 let _ = response.send(OwnedStopResult {
                     lifecycle_state: core_lifecycle_state_name(running.state()),
                     success: cancel.is_success(),
@@ -1389,7 +1373,9 @@ fn session_worker(
                         .session_trace_outcome()
                         .and_then(Result::err)
                         .map(ToString::to_string),
-                    terminal_event: drain_terminal_event(&running),
+                    metrics,
+                    metrics_unavailable_reason,
+                    remaining_events,
                     relay: owned_relay_outcomes(relay.as_ref()),
                     sidecars: running.sidecar_metrics().into_vec(),
                 });

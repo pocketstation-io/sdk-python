@@ -11,6 +11,7 @@ from pocketstation.errors import (
     SessionRuntimeError,
     SessionStartError,
     SourceError,
+    StreamError,
     _normalize_native_error,
 )
 
@@ -26,6 +27,8 @@ from pocketstation.errors import (
         ("[source.invalid_contract] invalid", SourceError),
         ("[operator.registration_failed] duplicate", OperatorError),
         ("[connector.registration_failed] duplicate", ConnectorRuntimeError),
+        ("[stream.fault] subscription failed", StreamError),
+        ("[stream.invalid_read] malformed result", StreamError),
     ],
 )
 def test_native_codes_map_to_stable_failure_families(

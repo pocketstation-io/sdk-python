@@ -37,6 +37,7 @@ _ReaderMode = Literal[
 _MAXIMUM_TIMEOUT_SECONDS = 1.0
 _DEFAULT_ITERATION_TIMEOUT_SECONDS = 0.1
 
+AudioReadResult: TypeAlias = AudioFrame | EndOfStream | None
 AudioBatchReadResult: TypeAlias = AudioBatch | EndOfStream | None
 _PayloadT = TypeVar("_PayloadT")
 
@@ -118,8 +119,12 @@ class AudioStream:
     def is_closed(self) -> bool:
         return self._is_closed()
 
-    def read(self, *, timeout_s: float = 1.0) -> AudioFrame | None:
-        """Read one frame, or return ``None`` when the bounded wait expires."""
+    def read(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> AudioReadResult:
+        """Read one frame, ``None`` on timeout, or ``STREAM_EOF`` at terminal."""
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("read")
         try:
@@ -151,7 +156,11 @@ class AudioStream:
         finally:
             self._state.release(token)
 
-    def read_batch(self, *, timeout_s: float = 1.0) -> AudioBatch | None:
+    def read_batch(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> AudioBatch | None:
         """Advanced bounded batch read using the exclusive batch mode."""
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("batches")
@@ -160,7 +169,11 @@ class AudioStream:
         finally:
             self._state.release(token)
 
-    def read_result(self, *, timeout_s: float = 1.0) -> AudioBatchReadResult:
+    def read_result(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> AudioBatchReadResult:
         """Wait finitely with distinct batch, timeout, and closed outcomes."""
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("batches")
@@ -186,8 +199,10 @@ class AudioStream:
         def iterate() -> Iterator[AudioFrame]:
             token = self._state.claim("frames")
             try:
-                while not self.is_closed:
+                while True:
                     frame = self._read_frame(timeout_ms)
+                    if isinstance(frame, EndOfStream):
+                        break
                     if frame is not None:
                         yield frame
             finally:
@@ -215,17 +230,17 @@ class AudioStream:
 
         return iterate()
 
-    def _read_frame(self, timeout_ms: int) -> AudioFrame | None:
+    def _read_frame(self, timeout_ms: int) -> AudioReadResult:
         if self._pending_frames:
             return self._pending_frames.popleft()
         if self.is_closed:
-            return None
+            return STREAM_EOF
         batch = self._wait_batch(timeout_ms)
         if batch is None:
-            return None
+            return STREAM_EOF if self.is_closed else None
         self._pending_frames.extend(batch)
         if not self._pending_frames:
-            return None
+            return STREAM_EOF if self.is_closed else None
         return self._pending_frames.popleft()
 
 
@@ -268,7 +283,11 @@ class SignalStream(Generic[_PayloadT]):
         finally:
             self._state.release(token)
 
-    def read(self, *, timeout_s: float = 1.0) -> SignalReadResult[_PayloadT]:
+    def read(
+        self,
+        *,
+        timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
+    ) -> SignalReadResult[_PayloadT]:
         """Perform one native bounded wait with explicit timeout and EOF states."""
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("signal_read")
@@ -349,6 +368,7 @@ __all__ = [
     "AudioBatch",
     "AudioBatchReadResult",
     "AudioFrame",
+    "AudioReadResult",
     "AudioStream",
     "ClockDomainDescriptor",
     "SignalStream",

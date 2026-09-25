@@ -4,15 +4,83 @@ from __future__ import annotations
 
 import threading
 from types import SimpleNamespace
+from typing import get_type_hints
 
 import pocketstation._native as _native
 import pytest
 from pocketstation._api import (
+    AudioReentryMetrics,
+    DerivedRouteMetrics,
+    EndpointId,
     EventStream,
+    ExternalSourceMetrics,
+    OperatorInstanceId,
+    OperatorMetrics,
+    RecordingDiscontinuity,
+    RecordingOutcome,
+    RelayPublishOutcome,
+    RouteId,
+    RouteMetrics,
     RunningSession,
+    RuntimeSessionId,
+    SessionEvent,
+    SessionEventType,
+    SessionTrace,
+    SessionTraceRecord,
+    SessionTraceValidation,
+    SourceId,
+    SourceInstanceId,
+    SourceMetrics,
+    StemId,
     StreamInUseError,
     StreamModeError,
 )
+
+
+def test_session_event_types_use_core_wire_values() -> None:
+    assert SessionEventType.LIFECYCLE.value == "lifecycle"
+    assert SessionEventType.SOURCE_FAILURE.value == "source-failure"
+    assert SessionEventType.ENDPOINT_FAILURE.value == "endpoint-failure"
+    assert SessionEventType.ROLLBACK_FAILURE.value == "rollback-failure"
+    assert SessionEventType.FINALIZATION_FAILURE.value == "finalization-failure"
+    assert SessionEventType.TERMINAL.value == "terminal"
+
+
+def test_observation_recording_and_trace_ids_use_domain_types() -> None:
+    expected = {
+        SessionEvent: {
+            "session_id": RuntimeSessionId,
+            "stem_id": StemId | None,
+            "endpoint_id": EndpointId | None,
+            "route_id": RouteId | None,
+        },
+        RouteMetrics: {"route_id": RouteId, "endpoint_id": EndpointId},
+        SourceMetrics: {"stem_id": StemId},
+        ExternalSourceMetrics: {
+            "source_instance_id": SourceInstanceId,
+            "source_id": SourceId,
+        },
+        OperatorMetrics: {"operator_instance_id": OperatorInstanceId},
+        DerivedRouteMetrics: {"route_id": RouteId, "endpoint_id": EndpointId},
+        AudioReentryMetrics: {
+            "operator_instance_id": OperatorInstanceId,
+            "stem_id": StemId,
+        },
+        RecordingDiscontinuity: {"stem_id": StemId},
+        RecordingOutcome: {"session_id": RuntimeSessionId},
+        RelayPublishOutcome: {"endpoint_id": EndpointId, "route_id": RouteId},
+        SessionTraceValidation: {"session_id": RuntimeSessionId},
+        SessionTraceRecord: {"session_id": RuntimeSessionId},
+    }
+
+    for result_type, expected_fields in expected.items():
+        hints = get_type_hints(result_type)
+        for field_name, expected_type in expected_fields.items():
+            assert hints[field_name] == expected_type
+
+    session_id_property = SessionTrace.session_id.fget
+    assert session_id_property is not None
+    assert get_type_hints(session_id_property)["return"] is RuntimeSessionId
 
 
 def _event_stream(events):
@@ -50,6 +118,18 @@ def test_event_read_mode_is_exclusive() -> None:
     assert stream.read() == "started"
     with pytest.raises(StreamModeError):
         next(iter(stream))
+
+
+def test_event_read_default_forwards_exactly_100_milliseconds() -> None:
+    observed: list[int] = []
+    stream = EventStream(
+        poll_event=lambda: None,
+        wait_event=lambda timeout_ms: observed.append(timeout_ms),
+        is_closed=lambda: False,
+    )
+
+    assert stream.read() is None
+    assert observed == [100]
 
 
 def test_concurrent_event_reader_fails_immediately() -> None:
@@ -136,6 +216,6 @@ def test_event_wait_uses_the_canonical_native_session(tmp_path) -> None:
         event = running.events.read(timeout_s=1.0)
         assert event is not None
         assert event.session_id > 0
-        assert event.kind
+        assert event.type
     finally:
         assert running.stop().success
