@@ -250,9 +250,10 @@ fn audio_output_write_error(error: AudioOutputWriteError) -> PyErr {
     };
     let message = error.to_string();
     match error.kind() {
-        AudioOutputWriteErrorKind::WrongInput | AudioOutputWriteErrorKind::InvalidBuffer(_) => {
-            invalid_buffer(message)
+        AudioOutputWriteErrorKind::WrongInput => {
+            PyValueError::new_err(coded_reason(code, message))
         }
+        AudioOutputWriteErrorKind::InvalidBuffer(_) => invalid_buffer(message),
         _ => PyRuntimeError::new_err(coded_reason(code, message)),
     }
 }
