@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from ._validation import require_boolean
+
 
 @dataclass(frozen=True, slots=True)
 class VoiceLimits:
@@ -83,6 +85,12 @@ class InterruptionConfig:
     require_receiver_observation: bool = False
 
     def __post_init__(self) -> None:
+        require_boolean("enabled", self.enabled)
+        require_boolean("cancel_provider_work", self.cancel_provider_work)
+        require_boolean("cancel_pending_output", self.cancel_pending_output)
+        require_boolean(
+            "require_receiver_observation", self.require_receiver_observation
+        )
         if self.trigger not in {"speech-started", "transcript-update"}:
             raise ValueError("trigger must be speech-started or transcript-update")
         if isinstance(self.minimum_speech_ms, bool) or not isinstance(

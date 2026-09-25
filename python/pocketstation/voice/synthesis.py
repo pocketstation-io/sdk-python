@@ -6,6 +6,14 @@ from collections.abc import AsyncIterable, Awaitable
 from dataclasses import dataclass
 from typing import Protocol, TypeAlias, runtime_checkable
 
+from ._validation import (
+    MAX_SAFE_INTEGER,
+    require_boolean,
+    require_integer,
+    require_optional_nonempty,
+    require_optional_nonnegative_integer,
+    require_optional_positive_integer,
+)
 from .capabilities import SynthesisCapabilities
 from .response import ResponseChunk
 from .turns import ConversationTurn
@@ -34,16 +42,21 @@ class SynthesisChunk:
     provider_observations: tuple[object, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.sample_rate_hz <= 0:
-            raise ValueError("sample_rate_hz must be greater than zero")
-        if not 1 <= self.channels <= 32:
-            raise ValueError("channels must be between 1 and 32")
-        if self.sequence < 0:
-            raise ValueError("sequence must not be negative")
-        if self.turn_id is not None and self.turn_id < 1:
-            raise ValueError("turn_id must be greater than zero")
-        if self.timestamp_ns is not None and self.timestamp_ns < 0:
-            raise ValueError("timestamp_ns must not be negative")
+        require_integer(
+            "sample_rate_hz",
+            self.sample_rate_hz,
+            minimum=1,
+            maximum=MAX_SAFE_INTEGER,
+        )
+        require_integer("channels", self.channels, minimum=1, maximum=32)
+        require_integer("sequence", self.sequence, minimum=0, maximum=MAX_SAFE_INTEGER)
+        require_optional_nonempty("response_id", self.response_id)
+        require_optional_positive_integer("turn_id", self.turn_id)
+        require_optional_nonnegative_integer("timestamp_ns", self.timestamp_ns)
+        require_boolean("final", self.final)
+        object.__setattr__(
+            self, "provider_observations", tuple(self.provider_observations)
+        )
 
 
 SynthesisResult: TypeAlias = (

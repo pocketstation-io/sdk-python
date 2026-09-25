@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
 from ..identity import SourceId, StreamId
+from ._validation import (
+    require_boolean,
+    require_inclusive_number,
+    require_nonempty,
+    require_nonnegative_integer,
+    require_positive_integer,
+)
 from .capabilities import SpeechDetectionCapabilities
 
 SpeechActivityKind = Literal[
@@ -31,12 +38,25 @@ class SpeechActivity:
     confidence: float | None = None
 
     def __post_init__(self) -> None:
-        if self.audio_timestamp_ns < 0 or self.detection_timestamp_ns < 0:
-            raise ValueError("speech timestamps must not be negative")
-        if not self.provider_id.strip():
-            raise ValueError("provider_id must not be empty")
-        if self.confidence is not None and not 0 <= self.confidence <= 1:
-            raise ValueError("confidence must be between 0 and 1")
+        if self.kind not in {
+            "speech.started",
+            "speech.updated",
+            "speech.stopped",
+            "speech.cancelled",
+        }:
+            raise ValueError("kind must be a supported speech activity value")
+        require_positive_integer("source_id", self.source_id)
+        require_positive_integer("stream_id", self.stream_id)
+        require_nonnegative_integer("audio_timestamp_ns", self.audio_timestamp_ns)
+        require_nonnegative_integer(
+            "detection_timestamp_ns", self.detection_timestamp_ns
+        )
+        require_nonempty("provider_id", self.provider_id)
+        require_boolean("final", self.final)
+        if self.confidence is not None:
+            require_inclusive_number(
+                "confidence", self.confidence, minimum=0, maximum=1
+            )
 
 
 @runtime_checkable

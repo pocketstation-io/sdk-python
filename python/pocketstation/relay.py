@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from math import isfinite
 from time import monotonic, sleep
 from types import TracebackType
 from typing import TYPE_CHECKING
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import ParseResult, parse_qs, urlparse
 
 from ._native import RelayPublisher as _NativeRelayPublisher
 from .control import (
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from .session import Session
 
 
-class RelayError(PocketStationError):
+class RelayError(PocketStationError, ValueError):
     """A relay declaration, HTTP, activation, or lifecycle failure."""
 
 
@@ -119,24 +120,49 @@ class RelaySession:
         cls,
         *,
         control_plane_url: str,
-        relay_url: str,
+        relay_url: str | None = None,
         request_timeout_seconds: float = 10.0,
         required_buses: tuple[str, ...] = ("application", "microphone"),
         control_client: ControlClient | None = None,
     ) -> RelaySession:
         request_timeout_seconds = _validate_request_timeout(request_timeout_seconds)
-        normalized_relay_url = _normalize_relay_url(relay_url)
+        requested_relay_url = (
+            None if relay_url is None else _normalize_relay_url(relay_url)
+        )
         owns_control = control_client is None
         control = control_client or ControlClient(
             control_plane_url,
             timeout_seconds=request_timeout_seconds,
         )
+        credentials: SessionCredentials | None = None
         try:
             credentials = control.create_session(
                 required_buses=required_buses,
                 timeout_seconds=request_timeout_seconds,
             )
-        except Exception:
+            normalized_relay_url = _resolve_relay_url(
+                credentials,
+                requested_relay_url,
+            )
+        except Exception as error:
+            if credentials is not None:
+                try:
+                    control.delete_session(
+                        credentials.session_id,
+                        credentials.source_token,
+                        timeout_seconds=request_timeout_seconds,
+                    )
+                except Exception as cleanup_error:
+                    if owns_control:
+                        control.close()
+                    raise RelayError(
+                        "relay Session validation failed and remote cleanup "
+                        "also failed",
+                        "relay.cleanup_failed",
+                    ) from ExceptionGroup(
+                        "relay creation and cleanup failures",
+                        [error, cleanup_error],
+                    )
             if owns_control:
                 control.close()
             raise
@@ -220,6 +246,7 @@ class RelaySession:
     def wait_for_publisher_and_invitation(
         self,
         *,
+        bus_id: str = "mix",
         timeout_seconds: float = 10.0,
         poll_interval_seconds: float = 0.1,
     ) -> ReceiverInvitation:
@@ -227,7 +254,7 @@ class RelaySession:
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
         )
-        return self.create_receiver_invitation()
+        return self.create_receiver_invitation(bus_id=bus_id)
 
     def wait_for_receiver(
         self,
@@ -330,12 +357,109 @@ class RelaySession:
 def _normalize_relay_url(value: str) -> str:
     parsed = urlparse(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("relay_url must be an absolute http or https origin")
+        raise RelayError(
+            "relay_url must be an absolute http or https origin",
+            "relay.invalid_url",
+        )
     if parsed.username is not None or parsed.password is not None:
-        raise ValueError("relay_url must not contain credentials")
+        raise RelayError(
+            "relay_url must not contain credentials",
+            "relay.invalid_url",
+        )
     if parsed.path not in {"", "/"}:
-        raise ValueError("relay_url must not include a path")
-    return value.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+        raise RelayError("relay_url must not include a path", "relay.invalid_url")
+    if parsed.params or parsed.query or parsed.fragment:
+        raise RelayError(
+            "relay_url must not include parameters, a query, or a fragment",
+            "relay.invalid_url",
+        )
+    return _parsed_origin(
+        parsed,
+        code="relay.invalid_url",
+        message="relay_url must contain a valid host and port",
+    )
+
+
+def _resolve_relay_url(
+    credentials: SessionCredentials,
+    requested_relay_url: str | None,
+) -> str:
+    if credentials.whip_url is None:
+        if requested_relay_url is not None:
+            return requested_relay_url
+        raise RelayError(
+            "control-plane Session credentials omitted the WHIP endpoint",
+            "relay.missing_relay_url",
+        )
+    authoritative = _media_endpoint_origin(
+        credentials.whip_url,
+        credentials.session_id,
+        "whip",
+    )
+    if credentials.whep_url is not None:
+        receiver_origin = _media_endpoint_origin(
+            credentials.whep_url,
+            credentials.session_id,
+            "whep",
+        )
+        if receiver_origin != authoritative:
+            raise RelayError(
+                "control-plane WHIP and WHEP endpoints use different Relay origins",
+                "relay.response_identity",
+            )
+    if requested_relay_url is not None and requested_relay_url != authoritative:
+        raise RelayError(
+            "configured Relay origin does not match the control-plane Session endpoint",
+            "relay.response_identity",
+        )
+    return authoritative
+
+
+def _media_endpoint_origin(
+    value: str,
+    session_id: SessionId,
+    endpoint: str,
+) -> str:
+    parsed = urlparse(value)
+    expected_path = f"/v1/sessions/{session_id}/{endpoint}"
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != expected_path
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RelayError(
+            f"control-plane {endpoint.upper()} endpoint does not match its Session",
+            "relay.response_identity",
+        )
+    return _parsed_origin(
+        parsed,
+        code="relay.response_identity",
+        message=f"control-plane {endpoint.upper()} endpoint has an invalid origin",
+    )
+
+
+def _parsed_origin(parsed: ParseResult, *, code: str, message: str) -> str:
+    try:
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as error:
+        raise RelayError(message, code) from error
+    if hostname is None:
+        raise RelayError(message, code)
+    try:
+        hostname = hostname.encode("idna").decode("ascii").lower()
+    except UnicodeError as error:
+        raise RelayError(message, code) from error
+    if ":" in hostname:
+        hostname = f"[{hostname}]"
+    default_port = 80 if parsed.scheme == "http" else 443
+    port_suffix = "" if port in {None, default_port} else f":{port}"
+    return f"{parsed.scheme}://{hostname}{port_suffix}"
 
 
 def _validate_request_timeout(value: float) -> float:
@@ -353,8 +477,10 @@ def _validate_wait(timeout_seconds: float, poll_interval_seconds: float) -> None
         ("timeout_seconds", timeout_seconds),
         ("poll_interval_seconds", poll_interval_seconds),
     ):
-        if isinstance(value, bool) or value <= 0:
-            raise ValueError(f"{name} must be positive")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError(f"{name} must be a number")
+        if not isfinite(value) or not 0 < value <= 300:
+            raise ValueError(f"{name} must be greater than 0 and at most 300")
 
 
 def _bounded_request_timeout(

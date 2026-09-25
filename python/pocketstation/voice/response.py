@@ -6,6 +6,13 @@ from collections.abc import AsyncIterable, Awaitable
 from dataclasses import dataclass
 from typing import Protocol, TypeAlias, runtime_checkable
 
+from ._validation import (
+    require_boolean,
+    require_nonempty,
+    require_optional_nonempty,
+    require_optional_nonnegative_integer,
+    require_optional_positive_integer,
+)
 from .capabilities import ResponseCapabilities
 from .transcription import TranscriptUpdate
 from .turns import ConversationContext
@@ -20,10 +27,8 @@ class ToolEvent:
     detail: str = ""
 
     def __post_init__(self) -> None:
-        if not self.name.strip():
-            raise ValueError("tool event name must not be empty")
-        if not self.outcome.strip():
-            raise ValueError("tool event outcome must not be empty")
+        require_nonempty("tool event name", self.name)
+        require_nonempty("tool event outcome", self.outcome)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,16 +51,17 @@ class ResponseChunk:
     provider_timestamp_ns: int | None = None
 
     def __post_init__(self) -> None:
+        require_boolean("final", self.final)
+        object.__setattr__(self, "tool_events", tuple(self.tool_events))
         if not self.text and not self.tool_events and not self.final:
             raise ValueError(
                 "a response chunk must contain text, a tool event, or final"
             )
-        if self.response_id is not None and not self.response_id.strip():
-            raise ValueError("response_id must not be empty")
-        if self.turn_id is not None and self.turn_id < 1:
-            raise ValueError("turn_id must be greater than zero")
-        if self.provider_timestamp_ns is not None and self.provider_timestamp_ns < 0:
-            raise ValueError("provider_timestamp_ns must not be negative")
+        require_optional_nonempty("response_id", self.response_id)
+        require_optional_positive_integer("turn_id", self.turn_id)
+        require_optional_nonnegative_integer(
+            "provider_timestamp_ns", self.provider_timestamp_ns
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,8 +72,8 @@ class ConversationResponse:
     tool_events: tuple[ToolEvent, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.text.strip():
-            raise ValueError("conversation response text must not be empty")
+        require_nonempty("conversation response text", self.text)
+        object.__setattr__(self, "tool_events", tuple(self.tool_events))
 
 
 ConversationResponseChunk = ResponseChunk

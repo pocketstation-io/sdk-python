@@ -58,7 +58,7 @@ class SidecarStream:
         finally:
             self._state.release(token)
 
-    async def read(self, *, timeout_s: float = 1.0) -> SidecarReadResult:
+    async def read(self, *, timeout_s: float = 0.1) -> SidecarReadResult:
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("sidecar_read")
         try:

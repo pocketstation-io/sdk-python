@@ -20,6 +20,7 @@ from ..relay import (
     _bounded_request_timeout,
     _normalize_relay_url,
     _receiver_invitation,
+    _resolve_relay_url,
     _validate_request_timeout,
     _validate_wait,
 )
@@ -56,24 +57,49 @@ class RelaySession:
         cls,
         *,
         control_plane_url: str,
-        relay_url: str,
+        relay_url: str | None = None,
         request_timeout_seconds: float = 10.0,
         required_buses: tuple[str, ...] = ("application", "microphone"),
         control_client: ControlClient | None = None,
     ) -> RelaySession:
         request_timeout_seconds = _validate_request_timeout(request_timeout_seconds)
-        normalized_relay_url = _normalize_relay_url(relay_url)
+        requested_relay_url = (
+            None if relay_url is None else _normalize_relay_url(relay_url)
+        )
         owns_control = control_client is None
         control = control_client or ControlClient(
             control_plane_url,
             timeout_seconds=request_timeout_seconds,
         )
+        credentials: SessionCredentials | None = None
         try:
             credentials = await control.create_session(
                 required_buses=required_buses,
                 timeout_seconds=request_timeout_seconds,
             )
-        except BaseException:
+            normalized_relay_url = _resolve_relay_url(
+                credentials,
+                requested_relay_url,
+            )
+        except BaseException as error:
+            if credentials is not None:
+                try:
+                    await control.delete_session(
+                        credentials.session_id,
+                        credentials.source_token,
+                        timeout_seconds=request_timeout_seconds,
+                    )
+                except BaseException as cleanup_error:
+                    if owns_control:
+                        await control.aclose()
+                    raise RelayError(
+                        "relay Session validation failed and remote cleanup "
+                        "also failed",
+                        "relay.cleanup_failed",
+                    ) from BaseExceptionGroup(
+                        "relay creation and cleanup failures",
+                        [error, cleanup_error],
+                    )
             if owns_control:
                 await control.aclose()
             raise

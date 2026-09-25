@@ -4,13 +4,67 @@ import asyncio
 import sys
 from pathlib import Path
 from time import monotonic
+from types import SimpleNamespace
 
 import pocketstation._api as pks
 import pocketstation.aio as aio
 import pytest
 from pocketstation._native import Session as NativeSession
+from pocketstation.aio.sidecar import SidecarStream as AsyncSidecarStream
 
 CHILD = Path(__file__).with_name("_pkss_child.py")
+
+
+@pytest.mark.parametrize("field", ["ready_s", "processing_s", "shutdown_s"])
+@pytest.mark.parametrize("value", [True, "1.0", None])
+def test_sidecar_deadlines_reject_non_numbers(field: str, value: object) -> None:
+    with pytest.raises(TypeError, match=rf"{field} must be a number"):
+        pks.SidecarDeadlines(**{field: value})
+
+
+@pytest.mark.parametrize("field", ["ready_s", "processing_s", "shutdown_s"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_sidecar_deadlines_reject_non_finite_numbers(field: str, value: float) -> None:
+    with pytest.raises(ValueError, match=rf"{field} must be finite"):
+        pks.SidecarDeadlines(**{field: value})
+
+
+def test_sync_sidecar_direct_read_defaults_to_one_hundred_milliseconds() -> None:
+    waited: list[int] = []
+
+    def wait_message(timeout_ms: int):
+        waited.append(timeout_ms)
+        return SimpleNamespace(status="empty", message=None)
+
+    stream = pks.SidecarStream(
+        poll_message=lambda: SimpleNamespace(status="empty", message=None),
+        wait_message=wait_message,
+        is_session_stopped=lambda: False,
+    )
+
+    assert stream.read() is None
+    assert waited == [100]
+
+
+@pytest.mark.asyncio
+async def test_async_sidecar_direct_read_defaults_to_one_hundred_milliseconds() -> None:
+    waited: list[int] = []
+
+    async def poll_message():
+        return SimpleNamespace(status="empty", message=None)
+
+    async def wait_message(timeout_ms: int):
+        waited.append(timeout_ms)
+        return SimpleNamespace(status="empty", message=None)
+
+    stream = AsyncSidecarStream(
+        poll_message=poll_message,
+        wait_message=wait_message,
+        is_session_stopped=lambda: False,
+    )
+
+    assert await stream.read() is None
+    assert waited == [100]
 
 
 def session_with_product_sources(tmp_path: Path) -> pks.Session:

@@ -40,6 +40,22 @@ def text_manifest(source_type_id: str) -> SourceManifest:
     )
 
 
+@pytest.mark.parametrize("field", ["create_s", "prepare_s", "next_s", "close_s"])
+@pytest.mark.parametrize("value", [True, "1.0", None])
+def test_async_source_deadlines_reject_non_numbers(field: str, value: object) -> None:
+    with pytest.raises(TypeError, match=rf"{field} must be a number"):
+        pks_aio.SourceDeadlines(**{field: value})
+
+
+@pytest.mark.parametrize("field", ["create_s", "prepare_s", "next_s", "close_s"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_async_source_deadlines_reject_non_finite_numbers(
+    field: str, value: float
+) -> None:
+    with pytest.raises(ValueError, match=rf"{field} must be greater"):
+        pks_aio.SourceDeadlines(**{field: value})
+
+
 def test_iterable_source_runs_in_core_and_receives_session_lineage() -> None:
     signal = SignalSpec.text(TextFormat.UTF8, role="transcript")
 
