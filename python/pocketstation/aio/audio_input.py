@@ -13,7 +13,7 @@ from ..audio_input import (
 from ..audio_input import (
     PcmSource as SyncPcmSource,
 )
-from ..errors import AudioInputFullError
+from ..errors import AudioInputFullError, AudioInputTimeoutError
 from ..graph import SourceOutput
 
 
@@ -97,10 +97,10 @@ class AudioInput(PcmSource):
                     generation=generation,
                 )
                 return
-            except AudioInputFullError:
+            except AudioInputFullError as error:
                 remaining = deadline - monotonic()
                 if remaining <= 0:
-                    raise
+                    raise AudioInputTimeoutError(float(timeout_s)) from error
                 await asyncio.sleep(min(wait_s, remaining))
                 wait_s = min(wait_s * 2, 0.005)
 

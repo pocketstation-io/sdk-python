@@ -9,7 +9,13 @@ from time import monotonic, sleep
 from ._native import _AudioInput as _NativeAudioInput
 from ._native import _AudioInputObservations as _NativeAudioInputObservations
 from ._native import _OutputGeneration as _NativeOutputGeneration
-from .errors import AudioInputBufferError, AudioInputFullError, _native_call
+from .errors import (
+    AudioInputBufferError,
+    AudioInputConfigurationError,
+    AudioInputFullError,
+    AudioInputTimeoutError,
+    _native_call,
+)
 from .graph import Endpoint, SourceOutput
 from .identity import SourceId, StreamId
 
@@ -35,7 +41,10 @@ class AudioInputConfig:
 
     def __post_init__(self) -> None:
         if not self.name.strip():
-            raise ValueError("name must not be empty")
+            raise AudioInputConfigurationError(
+                "name must not be empty",
+                "audio_input.invalid_configuration",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,9 +95,9 @@ class OutputGeneration:
     def active(self) -> bool:
         return self._native.active
 
-    def cancel(self) -> None:
-        """Cancel pending PCM without stopping capture or the Session."""
-        _native_call(self._native.cancel)
+    def cancel(self) -> bool:
+        """Cancel pending PCM and report whether this call deactivated it."""
+        return _native_call(self._native.cancel)
 
 
 class PcmSource:
@@ -205,10 +214,10 @@ def _write_with_timeout(
                 generation=generation,
             )
             return
-        except AudioInputFullError:
+        except AudioInputFullError as error:
             remaining = deadline - monotonic()
             if remaining <= 0:
-                raise
+                raise AudioInputTimeoutError(float(timeout_s)) from error
             sleep(min(wait_s, remaining))
             wait_s = min(wait_s * 2, 0.005)
 

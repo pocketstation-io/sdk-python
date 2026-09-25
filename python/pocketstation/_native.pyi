@@ -1048,7 +1048,7 @@ class _AudioInputObservations:
 class _OutputGeneration:
     id: int
     active: bool
-    def cancel(self) -> None: ...
+    def cancel(self) -> bool: ...
 
 class _AudioInput:
     source_id: SourceId

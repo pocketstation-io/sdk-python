@@ -11,6 +11,7 @@ from pocketstation._api import (
     AudioInputClosedError,
     AudioInputConfig,
     AudioInputFullError,
+    AudioInputTimeoutError,
     CaptureCapabilityState,
     CaptureError,
     CaptureOpenOutcome,
@@ -405,10 +406,10 @@ def test_audio_input_write_waits_finitely_without_hiding_nonblocking_try_write()
     samples = array("f", [0.0, 0.0, 0.0, 0.0])
     audio.try_write(samples)
 
-    with pytest.raises(AudioInputFullError) as full:
+    with pytest.raises(AudioInputTimeoutError) as full:
         audio.write(samples, timeout_s=0.005)
 
-    assert full.value.code == "audio_input.full"
+    assert full.value.code == "audio_input.timeout"
     assert audio.observations().full_total > 0
 
 
