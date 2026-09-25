@@ -18,8 +18,16 @@ from ._native import discover_sources as _native_discover_sources
 from ._native import (
     microphone_permission_observation as _native_microphone_permission_observation,
 )
-from .errors import PocketStationError, _native_call
+from .errors import (
+    CaptureError,
+    PocketStationError,
+    SessionDeclarationError,
+    _native_call,
+)
 from .identity import SourceId
+
+_MAX_PROCESS_ID = (1 << 32) - 1
+_MAX_UNSIGNED_64 = (1 << 64) - 1
 
 
 class Platform(StrEnum):
@@ -186,8 +194,9 @@ class CapturePermissionLifecycle:
     """
 
     def __init__(self, current: PermissionObservation) -> None:
+        current_value = _permission_observation_value(current)
         self._native = _native_call(
-            lambda: _NativeCapturePermissionLifecycle(current.value)
+            lambda: _NativeCapturePermissionLifecycle(current_value)
         )
 
     @property
@@ -201,7 +210,8 @@ class CapturePermissionLifecycle:
     def observe(
         self, current: PermissionObservation
     ) -> CapturePermissionTransition | None:
-        transition = _native_call(lambda: self._native.observe(current.value))
+        current_value = _permission_observation_value(current)
+        transition = _native_call(lambda: self._native.observe(current_value))
         return (
             None
             if transition is None
@@ -305,6 +315,10 @@ class DiscoveredSource:
         permission_epoch: int = 1,
     ) -> CaptureAuthorizationSnapshot:
         """Create truthful pre-open evidence without inferring backend success."""
+        os_permission_value = _permission_observation_value(os_permission)
+        application_policy_value = _application_policy_value(application_policy)
+        session_grant_value = _session_grant_value(session_grant)
+        permission_epoch_value = _permission_epoch_value(permission_epoch)
         native = self._native
         if native is None:
             raise ValueError(
@@ -312,10 +326,10 @@ class DiscoveredSource:
             )
         snapshot = _native_call(
             lambda: native.authorization_before_open(
-                os_permission.value,
-                application_policy.value,
-                session_grant.value,
-                permission_epoch,
+                os_permission_value,
+                application_policy_value,
+                session_grant_value,
+                permission_epoch_value,
             )
         )
         return CaptureAuthorizationSnapshot._from_native(snapshot)
@@ -338,6 +352,11 @@ class SourceQuery:
 
     @classmethod
     def kind(cls, kind: SourceKind) -> SourceQuery:
+        if not isinstance(kind, SourceKind):
+            raise SessionDeclarationError(
+                "source query requires a SourceKind value",
+                "session.invalid_selector",
+            )
         return cls("kind", kind.value)
 
     @classmethod
@@ -370,34 +389,41 @@ class Source:
     @classmethod
     def application(cls, name: str) -> Source:
         """Select one application by its display name."""
-        native = _native_call(lambda: _NativeSource.application(name))
+        selected_name = _require_nonempty("application name", name)
+        native = _native_call(lambda: _NativeSource.application(selected_name))
         return cls(
             native,
             SourceKind.APPLICATION,
             SourceSelectorKind.APPLICATION_NAME,
-            name,
+            selected_name,
         )
 
     @classmethod
     def application_bundle_id(cls, bundle_id: str) -> Source:
         """Select one application by an OS bundle/application identifier."""
-        native = _native_call(lambda: _NativeSource.application_bundle_id(bundle_id))
+        selected_bundle_id = _require_nonempty("application bundle ID", bundle_id)
+        native = _native_call(
+            lambda: _NativeSource.application_bundle_id(selected_bundle_id)
+        )
         return cls(
             native,
             SourceKind.APPLICATION,
             SourceSelectorKind.APPLICATION_BUNDLE_ID,
-            bundle_id,
+            selected_bundle_id,
         )
 
     @classmethod
     def application_process_id(cls, process_id: int) -> Source:
         """Select the current process instance with the given process ID."""
-        native = _native_call(lambda: _NativeSource.application_process_id(process_id))
+        selected_process_id = _process_id_value(process_id)
+        native = _native_call(
+            lambda: _NativeSource.application_process_id(selected_process_id)
+        )
         return cls(
             native,
             SourceKind.APPLICATION,
             SourceSelectorKind.APPLICATION_PROCESS_ID,
-            process_id,
+            selected_process_id,
         )
 
     @classmethod
@@ -408,13 +434,16 @@ class Source:
     ) -> Source:
         """Select one application by its PocketStation stable source key."""
         platform_value = _platform_value(platform)
+        selected_stable_key = _require_nonempty("application stable ID", stable_key)
         native = _native_call(
-            lambda: _NativeSource.application_stable_id(platform_value, stable_key)
+            lambda: _NativeSource.application_stable_id(
+                platform_value, selected_stable_key
+            )
         )
         stable_id = StableSourceId(
             platform=Platform(platform_value),
             kind=SourceKind.APPLICATION,
-            stable_key=stable_key,
+            stable_key=selected_stable_key,
             source_id=None,
         )
         return cls(
@@ -432,25 +461,27 @@ class Source:
         stable_key: str,
     ) -> Source:
         """Select an exact process instance and stable application identity."""
+        selected_process_id = _process_id_value(process_id)
         platform_value = _platform_value(platform)
+        selected_stable_key = _require_nonempty("application stable ID", stable_key)
         native = _native_call(
             lambda: _NativeSource.application_process_instance(
-                process_id,
+                selected_process_id,
                 platform_value,
-                stable_key,
+                selected_stable_key,
             )
         )
         stable_id = StableSourceId(
             platform=Platform(platform_value),
             kind=SourceKind.APPLICATION,
-            stable_key=stable_key,
+            stable_key=selected_stable_key,
             source_id=None,
         )
         return cls(
             native,
             SourceKind.APPLICATION,
             SourceSelectorKind.APPLICATION_PROCESS_INSTANCE,
-            ProcessInstanceSelector(process_id, stable_id),
+            ProcessInstanceSelector(selected_process_id, stable_id),
         )
 
     @classmethod
@@ -476,12 +507,13 @@ class Source:
     @classmethod
     def microphone_id(cls, device_id: str) -> Source:
         """Select a microphone by its native stable device identifier."""
-        native = _native_call(lambda: _NativeSource.microphone_id(device_id))
+        selected_device_id = _require_nonempty("microphone device ID", device_id)
+        native = _native_call(lambda: _NativeSource.microphone_id(selected_device_id))
         return cls(
             native,
             SourceKind.INPUT_DEVICE,
             SourceSelectorKind.MICROPHONE_ID,
-            device_id,
+            selected_device_id,
         )
 
     @classmethod
@@ -490,7 +522,7 @@ class Source:
 
         Output devices remain discovery-only.
         """
-        stable_id = source.stable_id
+        stable_id = _discovered_source_identity(source)
         if stable_id.kind is SourceKind.APPLICATION:
             if source.process_id is not None:
                 return cls.application_process_instance(
@@ -521,14 +553,27 @@ class Source:
 
 def _capture_application(application: str | int) -> Source:
     """Resolve the concise capture façade's name-or-process selector."""
+    if isinstance(application, bool):
+        raise SessionDeclarationError(
+            "application selector must be a name or process ID",
+            "session.invalid_selector",
+        )
     if isinstance(application, int):
         return Source.application_process_id(application)
+    if not isinstance(application, str):
+        raise SessionDeclarationError(
+            "application selector must be a name or process ID",
+            "session.invalid_selector",
+        )
     if application.isascii() and application.isdecimal():
         return Source.application_process_id(int(application))
     if application.startswith("app:"):
         process_id = application.removeprefix("app:")
         if not process_id.isascii() or not process_id.isdecimal():
-            raise ValueError("app: application selector must contain a process ID")
+            raise SessionDeclarationError(
+                "app: application selector must contain a process ID",
+                "session.invalid_selector",
+            )
         return Source.application_process_id(int(process_id))
     if application.startswith("bundle:"):
         return Source.application_bundle_id(application.removeprefix("bundle:"))
@@ -589,9 +634,8 @@ class SourceRuntimeEvent:
 def discover_sources(query: SourceQuery | None = None) -> tuple[DiscoveredSource, ...]:
     """Return one immutable native discovery snapshot for ``query``."""
     selected = SourceQuery.any() if query is None else query
-    native_sources = _native_call(
-        lambda: _native_discover_sources(selected._query_kind, selected._value)
-    )
+    query_kind, value = _source_query_values(selected)
+    native_sources = _native_call(lambda: _native_discover_sources(query_kind, value))
     return tuple(DiscoveredSource._from_native(source) for source in native_sources)
 
 
@@ -611,14 +655,138 @@ def microphone_permission_observation() -> PermissionObservation:
     return PermissionObservation(observation)
 
 
-def _require_nonempty(label: str, value: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{label} must not be empty")
+def _require_nonempty(label: str, value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SessionDeclarationError(
+            f"{label} must not be empty",
+            "session.invalid_selector",
+        )
     return value
 
 
+def _source_query_values(query: object) -> tuple[str, str | None]:
+    if not isinstance(query, SourceQuery):
+        raise SessionDeclarationError(
+            "query must be a PocketStation SourceQuery",
+            "session.invalid_selector",
+        )
+    query_kind = query._query_kind
+    value = query._value
+    if query_kind in {"any", "playing"}:
+        if value is None:
+            return query_kind, None
+    elif query_kind in {"application", "stable-key"}:
+        return query_kind, _require_nonempty("source query value", value)
+    elif query_kind == "kind" and isinstance(value, str):
+        try:
+            return query_kind, SourceKind(value).value
+        except ValueError:
+            pass
+    raise SessionDeclarationError(
+        "source query is not recognized",
+        "session.invalid_selector",
+    )
+
+
+def _discovered_source_identity(source: object) -> StableSourceId:
+    if not isinstance(source, DiscoveredSource):
+        raise SessionDeclarationError(
+            "source must be a PocketStation DiscoveredSource",
+            "session.invalid_selector",
+        )
+    stable_id = source.stable_id
+    if (
+        not isinstance(stable_id, StableSourceId)
+        or not isinstance(stable_id.platform, Platform)
+        or not isinstance(stable_id.kind, SourceKind)
+    ):
+        raise SessionDeclarationError(
+            "discovered source identity is invalid",
+            "session.invalid_selector",
+        )
+    _require_nonempty("discovered source stable key", stable_id.stable_key)
+    source_id = stable_id.source_id
+    if source_id is not None and (
+        isinstance(source_id, bool)
+        or not isinstance(source_id, int)
+        or not 1 <= source_id <= _MAX_UNSIGNED_64
+    ):
+        raise SessionDeclarationError(
+            "discovered source ID must be an integer from 1 through "
+            f"{_MAX_UNSIGNED_64}",
+            "session.invalid_selector",
+        )
+    return stable_id
+
+
 def _platform_value(platform: Platform | str) -> str:
-    return platform.value if isinstance(platform, Platform) else platform
+    if isinstance(platform, Platform):
+        return platform.value
+    if isinstance(platform, str):
+        return platform
+    raise SessionDeclarationError(
+        "platform must be a Platform value or platform name",
+        "session.invalid_selector",
+    )
+
+
+def _process_id_value(process_id: object) -> int:
+    if (
+        isinstance(process_id, bool)
+        or not isinstance(process_id, int)
+        or not 1 <= process_id <= _MAX_PROCESS_ID
+    ):
+        raise SessionDeclarationError(
+            "application process ID must be an integer from 1 through "
+            f"{_MAX_PROCESS_ID}",
+            "session.invalid_selector",
+        )
+    return process_id
+
+
+def _permission_observation_value(observation: object) -> str:
+    if not isinstance(observation, PermissionObservation):
+        raise CaptureError(
+            "permission observation must be a PermissionObservation value",
+            "capture.invalid_permission_observation",
+        )
+    return observation.value
+
+
+def _application_policy_value(observation: object) -> str:
+    if not isinstance(observation, ApplicationPolicyObservation):
+        raise CaptureError(
+            "application policy must be an ApplicationPolicyObservation value",
+            "capture.invalid_application_policy",
+        )
+    return observation.value
+
+
+def _session_grant_value(grant: object) -> str:
+    if not isinstance(grant, CaptureSessionGrant):
+        raise CaptureError(
+            "Session grant must be a CaptureSessionGrant value",
+            "capture.invalid_session_grant",
+        )
+    return grant.value
+
+
+def _permission_epoch_value(permission_epoch: object) -> int:
+    if (
+        isinstance(permission_epoch, bool)
+        or not isinstance(permission_epoch, int)
+        or not 0 <= permission_epoch <= _MAX_UNSIGNED_64
+    ):
+        raise CaptureError(
+            f"permission epoch must be an integer from 0 through {_MAX_UNSIGNED_64}",
+            "capture.invalid_integer",
+        )
+    if permission_epoch == 0:
+        raise CaptureError(
+            "permission epoch must be greater than zero",
+            "capture.invalid_permission_epoch",
+        )
+    return permission_epoch
 
 
 __all__ = [

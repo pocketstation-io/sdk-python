@@ -12,6 +12,7 @@ from pocketstation._api import (
     AudioInputConfig,
     AudioInputFullError,
     CaptureCapabilityState,
+    CaptureError,
     CaptureOpenOutcome,
     CaptureScopeKind,
     CaptureSessionGrant,
@@ -22,12 +23,15 @@ from pocketstation._api import (
     ProcessTreeScope,
     SelectorPersistenceScope,
     Session,
+    SessionDeclarationError,
     Source,
     SourceIdentityStrength,
     SourceKind,
+    SourceQuery,
     SourceSelectorKind,
     SourceState,
     StableSourceId,
+    discover_sources,
 )
 
 
@@ -71,11 +75,179 @@ def test_source_declarations_are_immutable_and_descriptive() -> None:
         application.selector_value = "changed"
 
 
+def test_invalid_source_selectors_keep_typed_failure_code() -> None:
+    declarations = (
+        lambda: Source.application(" "),
+        lambda: Source.application(None),  # type: ignore[arg-type]
+        lambda: Source.application_bundle_id(" "),
+        lambda: Source.application_process_id(0),
+        lambda: Source.application_process_id(-1),
+        lambda: Source.application_process_id(1 << 32),
+        lambda: Source.application_process_id(True),
+        lambda: Source.application_process_id("1"),  # type: ignore[arg-type]
+        lambda: Source.application_process_id(1.0),  # type: ignore[arg-type]
+        lambda: Source.application_stable_id(Platform.MACOS, " "),
+        lambda: Source.application_process_instance(0, Platform.MACOS, "app"),
+        lambda: Source.application_process_instance(1 << 32, Platform.MACOS, "app"),
+        lambda: Source.application_process_instance(1, Platform.MACOS, " "),
+        lambda: Source.microphone_id(" "),
+        lambda: SourceQuery.application(" "),
+        lambda: SourceQuery.application(None),  # type: ignore[arg-type]
+        lambda: SourceQuery.kind("application"),  # type: ignore[arg-type]
+        lambda: SourceQuery.stable_key(" "),
+    )
+
+    for declare_source in declarations:
+        with pytest.raises(SessionDeclarationError) as failure:
+            declare_source()
+        assert failure.value.code == "session.invalid_selector"
+
+
+def test_discovery_rejects_forged_or_untyped_queries_before_native_work() -> None:
+    invalid_queries = (
+        object(),
+        {"type": "all"},
+        SourceQuery("any", "unexpected"),
+        SourceQuery("playing", "unexpected"),
+        SourceQuery("application", None),
+        SourceQuery("stable-key", " "),
+        SourceQuery("kind", "camera"),
+        SourceQuery("camera", None),
+    )
+
+    for query in invalid_queries:
+        with pytest.raises(SessionDeclarationError) as failure:
+            discover_sources(query)  # type: ignore[arg-type]
+        assert failure.value.code == "session.invalid_selector"
+
+
+def test_process_identifier_boundaries_preserve_exact_selector_identity() -> None:
+    for process_id in (1, (1 << 32) - 1):
+        selected = Source.application_process_id(process_id)
+        assert selected.selector_kind is SourceSelectorKind.APPLICATION_PROCESS_ID
+        assert selected.selector_value == process_id
+
+
+def test_authorization_rejects_invalid_values_before_native_access() -> None:
+    discovered = _discovered(SourceKind.APPLICATION)
+    invalid_values = (
+        (
+            {"os_permission": "allowed"},
+            "capture.invalid_permission_observation",
+        ),
+        (
+            {"application_policy": "allowed"},
+            "capture.invalid_application_policy",
+        ),
+        (
+            {"session_grant": "granted-by-explicit-selection"},
+            "capture.invalid_session_grant",
+        ),
+        ({"permission_epoch": 0}, "capture.invalid_permission_epoch"),
+        ({"permission_epoch": -1}, "capture.invalid_integer"),
+        ({"permission_epoch": 1 << 64}, "capture.invalid_integer"),
+        ({"permission_epoch": True}, "capture.invalid_integer"),
+        ({"permission_epoch": 1.0}, "capture.invalid_integer"),
+    )
+
+    for arguments, code in invalid_values:
+        with pytest.raises(CaptureError) as failure:
+            discovered.authorization_before_open(**arguments)  # type: ignore[arg-type]
+        assert failure.value.code == code
+
+
+def test_authorization_defaults_and_unsigned_boundaries_reach_native_exactly() -> None:
+    calls: list[tuple[str, str, str, int]] = []
+
+    def authorize(
+        os_permission: str,
+        application_policy: str,
+        session_grant: str,
+        permission_epoch: int,
+    ) -> SimpleNamespace:
+        calls.append(
+            (
+                os_permission,
+                application_policy,
+                session_grant,
+                permission_epoch,
+            )
+        )
+        return SimpleNamespace(
+            capability="available",
+            os_permission=os_permission,
+            application_policy=application_policy,
+            session_grant=session_grant,
+            capture_scope="exact-application",
+            scope_stable_id="fixture:application",
+            identity_strength="platform-stable-id",
+            permission_epoch=permission_epoch,
+            observed_at_ns=10,
+            open_outcome="not-attempted",
+        )
+
+    discovered = replace(
+        _discovered(SourceKind.APPLICATION),
+        _native=SimpleNamespace(authorization_before_open=authorize),
+    )
+
+    default_snapshot = discovered.authorization_before_open()
+    maximum_snapshot = discovered.authorization_before_open(
+        permission_epoch=(1 << 64) - 1
+    )
+
+    assert default_snapshot.permission_epoch == 1
+    assert default_snapshot.observed_at_ns == 10
+    assert maximum_snapshot.permission_epoch == (1 << 64) - 1
+    assert calls == [
+        ("not-observable", "not-observable", "not-evaluated", 1),
+        ("not-observable", "not-observable", "not-evaluated", (1 << 64) - 1),
+    ]
+
+
 def test_discovered_application_uses_exact_process_and_stable_identity() -> None:
     selected = Source.from_discovered(_discovered(SourceKind.APPLICATION))
 
     assert selected.selector_kind is SourceSelectorKind.APPLICATION_PROCESS_INSTANCE
     assert selected.kind is SourceKind.APPLICATION
+
+
+def test_from_discovered_rejects_untyped_or_malformed_identity() -> None:
+    discovered = _discovered(SourceKind.APPLICATION)
+    invalid_sources = (
+        None,
+        object(),
+        replace(discovered, stable_id=None),  # type: ignore[arg-type]
+        replace(
+            discovered,
+            stable_id=replace(discovered.stable_id, platform="macos"),  # type: ignore[arg-type]
+        ),
+        replace(
+            discovered,
+            stable_id=replace(discovered.stable_id, kind="camera"),  # type: ignore[arg-type]
+        ),
+        replace(
+            discovered,
+            stable_id=replace(discovered.stable_id, stable_key=" "),
+        ),
+        replace(
+            discovered,
+            stable_id=replace(discovered.stable_id, source_id=True),
+        ),
+        replace(
+            discovered,
+            stable_id=replace(discovered.stable_id, source_id=0),
+        ),
+        replace(
+            discovered,
+            stable_id=replace(discovered.stable_id, source_id=1 << 64),
+        ),
+    )
+
+    for source in invalid_sources:
+        with pytest.raises(SessionDeclarationError) as failure:
+            Source.from_discovered(source)  # type: ignore[arg-type]
+        assert failure.value.code == "session.invalid_selector"
 
 
 def test_no_pid_application_retains_discovery_identity_as_selector_metadata() -> None:
