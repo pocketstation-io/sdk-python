@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ._validation import (
+    MAX_SAFE_INTEGER,
+    require_boolean,
+    require_finite_number,
+    require_integer,
+)
 from .configuration import InterruptionTrigger
 
 
@@ -20,6 +26,14 @@ class TranscriptionCapabilities:
     maximum_session_duration_s: float | None = None
 
     def __post_init__(self) -> None:
+        require_boolean("streaming", self.streaming)
+        require_boolean("transcript_revisions", self.transcript_revisions)
+        require_boolean("stable_prefix", self.stable_prefix)
+        require_boolean("provider_timestamps", self.provider_timestamps)
+        object.__setattr__(
+            self, "supported_sample_rates_hz", tuple(self.supported_sample_rates_hz)
+        )
+        object.__setattr__(self, "input_formats", tuple(self.input_formats))
         _sample_rates(self.supported_sample_rates_hz)
         _duration(self.maximum_session_duration_s)
 
@@ -37,6 +51,12 @@ class ResponseCapabilities:
     maximum_context_characters: int | None = None
 
     def __post_init__(self) -> None:
+        require_boolean("streaming", self.streaming)
+        require_boolean("speculative_requests", self.speculative_requests)
+        require_boolean("cancellation", self.cancellation)
+        require_boolean("tools", self.tools)
+        require_boolean("usage_reporting", self.usage_reporting)
+        require_boolean("provider_history_truncation", self.provider_history_truncation)
         _optional_positive(
             "maximum_context_characters", self.maximum_context_characters
         )
@@ -53,6 +73,13 @@ class SynthesisCapabilities:
     usage_reporting: bool = False
 
     def __post_init__(self) -> None:
+        require_boolean("streaming", self.streaming)
+        require_boolean("cancellation", self.cancellation)
+        require_boolean("usage_reporting", self.usage_reporting)
+        object.__setattr__(self, "output_formats", tuple(self.output_formats))
+        object.__setattr__(
+            self, "supported_sample_rates_hz", tuple(self.supported_sample_rates_hz)
+        )
         _sample_rates(self.supported_sample_rates_hz)
 
 
@@ -67,6 +94,13 @@ class SpeechDetectionCapabilities:
     supported_sample_rates_hz: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
+        require_boolean("streaming", self.streaming)
+        require_boolean("provisional_events", self.provisional_events)
+        require_boolean("confidence", self.confidence)
+        require_boolean("provider_timestamps", self.provider_timestamps)
+        object.__setattr__(
+            self, "supported_sample_rates_hz", tuple(self.supported_sample_rates_hz)
+        )
         _sample_rates(self.supported_sample_rates_hz)
 
 
@@ -91,6 +125,27 @@ class DuplexVoiceCapabilities:
     maximum_session_duration_s: float | None = None
 
     def __post_init__(self) -> None:
+        for name, value in (
+            ("transcript_revisions", self.transcript_revisions),
+            ("stable_prefix", self.stable_prefix),
+            ("provider_speech_detection", self.provider_speech_detection),
+            ("interruption", self.interruption),
+            ("response_cancellation", self.response_cancellation),
+            ("provider_history_truncation", self.provider_history_truncation),
+            ("receiver_playout_clear", self.receiver_playout_clear),
+            ("playout_acknowledgement", self.playout_acknowledgement),
+            ("tools", self.tools),
+            ("usage_reporting", self.usage_reporting),
+        ):
+            require_boolean(name, value)
+        object.__setattr__(
+            self, "interruption_triggers", tuple(self.interruption_triggers)
+        )
+        object.__setattr__(self, "input_formats", tuple(self.input_formats))
+        object.__setattr__(self, "output_formats", tuple(self.output_formats))
+        object.__setattr__(
+            self, "supported_sample_rates_hz", tuple(self.supported_sample_rates_hz)
+        )
         _sample_rates(self.supported_sample_rates_hz)
         _duration(self.maximum_session_duration_s)
         if len(set(self.interruption_triggers)) != len(self.interruption_triggers):
@@ -130,22 +185,35 @@ class VoiceCapabilities:
 
 
 def _sample_rates(values: tuple[int, ...]) -> None:
-    if any(isinstance(value, bool) or value <= 0 for value in values):
-        raise ValueError("supported sample rates must be positive integers")
+    for value in values:
+        try:
+            require_integer(
+                "supported sample rate",
+                value,
+                minimum=1,
+                maximum=MAX_SAFE_INTEGER,
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                "supported sample rates must be positive integers"
+            ) from error
     if len(set(values)) != len(values):
         raise ValueError("supported sample rates must not contain duplicates")
 
 
 def _duration(value: float | None) -> None:
-    if value is not None and (isinstance(value, bool) or not 0 < value <= 86_400):
-        raise ValueError("maximum_session_duration_s must be between 0 and 86400")
+    if value is not None:
+        require_finite_number(
+            "maximum_session_duration_s",
+            value,
+            minimum_exclusive=0,
+            maximum_inclusive=86_400,
+        )
 
 
 def _optional_positive(name: str, value: int | None) -> None:
-    if value is not None and (
-        isinstance(value, bool) or not isinstance(value, int) or value <= 0
-    ):
-        raise ValueError(f"{name} must be a positive integer or None")
+    if value is not None:
+        require_integer(name, value, minimum=1, maximum=MAX_SAFE_INTEGER)
 
 
 __all__ = [

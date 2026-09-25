@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from threading import Event, Thread
 from time import monotonic, sleep
 
+import pocketstation.aio._api as pks_aio
 import pytest
 from pocketstation._api import (
     EndpointDriverError,
@@ -21,6 +22,22 @@ from pocketstation._api import (
     RunningEndpointDriver,
     Session,
 )
+
+
+@pytest.mark.parametrize("field", ["prepare_s", "start_s", "shutdown_s"])
+@pytest.mark.parametrize("value", [True, "1.0", None])
+def test_async_endpoint_deadlines_reject_non_numbers(field: str, value: object) -> None:
+    with pytest.raises(TypeError, match=rf"{field} must be a number"):
+        pks_aio.EndpointDeadlines(**{field: value})
+
+
+@pytest.mark.parametrize("field", ["prepare_s", "start_s", "shutdown_s"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_async_endpoint_deadlines_reject_non_finite_numbers(
+    field: str, value: float
+) -> None:
+    with pytest.raises(ValueError, match=rf"{field} must be greater"):
+        pks_aio.EndpointDeadlines(**{field: value})
 
 
 class CollectingEndpoint(RunningEndpointDriver):

@@ -6,6 +6,16 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ..identity import SourceId, StreamId
+from ._validation import (
+    MAX_SAFE_INTEGER,
+    require_boolean,
+    require_integer,
+    require_nonempty,
+    require_nonnegative_integer,
+    require_optional_nonnegative_integer,
+    require_optional_positive_integer,
+    require_positive_integer,
+)
 
 ConversationRole = Literal["user", "assistant", "tool"]
 ConversationDisposition = Literal["completed", "stopped", "cancelled", "failed"]
@@ -26,6 +36,25 @@ class ConversationTurn:
     audio_end_ns: int | None
     received_timestamp_ns: int
 
+    def __post_init__(self) -> None:
+        require_positive_integer("id", self.id)
+        require_nonempty("utterance_id", self.utterance_id)
+        require_optional_positive_integer("source_id", self.source_id)
+        require_optional_positive_integer("stream_id", self.stream_id)
+        require_optional_nonnegative_integer("source_sequence", self.source_sequence)
+        require_optional_nonnegative_integer(
+            "source_timestamp_ns", self.source_timestamp_ns
+        )
+        require_optional_nonnegative_integer("audio_start_ns", self.audio_start_ns)
+        require_optional_nonnegative_integer("audio_end_ns", self.audio_end_ns)
+        require_nonnegative_integer("received_timestamp_ns", self.received_timestamp_ns)
+        if (
+            self.audio_start_ns is not None
+            and self.audio_end_ns is not None
+            and self.audio_end_ns < self.audio_start_ns
+        ):
+            raise ValueError("audio_end_ns must not precede audio_start_ns")
+
 
 @dataclass(frozen=True, slots=True)
 class ConversationMessage:
@@ -36,6 +65,12 @@ class ConversationMessage:
     turn_id: int
     timestamp_ns: int
 
+    def __post_init__(self) -> None:
+        if self.role not in {"user", "assistant", "tool"}:
+            raise ValueError("role must be user, assistant, or tool")
+        require_positive_integer("turn_id", self.turn_id)
+        require_nonnegative_integer("timestamp_ns", self.timestamp_ns)
+
 
 @dataclass(frozen=True, slots=True)
 class ConversationContext:
@@ -43,6 +78,10 @@ class ConversationContext:
 
     history: tuple[ConversationMessage, ...]
     committed: bool
+
+    def __post_init__(self) -> None:
+        require_boolean("committed", self.committed)
+        object.__setattr__(self, "history", tuple(self.history))
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +104,29 @@ class ConversationOutcome:
     connector_queues_cleared: int = 0
     receiver_observations_received: int = 0
     acoustic_hearing_known: bool = False
+
+    def __post_init__(self) -> None:
+        if self.disposition not in {"completed", "stopped", "cancelled", "failed"}:
+            raise ValueError(
+                "disposition must be completed, stopped, cancelled, or failed"
+            )
+        for name, value in (
+            ("turns_started", self.turns_started),
+            ("turns_completed", self.turns_completed),
+            ("turns_interrupted", self.turns_interrupted),
+            ("transcript_updates_received", self.transcript_updates_received),
+            ("speculative_responses_started", self.speculative_responses_started),
+            ("speculative_responses_reused", self.speculative_responses_reused),
+            ("output_generations_cancelled", self.output_generations_cancelled),
+            ("output_frames_written", self.output_frames_written),
+            ("provider_tasks_cancelled", self.provider_tasks_cancelled),
+            ("connector_queues_cleared", self.connector_queues_cleared),
+            ("receiver_observations_received", self.receiver_observations_received),
+        ):
+            require_integer(name, value, minimum=0, maximum=MAX_SAFE_INTEGER)
+        require_boolean("acoustic_hearing_known", self.acoustic_hearing_known)
+        object.__setattr__(self, "history", tuple(self.history))
+        object.__setattr__(self, "events", tuple(self.events))
 
     @property
     def success(self) -> bool:

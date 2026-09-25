@@ -8,6 +8,7 @@ from concurrent.futures import CancelledError as FutureCancelledError
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
+from math import isfinite
 from typing import Any, Protocol, TypeAlias, TypeVar, runtime_checkable
 
 from ..endpoint_authoring import (
@@ -47,7 +48,9 @@ class EndpointDeadlines:
             ("start_s", self.start_s),
             ("shutdown_s", self.shutdown_s),
         ):
-            if not 0 < value <= 300:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"{name} must be a number")
+            if not isfinite(value) or not 0 < value <= 300:
                 raise ValueError(f"{name} must be greater than 0 and at most 300")
 
 

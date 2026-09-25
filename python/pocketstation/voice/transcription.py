@@ -7,6 +7,14 @@ from typing import Protocol, runtime_checkable
 
 from ..identity import SourceId, StreamId
 from ..signal import BusSubscription, SignalEnvelope
+from ._validation import (
+    MAX_SAFE_INTEGER,
+    require_boolean,
+    require_integer,
+    require_nonempty,
+    require_optional_nonnegative_integer,
+    require_optional_positive_integer,
+)
 from .capabilities import TranscriptionCapabilities
 
 
@@ -30,23 +38,21 @@ class TranscriptUpdate:
     session_timestamp_ns: int | None = None
 
     def __post_init__(self) -> None:
-        if not self.utterance_id.strip():
-            raise ValueError("utterance_id must not be empty")
+        require_nonempty("utterance_id", self.utterance_id)
         if len(self.utterance_id) > 128:
             raise ValueError("utterance_id must not exceed 128 characters")
-        if isinstance(self.revision, bool) or not isinstance(self.revision, int):
-            raise TypeError("revision must be an integer")
-        if self.revision < 1:
-            raise ValueError("revision must be greater than zero")
+        require_integer("revision", self.revision, minimum=1, maximum=MAX_SAFE_INTEGER)
+        require_boolean("final", self.final)
+        require_boolean("interrupts", self.interrupts)
         if not self.text.startswith(self.stable_prefix):
             raise ValueError("stable_prefix must be a prefix of text")
         if self.final and not self.text.strip():
             raise ValueError("a final transcript update must contain text")
         if self.final and self.stable_prefix != self.text:
             raise ValueError("a final transcript update must make all text stable")
-        _optional_identity("source_id", self.source_id)
-        _optional_identity("stream_id", self.stream_id)
-        _optional_sequence("source_sequence", self.source_sequence)
+        require_optional_positive_integer("source_id", self.source_id)
+        require_optional_positive_integer("stream_id", self.stream_id)
+        require_optional_nonnegative_integer("source_sequence", self.source_sequence)
         for name, value in (
             ("source_timestamp_ns", self.source_timestamp_ns),
             ("audio_start_ns", self.audio_start_ns),
@@ -54,7 +60,7 @@ class TranscriptUpdate:
             ("provider_timestamp_ns", self.provider_timestamp_ns),
             ("session_timestamp_ns", self.session_timestamp_ns),
         ):
-            _optional_timestamp(name, value)
+            require_optional_nonnegative_integer(name, value)
         if (
             self.audio_start_ns is not None
             and self.audio_end_ns is not None
@@ -90,27 +96,6 @@ class StreamingTranscriber(Protocol):
         session: object,
         input: object,
     ) -> TranscriptionConnection: ...
-
-
-def _optional_timestamp(name: str, value: int | None) -> None:
-    if value is not None and (
-        isinstance(value, bool) or not isinstance(value, int) or value < 0
-    ):
-        raise TypeError(f"{name} must be a non-negative integer or None")
-
-
-def _optional_identity(name: str, value: int | None) -> None:
-    if value is not None and (
-        isinstance(value, bool) or not isinstance(value, int) or value < 1
-    ):
-        raise TypeError(f"{name} must be a positive integer or None")
-
-
-def _optional_sequence(name: str, value: int | None) -> None:
-    if value is not None and (
-        isinstance(value, bool) or not isinstance(value, int) or value < 0
-    ):
-        raise TypeError(f"{name} must be a non-negative integer or None")
 
 
 __all__ = [

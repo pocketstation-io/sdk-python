@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from enum import StrEnum
+from math import isfinite
 from pathlib import Path
 from typing import TypeAlias
 
@@ -89,8 +90,8 @@ class SidecarDeadlines:
         ):
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise TypeError(f"{name} must be a number")
-            if float(value) <= 0.0:
-                raise ValueError(f"{name} must be greater than zero")
+            if not isfinite(value) or float(value) <= 0.0:
+                raise ValueError(f"{name} must be finite and greater than zero")
 
     def _milliseconds(self) -> tuple[int, int, int]:
         return (
@@ -298,7 +299,7 @@ class SidecarStream:
         finally:
             self._state.release(token)
 
-    def read(self, *, timeout_s: float = 1.0) -> SidecarReadResult:
+    def read(self, *, timeout_s: float = 0.1) -> SidecarReadResult:
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("sidecar_read")
         try:

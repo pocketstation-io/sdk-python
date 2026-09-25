@@ -25,6 +25,7 @@ from ..control import (
     _invitation,
     _normalize_base_url,
     _publisher_credentials,
+    _redact,
     _resolve_timeout,
     _session_credentials,
     _session_snapshot,
@@ -251,10 +252,11 @@ class ControlClient:
         except ControlPlaneError:
             raise
         except httpx.HTTPError as error:
+            detail = _redact(str(error), redacted_values)
             raise ControlPlaneError(
-                f"control-plane request failed: {error}",
+                f"control-plane request failed: {detail}",
                 "control.request",
-            ) from error
+            ) from None
         try:
             payload = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:

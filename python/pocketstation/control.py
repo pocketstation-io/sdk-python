@@ -356,10 +356,11 @@ class ControlClient:
         except ControlPlaneError:
             raise
         except httpx.HTTPError as error:
+            detail = _redact(str(error), redacted_values)
             raise ControlPlaneError(
-                f"control-plane request failed: {error}",
+                f"control-plane request failed: {detail}",
                 "control.request",
-            ) from error
+            ) from None
         try:
             payload = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -382,6 +383,12 @@ def _normalize_base_url(value: str) -> str:
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("control_plane_url must not contain credentials")
     return value.split("?", 1)[0].split("#", 1)[0].rstrip("/") + "/"
+
+
+def _redact(value: str, secrets: tuple[str, ...]) -> str:
+    for secret in secrets:
+        value = value.replace(secret, "[redacted]")
+    return value
 
 
 def _validate_timeout(value: float) -> float:
@@ -658,6 +665,7 @@ __all__ = [
     "ControlPlaneError",
     "IceServer",
     "Invitation",
+    "PublisherCredentials",
     "SecretToken",
     "SessionCredentials",
     "SessionId",

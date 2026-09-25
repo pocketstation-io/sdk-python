@@ -241,6 +241,42 @@ async def test_async_client_issues_exact_bus_publisher_credentials() -> None:
     assert json.loads(requests[0].content) == {"bus_id": "microphone"}
 
 
+def test_sync_transport_failure_redacts_the_authorization_secret() -> None:
+    secret = SecretToken("source-secret")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("proxy rejected source-secret", request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(ControlPlaneError) as failure:
+            client.session("session_123", secret)
+    assert failure.value.code == "control.request"
+    assert "source-secret" not in str(failure.value)
+    assert "[redacted]" in str(failure.value)
+    assert failure.value.__cause__ is None
+
+
+@pytest.mark.asyncio
+async def test_async_transport_failure_redacts_the_authorization_secret() -> None:
+    secret = SecretToken("source-secret")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("proxy rejected source-secret", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = AsyncControlClient(
+            "https://control.example",
+            http_client=http_client,
+        )
+        with pytest.raises(ControlPlaneError) as failure:
+            await client.session("session_123", secret)
+    assert failure.value.code == "control.request"
+    assert "source-secret" not in str(failure.value)
+    assert "[redacted]" in str(failure.value)
+    assert failure.value.__cause__ is None
+
+
 @pytest.mark.parametrize("bus_id", ["", "with/slash", "x" * 65])
 def test_publisher_rejects_invalid_bus_before_network(bus_id: str) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:

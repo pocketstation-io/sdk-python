@@ -71,7 +71,6 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
         )
         remote = RelaySession.create(
             control_plane_url="https://control.example",
-            relay_url="https://relay.example/",
             control_client=control,
         )
 
@@ -257,6 +256,83 @@ def test_invalid_relay_origin_fails_before_remote_session_creation() -> None:
                 control_client=control,
             )
     assert requests == []
+
+
+def test_relay_origin_rejects_query_and_fragment_before_creation() -> None:
+    for relay_url in (
+        "https://relay.example?authority=other",
+        "https://relay.example#secret",
+    ):
+        with pytest.raises(ValueError, match="must not include"):
+            RelaySession.create(
+                control_plane_url="https://control.example",
+                relay_url=relay_url,
+            )
+
+
+def test_relay_origin_is_canonicalized_like_a_web_url() -> None:
+    def control_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(
+                201,
+                json={
+                    **CREATE_RESPONSE,
+                    "whip_url": (
+                        "HTTPS://Relay.Example:443/v1/sessions/session_123/whip"
+                    ),
+                    "whep_url": (
+                        "HTTPS://Relay.Example:443/v1/sessions/session_123/whep"
+                    ),
+                },
+            )
+        return httpx.Response(204)
+
+    with httpx.Client(transport=httpx.MockTransport(control_handler)) as http_client:
+        control = ControlClient(
+            "https://control.example",
+            http_client=http_client,
+        )
+        remote = RelaySession.create(
+            control_plane_url="https://control.example",
+            relay_url="HTTPS://Relay.Example:443/",
+            control_client=control,
+        )
+        assert remote.relay_url == "https://relay.example"
+        remote.close()
+
+
+def test_relay_endpoint_mismatch_deletes_created_remote_session() -> None:
+    requests: list[httpx.Request] = []
+
+    def control_handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST":
+            return httpx.Response(
+                201,
+                json={
+                    **CREATE_RESPONSE,
+                    "whep_url": (
+                        "https://other-relay.example/v1/sessions/session_123/whep"
+                    ),
+                },
+            )
+        return httpx.Response(204)
+
+    with httpx.Client(transport=httpx.MockTransport(control_handler)) as http_client:
+        control = ControlClient(
+            "https://control.example",
+            http_client=http_client,
+        )
+        with pytest.raises(RelayError) as mismatch:
+            RelaySession.create(
+                control_plane_url="https://control.example",
+                control_client=control,
+            )
+    assert mismatch.value.code == "relay.response_identity"
+    assert [(request.method, request.url.path) for request in requests] == [
+        ("POST", "/v1/sessions"),
+        ("DELETE", "/v1/sessions/session_123"),
+    ]
 
 
 def _snapshot(*, ready: bool, subscription_count: int) -> dict[str, object]:
