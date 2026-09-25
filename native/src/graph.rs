@@ -20,6 +20,13 @@ fn invalid_contract(reason: impl Into<String>) -> PyErr {
     PyValueError::new_err(coded_reason("graph.invalid_contract", reason.into()))
 }
 
+fn validate_graph_text(label: &str, value: &str) -> PyResult<()> {
+    if value.trim().is_empty() {
+        return Err(invalid_contract(format!("{label} cannot be empty")));
+    }
+    Ok(())
+}
+
 fn parse_codec(value: &str) -> PyResult<Codec> {
     match value {
         "opus" => Ok(Codec::Opus),
@@ -163,21 +170,30 @@ const fn copy_policy_name(value: CopyPolicy) -> &'static str {
     }
 }
 
-fn make_configuration(values: HashMap<String, String>) -> OperatorConfiguration {
-    values.into_iter().fold(
-        OperatorConfiguration::new(),
-        |configuration, (key, value)| configuration.with(&key, &value),
-    )
+pub(crate) type PythonConfigurationEntry = (String, String, bool);
+
+fn make_configuration(values: Vec<PythonConfigurationEntry>) -> PyResult<OperatorConfiguration> {
+    let mut configuration = OperatorConfiguration::new();
+    for (key, value, sensitive) in values {
+        validate_graph_text("configuration key", &key)?;
+        configuration = if sensitive {
+            configuration.with_sensitive(&key, &value)
+        } else {
+            configuration.with(&key, &value)
+        };
+    }
+    Ok(configuration)
 }
 
 pub(crate) fn make_operator(
     operator_id: String,
-    configuration: HashMap<String, String>,
-) -> Operator {
-    Operator::new(
+    configuration: Vec<PythonConfigurationEntry>,
+) -> PyResult<Operator> {
+    validate_graph_text("operator identifier", &operator_id)?;
+    Ok(Operator::new(
         OperatorId::new(operator_id),
-        make_configuration(configuration),
-    )
+        make_configuration(configuration)?,
+    ))
 }
 
 pub(crate) fn make_source_configuration(values: HashMap<String, String>) -> SourceConfiguration {
@@ -633,18 +649,25 @@ impl PythonEndpointDescriptor {
     fn new(
         node_type_id: String,
         operator_id: String,
-        configuration: HashMap<String, String>,
+        configuration: Vec<PythonConfigurationEntry>,
         route_settings: Option<&PythonRouteSettings>,
     ) -> PyResult<Self> {
-        let configuration = configuration.into_iter().fold(
-            EndpointConfiguration::new(),
-            |configuration, (key, value)| configuration.with(key, value),
-        );
+        validate_graph_text("Endpoint node type", &node_type_id)?;
+        validate_graph_text("Endpoint operator identifier", &operator_id)?;
+        let mut configuration_value = EndpointConfiguration::new();
+        for (key, value, sensitive) in configuration {
+            validate_graph_text("configuration key", &key)?;
+            configuration_value = if sensitive {
+                configuration_value.with_sensitive(key, value)
+            } else {
+                configuration_value.with(key, value)
+            };
+        }
         let mut value = EndpointDescriptor::new(
             pocketstation::NodeTypeId::from(node_type_id.as_str()),
             OperatorId::new(operator_id),
         )
-        .with_configuration(configuration);
+        .with_configuration(configuration_value);
         if let Some(route_settings) = route_settings {
             value = value.with_route_settings(route_settings.value);
         }
@@ -828,13 +851,13 @@ impl PythonStem {
     fn through(
         &self,
         operator_id: String,
-        configuration: HashMap<String, String>,
+        configuration: Vec<PythonConfigurationEntry>,
         input_port: Option<String>,
         output_port: Option<String>,
     ) -> PyResult<PythonDerivedStream> {
         self.handle
             .through_ports(
-                make_operator(operator_id, configuration),
+                make_operator(operator_id, configuration)?,
                 input_port,
                 output_port,
             )
@@ -910,13 +933,13 @@ impl PythonDerivedStream {
     fn through(
         &self,
         operator_id: String,
-        configuration: HashMap<String, String>,
+        configuration: Vec<PythonConfigurationEntry>,
         input_port: Option<String>,
         output_port: Option<String>,
     ) -> PyResult<Self> {
         self.handle
             .through_ports(
-                make_operator(operator_id, configuration),
+                make_operator(operator_id, configuration)?,
                 input_port,
                 output_port,
             )
@@ -1019,13 +1042,13 @@ impl PythonSourceOutput {
     fn through(
         &self,
         operator_id: String,
-        configuration: HashMap<String, String>,
+        configuration: Vec<PythonConfigurationEntry>,
         input_port: Option<String>,
         output_port: Option<String>,
     ) -> PyResult<PythonDerivedStream> {
         self.handle
             .through_ports(
-                make_operator(operator_id, configuration),
+                make_operator(operator_id, configuration)?,
                 input_port,
                 output_port,
             )

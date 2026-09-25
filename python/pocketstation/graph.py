@@ -284,6 +284,10 @@ class AudioCaps:
     channel_layout: ChannelLayout = ChannelLayout.ANY
     format: SampleFormat = SampleFormat.F32_INTERLEAVED
 
+    def __post_init__(self) -> None:
+        if self.format is not SampleFormat.F32_INTERLEAVED:
+            raise ValueError(f"unsupported PCM sample format {self.format!r}")
+
 
 MediaFormat: TypeAlias = Codec | BinaryFormat
 
@@ -611,6 +615,15 @@ class RouteSettings:
     def bounded_async(cls) -> RouteSettings:
         return cls(_NativeRouteSettings.bounded_async())
 
+    @classmethod
+    def create(
+        cls,
+        media: MediaCaps,
+        delivery: DeliveryPolicy,
+    ) -> RouteSettings:
+        """Combine explicit media requirements and delivery behavior."""
+        return cls(delivery._native.with_media(media._native))
+
     @property
     def media(self) -> MediaCaps:
         return _media_from_native(self._native.media)
@@ -696,39 +709,95 @@ def _select_route_settings(
     return route_settings or default
 
 
-ConfigurationInput: TypeAlias = Mapping[str, str] | Iterable[tuple[str, str]]
+@dataclass(frozen=True, slots=True, repr=False)
+class SecretValue:
+    """Configuration value redacted by Core diagnostics and traces."""
+
+    value: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.value, str):
+            raise TypeError("secret configuration value must be a string")
+
+    def __repr__(self) -> str:
+        return "SecretValue(<redacted>)"
 
 
-def _configuration_items(values: ConfigurationInput) -> tuple[tuple[str, str], ...]:
+def secret(value: str) -> SecretValue:
+    """Mark one Operator or Endpoint configuration value as sensitive."""
+    return SecretValue(value)
+
+
+ConfigurationValue: TypeAlias = str | SecretValue
+ConfigurationInput: TypeAlias = (
+    Mapping[str, ConfigurationValue] | Iterable[tuple[str, ConfigurationValue]]
+)
+SourceConfigurationInput: TypeAlias = Mapping[str, str] | Iterable[tuple[str, str]]
+
+
+def _configuration_items(
+    values: ConfigurationInput,
+) -> tuple[tuple[str, ConfigurationValue], ...]:
     entries = tuple(values.items() if isinstance(values, Mapping) else values)
     seen: set[str] = set()
-    for key, _value in entries:
+    for key, value in entries:
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("configuration keys must be non-empty strings")
         if key in seen:
             raise ValueError(f"duplicate configuration key {key!r}")
+        if not isinstance(value, (str, SecretValue)):
+            raise TypeError("configuration values must be strings or SecretValue")
+        seen.add(key)
+    return tuple(sorted(entries))
+
+
+def _configuration_entries(
+    values: tuple[tuple[str, ConfigurationValue], ...],
+) -> list[tuple[str, str, bool]]:
+    return [
+        (key, value.value, True)
+        if isinstance(value, SecretValue)
+        else (key, value, False)
+        for key, value in values
+    ]
+
+
+def _source_configuration_items(
+    values: SourceConfigurationInput,
+) -> tuple[tuple[str, str], ...]:
+    entries = tuple(values.items() if isinstance(values, Mapping) else values)
+    seen: set[str] = set()
+    for key, value in entries:
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("configuration keys must be non-empty strings")
+        if key in seen:
+            raise ValueError(f"duplicate configuration key {key!r}")
+        if not isinstance(value, str):
+            raise TypeError("Source configuration values must be strings")
         seen.add(key)
     return tuple(sorted(entries))
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class OperatorConfiguration:
-    values: tuple[tuple[str, str], ...]
+    values: tuple[tuple[str, ConfigurationValue], ...]
 
     def __init__(self, values: ConfigurationInput = ()) -> None:
         object.__setattr__(self, "values", _configuration_items(values))
 
-    def with_value(self, key: str, value: str) -> OperatorConfiguration:
+    def with_value(self, key: str, value: ConfigurationValue) -> OperatorConfiguration:
         return type(self)(dict((*self.values, (key, value))))
 
-    def _as_dict(self) -> dict[str, str]:
-        return dict(self.values)
+    def _as_native(self) -> list[tuple[str, str, bool]]:
+        return _configuration_entries(self.values)
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class SourceConfiguration:
     values: tuple[tuple[str, str], ...]
 
-    def __init__(self, values: ConfigurationInput = ()) -> None:
-        object.__setattr__(self, "values", _configuration_items(values))
+    def __init__(self, values: SourceConfigurationInput = ()) -> None:
+        object.__setattr__(self, "values", _source_configuration_items(values))
 
     def with_value(self, key: str, value: str) -> SourceConfiguration:
         return type(self)(dict((*self.values, (key, value))))
@@ -739,16 +808,16 @@ class SourceConfiguration:
 
 @dataclass(frozen=True, slots=True, init=False)
 class EndpointConfiguration:
-    values: tuple[tuple[str, str], ...]
+    values: tuple[tuple[str, ConfigurationValue], ...]
 
     def __init__(self, values: ConfigurationInput = ()) -> None:
         object.__setattr__(self, "values", _configuration_items(values))
 
-    def with_value(self, key: str, value: str) -> EndpointConfiguration:
+    def with_value(self, key: str, value: ConfigurationValue) -> EndpointConfiguration:
         return type(self)(dict((*self.values, (key, value))))
 
-    def _as_dict(self) -> dict[str, str]:
-        return dict(self.values)
+    def _as_native(self) -> list[tuple[str, str, bool]]:
+        return _configuration_entries(self.values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -757,6 +826,10 @@ class Operator:
 
     operator_id: str
     configuration: OperatorConfiguration = field(default_factory=OperatorConfiguration)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.operator_id, str) or not self.operator_id.strip():
+            raise ValueError("operator identifier must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -774,7 +847,7 @@ class EndpointDescriptor:
             lambda: _NativeEndpointDescriptor(
                 self.node_type_id,
                 self.operator_id,
-                self.configuration._as_dict(),
+                self.configuration._as_native(),
                 None if self.route_settings is None else self.route_settings._native,
             )
         )
@@ -906,7 +979,7 @@ class _RoutableStream:
             lambda: DerivedStream(
                 self._native.through(
                     operator.operator_id,
-                    operator.configuration._as_dict(),
+                    operator.configuration._as_native(),
                     input_port,
                     output_port,
                 ),
@@ -1108,7 +1181,7 @@ class _GraphSessionDeclarations:
             lambda: OperatorInstance(
                 self._native.operator(
                     operator.operator_id,
-                    operator.configuration._as_dict(),
+                    operator.configuration._as_native(),
                 ),
                 self._destination_for_stream,
             )
@@ -1236,6 +1309,7 @@ __all__ = [
     "RouteObservability",
     "RouteSettings",
     "SampleFormat",
+    "SecretValue",
     "SignalKind",
     "SignalSpec",
     "SourceConfiguration",
@@ -1243,4 +1317,5 @@ __all__ = [
     "SourceOutput",
     "Stem",
     "TextFormat",
+    "secret",
 ]
