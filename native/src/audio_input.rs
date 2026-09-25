@@ -28,8 +28,11 @@ impl PythonOutputGeneration {
         self.generation.is_active()
     }
 
-    fn cancel(&self) {
-        let _ = self.generation.cancel();
+    fn cancel(&self) -> bool {
+        matches!(
+            self.generation.cancel(),
+            pocketstation::OutputCancelResult::Cancelled
+        )
     }
 }
 

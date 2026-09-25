@@ -62,7 +62,7 @@ def test_given_selector_family_when_declared_then_each_shape_is_available():
 
 
 def test_given_invalid_process_or_platform_when_declared_then_rejected():
-    with pytest.raises(PocketStationError, match="non-zero"):
+    with pytest.raises(PocketStationError, match="from 1 through 4294967295"):
         Source.application_process_id(0)
     with pytest.raises(PocketStationError, match="platform must be"):
         Source.application_stable_id("plan9", "app:42")

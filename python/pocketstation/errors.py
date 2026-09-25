@@ -133,6 +133,10 @@ class AudioInputError(PocketStationError):
     """Base failure from one bounded application-owned PCM input."""
 
 
+class AudioInputConfigurationError(AudioInputError, ValueError):
+    """An AudioInput name, format, frame size, or capacity is invalid."""
+
+
 class AudioInputFullError(AudioInputError):
     """No preallocated frame or queue slot is currently available."""
 
@@ -145,8 +149,31 @@ class AudioInputCancelledError(AudioInputError):
     """The owning Session cancelled this input."""
 
 
+class AudioInputTimeoutError(AudioInputError, TimeoutError):
+    """Core did not have capacity before the finite write deadline."""
+
+    def __init__(self, timeout_s: float) -> None:
+        super().__init__(
+            f"audio input remained full for {timeout_s:g} seconds",
+            "audio_input.timeout",
+        )
+        self.timeout_s = timeout_s
+
+
 class AudioInputBufferError(AudioInputError, ValueError):
     """The supplied object is not one exact contiguous float32 frame."""
+
+
+class OutputCancelledError(AudioInputError):
+    """A write targeted an output generation that is no longer active."""
+
+
+class OutputOwnershipError(AudioInputError):
+    """An output generation belongs to a different AudioInput."""
+
+
+class OutputGenerationLimitError(AudioInputError):
+    """Core cannot assign another output identity to this AudioInput."""
 
 
 class EventInputError(PocketStationError):
@@ -197,12 +224,19 @@ def _normalize_native_error(error: Exception) -> PocketStationError:
         return AudioInputClosedError(detail, code)
     if code == "audio_input.cancelled":
         return AudioInputCancelledError(detail, code)
+    if code == "audio_input.invalid_buffer":
+        return AudioInputBufferError(detail, code)
     if code in {
-        "audio_input.invalid_buffer",
         "audio_input.invalid_configuration",
         "audio_input.declaration_failed",
     }:
-        return AudioInputBufferError(detail, code)
+        return AudioInputConfigurationError(detail, code)
+    if code == "audio_input.output_cancelled":
+        return OutputCancelledError(detail, code)
+    if code == "audio_input.wrong_output_input":
+        return OutputOwnershipError(detail, code)
+    if code == "audio_input.output_generation_limit":
+        return OutputGenerationLimitError(detail, code)
     if code.startswith("audio_input."):
         return AudioInputError(detail, code)
     if code.startswith("capture."):

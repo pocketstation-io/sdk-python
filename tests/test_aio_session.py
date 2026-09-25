@@ -30,7 +30,7 @@ from pocketstation.aio._api import (
     RunningEndpointDriver,
     Session,
 )
-from pocketstation.errors import AudioInputFullError
+from pocketstation.errors import AudioInputTimeoutError
 
 
 @pytest.mark.parametrize(
@@ -131,8 +131,10 @@ async def test_async_audio_write_wait_is_finite_and_adds_no_python_queue() -> No
     samples = array("f", [0.1, 0.2, 0.3, 0.4])
     await audio.try_write(samples)
 
-    with pytest.raises(AudioInputFullError):
+    with pytest.raises(AudioInputTimeoutError) as failure:
         await audio.write(samples, timeout_s=0.01)
+    assert failure.value.code == "audio_input.timeout"
+    assert failure.value.timeout_s == pytest.approx(0.01)
     with pytest.raises(TypeError):
         await audio.write(samples, timeout_s=True)
     with pytest.raises(ValueError):

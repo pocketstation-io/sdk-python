@@ -10,8 +10,10 @@ from pocketstation._api import (
     AudioInputCancelledError,
     AudioInputClosedError,
     AudioInputConfig,
-    AudioInputError,
+    AudioInputConfigurationError,
     AudioInputFullError,
+    AudioInputTimeoutError,
+    OutputCancelledError,
     Session,
     SourceId,
     StreamId,
@@ -20,8 +22,12 @@ from pocketstation._api import (
 
 @pytest.mark.parametrize("name", ["", " ", "\t"])
 def test_audio_input_rejects_empty_names(name: str) -> None:
-    with pytest.raises(ValueError, match="name must not be empty"):
+    with pytest.raises(
+        AudioInputConfigurationError,
+        match="name must not be empty",
+    ) as failure:
         AudioInputConfig(name=name)
+    assert failure.value.code == "audio_input.invalid_configuration"
 
 
 @pytest.mark.parametrize(
@@ -111,6 +117,23 @@ def test_pcm_source_exposes_typed_identity_and_exact_finite_capacity() -> None:
     assert observations.full_total == 1
 
 
+def test_audio_input_write_reports_a_typed_finite_timeout() -> None:
+    audio = Session().audio_input(
+        "saturated",
+        capacity_frames=1,
+        frame_samples_per_channel=4,
+    )
+    samples = array("f", [0.0] * 4)
+    audio.try_write(samples)
+
+    with pytest.raises(AudioInputTimeoutError) as failure:
+        audio.write(samples, timeout_s=0.005)
+
+    assert failure.value.code == "audio_input.timeout"
+    assert failure.value.timeout_s == pytest.approx(0.005)
+    assert audio.observations().accepted_total == 1
+
+
 def test_audio_input_close_and_session_cancellation_have_distinct_outcomes() -> None:
     samples = array("f", [0.0] * 4)
 
@@ -175,9 +198,10 @@ def test_given_replaced_output_when_read_then_only_active_pcm_is_returned() -> N
 
     output.try_write(array("f", [-0.5] * 4), generation=first)
     output.try_write(array("f", [-0.25] * 4), generation=first)
-    first.cancel()
+    assert first.cancel()
+    assert not first.cancel()
     assert not first.active
-    with pytest.raises(AudioInputError) as inactive:
+    with pytest.raises(OutputCancelledError) as inactive:
         output.try_write(array("f", [-0.75] * 4), generation=first)
     assert inactive.value.code == "audio_input.output_cancelled"
 
