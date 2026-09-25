@@ -274,7 +274,7 @@ impl PythonSession {
                 .map(PythonAudioInput::new)
                 .map_err(|error| {
                     PyValueError::new_err(coded_reason(
-                        "audio_input.declaration_failed",
+                        "audio_input.invalid_configuration",
                         error.to_string(),
                     ))
                 })

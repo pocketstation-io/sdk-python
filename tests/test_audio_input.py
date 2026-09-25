@@ -53,6 +53,15 @@ def test_audio_input_explicit_frame_samples_override_session_duration() -> None:
     assert audio.config.frame_samples_per_channel == 480
 
 
+def test_audio_input_rejects_a_rate_that_disagrees_with_the_session() -> None:
+    session = Session(sample_rate_hz=48_000)
+
+    with pytest.raises(AudioInputConfigurationError) as failure:
+        session.audio_input("owned", sample_rate_hz=44_100)
+
+    assert failure.value.code == "audio_input.invalid_configuration"
+
+
 def test_audio_input_delivers_the_inherited_twenty_millisecond_frame() -> None:
     session = Session(frame_duration_ms=20)
     audio = session.audio_input("owned")
