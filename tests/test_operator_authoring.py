@@ -11,6 +11,7 @@ from pocketstation._api import (
     Connector,
     ConnectorDeliveryOutcome,
     MediaCaps,
+    OperatorConfiguration,
     OperatorEmission,
     OperatorManifest,
     OperatorNode,
@@ -26,6 +27,7 @@ from pocketstation._api import (
     SourceManifest,
     SourceProvider,
 )
+from pocketstation.graph import secret
 
 _VOICE_FRAME_SAMPLES = 480
 
@@ -116,11 +118,14 @@ def test_python_operator_processes_source_signal_with_derivation() -> None:
 
     node = Uppercase()
 
-    class Factory:
-        def validate_config(self, _configuration) -> None:
-            pass
+    seen_configurations: list[dict[str, str]] = []
 
-        def create(self, _configuration) -> Uppercase:
+    class Factory:
+        def validate_config(self, configuration) -> None:
+            seen_configurations.append(dict(configuration))
+
+        def create(self, configuration) -> Uppercase:
+            seen_configurations.append(dict(configuration))
             return node
 
     provider = OperatorProvider.with_node(
@@ -149,7 +154,9 @@ def test_python_operator_processes_source_signal_with_derivation() -> None:
 
     session = Session()
     source_instance = session.register_source(source).declare()
-    operator_instance = session.register_operator(provider).declare()
+    operator_instance = session.register_operator(provider).declare(
+        OperatorConfiguration({"language": "en", "token": secret("private")})
+    )
     source_instance.output("events").connect(operator_instance.input("input"))
     subscription = session.subscribe(
         operator_instance.output("output"), signal=output_signal
@@ -172,6 +179,11 @@ def test_python_operator_processes_source_signal_with_derivation() -> None:
     assert node.prepared.inputs[0].port_name == "input"
     assert node.prepared.outputs[0].port_name == "output"
     assert node.closed.wait(1.0)
+    assert len(seen_configurations) >= 2
+    assert all(
+        configuration == {"language": "en", "token": "private"}
+        for configuration in seen_configurations
+    )
 
 
 def test_operator_factory_does_not_require_a_noop_validator() -> None:

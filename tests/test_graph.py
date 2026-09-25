@@ -34,6 +34,7 @@ from pocketstation._api import (
     TextFormat,
     aio,
 )
+from pocketstation.graph import SecretValue, secret
 
 
 @pytest.mark.parametrize(
@@ -195,7 +196,7 @@ def test_route_settings_presets_and_modifiers_remain_bounded() -> None:
     assert bounded.backpressure is BackpressurePolicy.BOUNDED_QUEUE
 
 
-def test_route_settings_apply_delivery_policy_without_changing_media() -> None:
+def test_route_settings_create_combines_media_and_delivery_policy() -> None:
     media = MediaCaps.audio(
         AudioCaps(
             sample_rate_hz=48_000,
@@ -211,9 +212,7 @@ def test_route_settings_apply_delivery_policy_without_changing_media() -> None:
         .with_max_payload_bytes(4096)
     )
 
-    settings = (
-        RouteSettings.realtime_audio().with_media(media).with_delivery_policy(delivery)
-    )
+    settings = RouteSettings.create(media, delivery)
 
     assert settings.media == media
     assert settings != RouteSettings.realtime_audio()
@@ -223,6 +222,11 @@ def test_route_settings_apply_delivery_policy_without_changing_media() -> None:
     assert settings.delivery_policy.copy_policy is CopyPolicy.COPY_TO_BRANCH_POOL
     assert settings.delivery_policy.jitter_budget_ms == 25
     assert settings.delivery_policy.max_payload_bytes == 4096
+
+
+def test_audio_caps_reject_unsupported_sample_representation() -> None:
+    with pytest.raises(ValueError, match="unsupported PCM sample format"):
+        AudioCaps(format="i16-interleaved")
 
 
 def test_configuration_values_are_immutable_snapshots() -> None:
@@ -236,6 +240,28 @@ def test_configuration_values_are_immutable_snapshots() -> None:
     assert source.values == (("model", "small"),)
     assert endpoint.values == (("model", "small"),)
     assert operator.with_value("model", "large").values == (("model", "large"),)
+
+
+def test_operator_and_endpoint_configuration_preserve_redacted_secrets() -> None:
+    token = secret("never-log-this")
+    operator = OperatorConfiguration({"token": token})
+    endpoint = EndpointConfiguration({"token": token})
+
+    assert isinstance(token, SecretValue)
+    assert token.value == "never-log-this"
+    assert "never-log-this" not in repr(token)
+    assert "never-log-this" not in repr(operator)
+    assert "never-log-this" not in repr(endpoint)
+    assert operator.values == (("token", token),)
+    assert endpoint.values == (("token", token),)
+    assert (
+        EndpointDescriptor(
+            "org.example.endpoint-node.v1",
+            "org.example.endpoint.v1",
+            endpoint,
+        ).configuration
+        is endpoint
+    )
 
 
 @pytest.mark.parametrize(

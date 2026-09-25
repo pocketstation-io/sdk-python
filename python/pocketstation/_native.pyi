@@ -273,7 +273,7 @@ class _EndpointDescriptor:
         self,
         node_type_id: str,
         operator_id: str,
-        configuration: dict[str, str],
+        configuration: list[tuple[str, str, bool]],
         route_settings: _RouteSettings | None = None,
     ) -> None: ...
 
@@ -454,7 +454,7 @@ class Stem:
     def through(
         self,
         operator_id: str,
-        configuration: dict[str, str],
+        configuration: list[tuple[str, str, bool]],
         input_port: str | None = None,
         output_port: str | None = None,
     ) -> DerivedStream: ...
@@ -471,7 +471,7 @@ class DerivedStream:
     def through(
         self,
         operator_id: str,
-        configuration: dict[str, str],
+        configuration: list[tuple[str, str, bool]],
         input_port: str | None = None,
         output_port: str | None = None,
     ) -> DerivedStream: ...
@@ -495,7 +495,7 @@ class SourceOutput:
     def through(
         self,
         operator_id: str,
-        configuration: dict[str, str],
+        configuration: list[tuple[str, str, bool]],
         input_port: str | None = None,
         output_port: str | None = None,
     ) -> DerivedStream: ...
@@ -1253,7 +1253,7 @@ class Session:
     def operator(
         self,
         operator_id: str,
-        configuration: dict[str, str],
+        configuration: list[tuple[str, str, bool]],
     ) -> OperatorInstance: ...
     def endpoint(self, descriptor: _EndpointDescriptor) -> Endpoint: ...
     def connector(

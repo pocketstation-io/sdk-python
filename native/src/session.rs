@@ -321,11 +321,11 @@ impl PythonSession {
     fn operator(
         &self,
         operator_id: String,
-        configuration: HashMap<String, String>,
+        configuration: Vec<crate::graph::PythonConfigurationEntry>,
     ) -> PyResult<PythonOperatorInstance> {
         self.with_session(|session| {
             session
-                .operator(make_operator(operator_id, configuration))
+                .operator(make_operator(operator_id, configuration)?)
                 .map(|handle| PythonOperatorInstance { handle })
                 .map_err(session_error)
         })
