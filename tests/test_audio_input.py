@@ -14,6 +14,7 @@ from pocketstation._api import (
     AudioInputFullError,
     AudioInputTimeoutError,
     OutputCancelledError,
+    OutputOwnershipError,
     Session,
     SourceId,
     StreamId,
@@ -224,3 +225,15 @@ def test_given_replaced_output_when_read_then_only_active_pcm_is_returned() -> N
     assert running.audio.read(timeout_s=0.01) is None
     assert output.observations().cancelled_output_writes_total == 1
     assert running.stop().success
+
+
+def test_output_generation_cannot_be_used_by_another_audio_input() -> None:
+    session = Session()
+    first = session.audio_input("first", frame_samples_per_channel=4)
+    second = session.audio_input("second", frame_samples_per_channel=4)
+    generation = first.begin_output()
+
+    with pytest.raises(OutputOwnershipError) as failure:
+        second.try_write(array("f", [0.0] * 4), generation=generation)
+
+    assert failure.value.code == "audio_input.wrong_output_input"
