@@ -297,6 +297,29 @@ async def test_async_operator_runs_on_owning_loop() -> None:
     assert value.payload == "HELLO"
 
 
+def test_async_operator_default_deadline_stays_bounded_by_core_manifest() -> None:
+    signal = SignalSpec.text()
+    manifest = OperatorManifest(
+        "io.pocketstation.operator.long-core-timeout-test.v1",
+        inputs=(PortSpec.input("input", signal),),
+        outputs=(PortSpec.output("output", signal),),
+        queue_capacity_signals=0x1_0000_0000,
+        process_timeout_ms=600_000,
+    )
+
+    class Node(pks_aio.OperatorNode):
+        async def process(self, _input_port, _envelope):
+            return ()
+
+    provider = pks_aio.OperatorProvider.with_node(
+        manifest, lambda _configuration: Node()
+    )
+
+    assert provider.manifest.queue_capacity_signals == 0x1_0000_0000
+    assert provider.manifest.process_timeout_ms == 600_000
+    assert provider.deadlines.process_s == 30.0
+
+
 def test_python_operator_emits_pcm_into_core_reentry_and_recording(tmp_path) -> None:
     generated_samples = array("f", [0.0]) * _VOICE_FRAME_SAMPLES
     generated_samples[:4] = array("f", [0.25, -0.25, 0.5, -0.5])

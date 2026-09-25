@@ -215,7 +215,7 @@ class OperatorProvider:
         deadlines: OperatorDeadlines | None = None,
     ) -> OperatorProvider:
         selected = deadlines or OperatorDeadlines(
-            process_s=manifest.process_timeout_ms / 1_000
+            process_s=min(30.0, manifest.process_timeout_ms / 1_000)
         )
         return cls(manifest, factory, selected)
 
