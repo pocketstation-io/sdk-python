@@ -5,6 +5,7 @@ import sys
 import pocketstation._api as pocketstation
 import pytest
 from pocketstation._api import (
+    CaptureError,
     CapturePermissionLifecycle,
     CapturePermissionTransitionKind,
     PermissionObservation,
@@ -42,11 +43,11 @@ def test_permission_lifecycle_preserves_transitions_and_epochs() -> None:
     assert lifecycle.permission_epoch == 1
     assert lifecycle.observe(PermissionObservation.ALLOWED) is None
 
-    revoked = lifecycle.observe(PermissionObservation.REVOKED)
+    revoked = lifecycle.observe(PermissionObservation.DENIED)
     assert revoked is not None
     assert revoked.kind is CapturePermissionTransitionKind.REVOKED
     assert revoked.previous is PermissionObservation.ALLOWED
-    assert revoked.current is PermissionObservation.REVOKED
+    assert revoked.current is PermissionObservation.DENIED
     assert revoked.permission_epoch == 2
     assert lifecycle.permission_epoch == 2
 
@@ -54,6 +55,17 @@ def test_permission_lifecycle_preserves_transitions_and_epochs() -> None:
     assert changed is not None
     assert changed.kind is CapturePermissionTransitionKind.CHANGED
     assert changed.permission_epoch == 3
+
+
+def test_permission_lifecycle_rejects_untyped_observations() -> None:
+    with pytest.raises(CaptureError) as initial_failure:
+        CapturePermissionLifecycle("allowed")  # type: ignore[arg-type]
+    assert initial_failure.value.code == "capture.invalid_permission_observation"
+
+    lifecycle = CapturePermissionLifecycle(PermissionObservation.ALLOWED)
+    with pytest.raises(CaptureError) as transition_failure:
+        lifecycle.observe("revoked")  # type: ignore[arg-type]
+    assert transition_failure.value.code == "capture.invalid_permission_observation"
 
 
 def test_linux_truth_is_not_reinterpreted_as_allowed_or_denied() -> None:

@@ -1201,6 +1201,41 @@ fn source_replacement_error_code(
     }
 }
 
+#[cfg(feature = "conformance-fixtures")]
+#[pyfunction]
+fn conformance_source_replacement_error(case_name: &str) -> PyResult<()> {
+    use pocketstation::{CaptureError, SessionSourceReplacementError, StemId};
+
+    let stem_id = StemId::new(7);
+    let failure = match case_name {
+        "session-not-running" => SessionSourceReplacementError::SessionNotRunning,
+        "unknown-stem" => SessionSourceReplacementError::UnknownStem { stem_id },
+        "not-microphone" => SessionSourceReplacementError::NotMicrophone { stem_id },
+        "prepare" => SessionSourceReplacementError::Prepare {
+            source: CaptureError::NotSupported,
+        },
+        "open" => SessionSourceReplacementError::Open {
+            source: CaptureError::NotSupported,
+        },
+        "reopen" => SessionSourceReplacementError::Reopen {
+            source: CaptureError::NotSupported,
+        },
+        "control-queue-full" => SessionSourceReplacementError::ControlQueueFull,
+        "runtime-stopped" => SessionSourceReplacementError::RuntimeStopped,
+        "response-timed-out" => SessionSourceReplacementError::ResponseTimedOut { timeout_ms: 250 },
+        _ => {
+            return Err(PyValueError::new_err(coded_reason(
+                "source.invalid_conformance_case",
+                "unknown source replacement conformance case",
+            )))
+        }
+    };
+    Err(PyRuntimeError::new_err(coded_reason(
+        source_replacement_error_code(&failure),
+        failure.to_string(),
+    )))
+}
+
 #[allow(clippy::needless_pass_by_value)] // Thread entry owns receiver and relay lifetime.
 fn session_worker(
     mut running: pocketstation::RunningSession,
@@ -1415,6 +1450,11 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PythonSession>()?;
     module.add_class::<PythonSessionStartCancellation>()?;
     module.add_class::<PythonRunningSession>()?;
+    #[cfg(feature = "conformance-fixtures")]
+    module.add_function(wrap_pyfunction!(
+        conformance_source_replacement_error,
+        module
+    )?)?;
     Ok(())
 }
 
