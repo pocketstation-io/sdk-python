@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "package_version": "0.1.5",
+  "abi": "cp311-abi3",
+  "targets": [
+    {"id": "linux-x64", "runner": "ubuntu-24.04", "target": "x86_64-unknown-linux-gnu", "system": "Linux", "machine": "x86_64", "platform_tag": "manylinux_2_34_x86_64", "manylinux": "2_34", "python_versions": ["3.11", "3.12", "3.13", "3.14"]},
+    {"id": "linux-arm64", "runner": "ubuntu-24.04-arm", "target": "aarch64-unknown-linux-gnu", "system": "Linux", "machine": "aarch64", "platform_tag": "manylinux_2_34_aarch64", "manylinux": "2_34", "python_versions": ["3.11", "3.12", "3.13", "3.14"]},
+    {"id": "macos-arm64", "runner": "macos-15", "target": "aarch64-apple-darwin", "system": "Darwin", "machine": "arm64", "platform_tag": "macosx_11_0_arm64", "manylinux": "off", "python_versions": ["3.11", "3.12", "3.13", "3.14"]},
+    {"id": "macos-x64", "runner": "macos-15-intel", "target": "x86_64-apple-darwin", "system": "Darwin", "machine": "x86_64", "platform_tag": "macosx_10_12_x86_64", "manylinux": "off", "python_versions": ["3.11", "3.12", "3.13", "3.14"]},
+    {"id": "windows-x64", "runner": "windows-2025", "target": "x86_64-pc-windows-msvc", "system": "Windows", "machine": "AMD64", "platform_tag": "win_amd64", "manylinux": "off", "python_versions": ["3.11", "3.12", "3.13", "3.14"]},
+    {"id": "windows-arm64", "runner": "windows-11-arm", "target": "aarch64-pc-windows-msvc", "system": "Windows", "machine": "ARM64", "platform_tag": "win_arm64", "manylinux": "off", "python_versions": ["3.13", "3.14"]}
+  ],
+  "limits": [
+    "Hosted native runtime execution does not prove physical capture or latency.",
+    "Windows ARM64 qualification starts at CPython 3.13; ABI minimum is not an older-runtime execution claim.",
+    "Musl and other operating systems or architectures are not qualified by this matrix."
+  ]
+}
