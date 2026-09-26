@@ -31,10 +31,12 @@
   workflow. Numeric application selectors are parsed as positive process IDs,
   while display names and bundle IDs remain strings.
 - The allocated Relay Session enters cleanup ownership before capture, model,
-  publication, or receiver setup. Capture and model declaration failures close
-  every resource that was entered; focused regression tests cover both paths.
-- Focused synchronous/asyncio Relay and demo tests pass 46 cases. The complete
-  source-tree suite passes 533 cases with 34 platform-dependent skips. Ruff and
+  publication, or receiver setup. Relay and model routes are declared before
+  entering Capture freezes the Session draft. Capture, publisher, and model
+  declaration failures close the Relay without starting Capture; focused
+  regression tests cover all three paths and the draft-freeze ordering.
+- Focused synchronous/asyncio Relay and demo tests pass 47 cases. The complete
+  source-tree suite passes 534 cases with 34 platform-dependent skips. Ruff and
   strict MyPy pass.
 - This change makes the installed artifact finite and automatable. Physical
   application/microphone capture, real model inference, two Chromium receivers,

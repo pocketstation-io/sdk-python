@@ -52,21 +52,21 @@ async def run_demo(options: DemoOptions) -> None:
             record_to=options.recording_root,
             stream_audio=False,
         )
-        async with live:
-            if live.microphone_stem is None:
-                raise RuntimeError("the installed demo requires a microphone stem")
+        if live.microphone_stem is None:
+            raise RuntimeError("the installed demo requires a microphone stem")
 
-            publisher = remote.publisher(live.session)
-            relay_routes = {
-                "application": live.application_stem.publish(publisher, "application"),
-                "microphone": live.microphone_stem.publish(publisher, "microphone"),
-            }
-            transcripts = FasterWhisper(
-                FasterWhisperConfiguration(
-                    model=options.model,
-                    allow_model_download=options.allow_model_download,
-                )
-            ).transcribe(live)
+        publisher = remote.publisher(live.session)
+        relay_routes = {
+            "application": live.application_stem.publish(publisher, "application"),
+            "microphone": live.microphone_stem.publish(publisher, "microphone"),
+        }
+        transcripts = FasterWhisper(
+            FasterWhisperConfiguration(
+                model=options.model,
+                allow_model_download=options.allow_model_download,
+            )
+        ).transcribe(live)
+        async with live:
             await remote.wait_for_publisher(timeout_seconds=30)
             invitation_urls: list[str] = []
             for bus_id in ("application", "microphone"):

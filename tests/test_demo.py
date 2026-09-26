@@ -121,7 +121,7 @@ async def test_demo_service_discovers_relay_from_control_plane(
     assert capsys.readouterr().out == ""
 
 
-@pytest.mark.parametrize("failure", ["capture", "model"])
+@pytest.mark.parametrize("failure", ["capture", "publisher", "model"])
 @pytest.mark.asyncio
 async def test_demo_closes_allocated_resources_when_declaration_fails(
     monkeypatch: pytest.MonkeyPatch,
@@ -129,6 +129,7 @@ async def test_demo_closes_allocated_resources_when_declaration_fails(
 ) -> None:
     remote = _Remote()
     live = _Capture()
+    remote.publisher_error = failure == "publisher"
 
     async def create_remote() -> _Remote:
         return remote
@@ -161,12 +162,12 @@ async def test_demo_closes_allocated_resources_when_declaration_fails(
 
     assert remote.entered is True
     assert remote.exited is True
-    assert live.entered is (failure == "model")
-    assert live.exited is (failure == "model")
+    assert live.entered is False
+    assert live.exited is False
 
 
 @pytest.mark.asyncio
-async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
+async def test_demo_declares_before_start_emits_invitations_and_stops_when_idle(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -234,6 +235,8 @@ async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     assert remote.minimum_receivers == 2
     assert remote.exited is True
     assert live.exited is True
+    assert live.publications_at_enter == (1, 1)
+    assert live.transcription_declared_at_enter is True
     assert transcription.capture is live
     assert result_calls == [
         (live, remote, relay_routes_for(live, remote), live.stop_result, 0.02)
@@ -274,8 +277,11 @@ class _Stem:
         self.id = stem_id
         self.session_id = 17
         self.publications: list[tuple[object, str]] = []
+        self.declarations_frozen = False
 
     def publish(self, publisher: object, bus_id: str) -> Any:
+        if self.declarations_frozen:
+            raise RuntimeError("session.draft_frozen")
         self.publications.append((publisher, bus_id))
         return SimpleNamespace(bus_id=bus_id, route_id=stem_id_for_bus(bus_id) + 10)
 
@@ -288,8 +294,18 @@ class _Capture:
         self.stop_result: Any = None
         self.entered = False
         self.exited = False
+        self.transcription_declared = False
+        self.publications_at_enter: tuple[int, int] | None = None
+        self.transcription_declared_at_enter: bool | None = None
 
     async def __aenter__(self) -> _Capture:
+        self.publications_at_enter = (
+            len(self.application_stem.publications),
+            len(self.microphone_stem.publications),
+        )
+        self.transcription_declared_at_enter = self.transcription_declared
+        self.application_stem.declarations_frozen = True
+        self.microphone_stem.declarations_frozen = True
         self.entered = True
         return self
 
@@ -307,8 +323,11 @@ class _Remote:
         self.receiver_activation: Any = None
         self.entered = False
         self.exited = False
+        self.publisher_error = False
 
     def publisher(self, _session: object) -> object:
+        if self.publisher_error:
+            raise RuntimeError("publisher declaration failed")
         return self.publisher_value
 
     async def wait_for_publisher(self, **_values: object) -> None:
@@ -341,7 +360,10 @@ class _Transcription:
         self.capture: _Capture | None = None
 
     def transcribe(self, capture: _Capture) -> AsyncIterator[Transcript]:
+        if capture.entered:
+            raise RuntimeError("session.draft_frozen")
         self.capture = capture
+        capture.transcription_declared = True
 
         async def idle() -> AsyncIterator[Transcript]:
             await asyncio.Event().wait()
