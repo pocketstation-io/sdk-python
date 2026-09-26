@@ -15,6 +15,7 @@ jobs:
   test:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -120,6 +121,7 @@ jobs:
   sdist:
     name: source distribution / Python 3.11
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Check out Python SDK

@@ -76,7 +76,10 @@ def test_private_native_runtime_and_stub_export_the_same_functions() -> None:
     runtime_functions = {
         name for name in dir(native) if inspect.isbuiltin(getattr(native, name))
     }
-    feature_only_test_functions = {"run_extension_conformance"}
+    feature_only_test_functions = {
+        "run_extension_conformance",
+        "conformance_source_replacement_error",
+    }
     assert runtime_functions - feature_only_test_functions == stub_functions
     assert not feature_only_test_functions & stub_functions
 
