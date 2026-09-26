@@ -245,3 +245,17 @@ repetition fixture. The complete 33 checks pass locally with no thresholds or
 evidence validation removed. Historical accepted reports are unchanged.
 After both corrections the full local SDK suite reports 624 passed and 34
 platform/fixture skips; the 23 relocated factory evidence checks also pass.
+
+Run 36257253732 passes the corrected source rebuild; the independent macOS
+installed consumer and physical app/microphone/model/recording/browser proof
+also pass from da80b19. The full source CI reaches the tests and exposes one
+remaining test-only mismatch: conformance_source_replacement_error is correctly
+compiled only with conformance-fixtures, but the native stub comparison omitted
+it from its explicit test-helper exclusions. The comparison now accounts for
+that exact helper while still forbidding it in stubs. Release consumers reject
+all three conformance-only exports. The new notice test/generator also declares
+its packaging 26.3 development dependency directly. This changes no native
+runtime or public API. Final same-commit source and distribution CI must pass.
+Both source-CI jobs now have explicit 45-minute upper limits, matching the
+finite qualification gates. Focused API/notice/archive checks: 49 passed;
+Ruff and the updated uv lock consistency check pass.

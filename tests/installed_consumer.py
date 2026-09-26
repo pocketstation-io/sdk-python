@@ -12,6 +12,7 @@ from time import sleep
 import httpx
 import pocketstation as public_pocketstation
 import pocketstation._api as pocketstation
+import pocketstation._native as native
 
 _VOICE_FRAME_SAMPLES = 480
 
@@ -528,6 +529,13 @@ def _exercise_invitation_lifecycle() -> None:
 
 
 def main() -> None:
+    fixture_exports = {
+        "ExtensionConformanceReport",
+        "run_extension_conformance",
+        "conformance_source_replacement_error",
+    }
+    if fixture_exports.intersection(dir(native)):
+        raise RuntimeError("Release wheel contains conformance-only native exports")
     provider = _exercise_complete_provider_path()
     _exercise_saturation()
     _exercise_class_connector()
