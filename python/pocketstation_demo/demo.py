@@ -43,61 +43,60 @@ async def run_demo(options: DemoOptions) -> None:
             input("Desktop application name, PID, or bundle ID: ")
         )
 
-    remote = await demo_relay_session()
-    live = pks.capture(
-        application=application,
-        microphone=options.microphone_id or True,
-        record_to=options.recording_root,
-        stream_audio=False,
-    )
-    if live.microphone_stem is None:
-        raise RuntimeError("the installed demo requires a microphone stem")
-
-    publisher = remote.publisher(live.session)
-    relay_routes = {
-        "application": live.application_stem.publish(publisher, "application"),
-        "microphone": live.microphone_stem.publish(publisher, "microphone"),
-    }
-    transcripts = FasterWhisper(
-        FasterWhisperConfiguration(
-            model=options.model,
-            allow_model_download=options.allow_model_download,
-        )
-    ).transcribe(live)
     output = DemoOutput(options.output_format)
-
-    async with remote, live:
-        await remote.wait_for_publisher(timeout_seconds=30)
-        invitation_urls: list[str] = []
-        for bus_id in ("application", "microphone"):
-            invitation = await remote.create_receiver_invitation(bus_id=bus_id)
-            invitation_urls.append(output.invitation(bus_id, invitation))
-        if not options.no_browser:
-            for share_url in invitation_urls:
-                webbrowser.open(share_url)
-        await remote.wait_for_receiver(
-            minimum_receivers=2,
-            timeout_seconds=30,
+    remote = await demo_relay_session()
+    async with remote:
+        live = pks.capture(
+            application=application,
+            microphone=options.microphone_id or True,
+            record_to=options.recording_root,
+            stream_audio=False,
         )
-        output.receivers_connected()
-        await _consume_transcripts_for(
-            transcripts,
-            duration_seconds=options.duration_seconds,
-            output=output,
-        )
+        async with live:
+            if live.microphone_stem is None:
+                raise RuntimeError("the installed demo requires a microphone stem")
 
-    stop_result = live.stop_result
-    if stop_result is None:
-        raise RuntimeError("capture closed without an authoritative StopResult")
-    output.completed(
-        result_event(
+            publisher = remote.publisher(live.session)
+            relay_routes = {
+                "application": live.application_stem.publish(publisher, "application"),
+                "microphone": live.microphone_stem.publish(publisher, "microphone"),
+            }
+            transcripts = FasterWhisper(
+                FasterWhisperConfiguration(
+                    model=options.model,
+                    allow_model_download=options.allow_model_download,
+                )
+            ).transcribe(live)
+            await remote.wait_for_publisher(timeout_seconds=30)
+            invitation_urls: list[str] = []
+            for bus_id in ("application", "microphone"):
+                invitation = await remote.create_receiver_invitation(bus_id=bus_id)
+                invitation_urls.append(output.invitation(bus_id, invitation))
+            if not options.no_browser:
+                for share_url in invitation_urls:
+                    webbrowser.open(share_url)
+            await remote.wait_for_receiver(
+                minimum_receivers=2,
+                timeout_seconds=30,
+            )
+            output.receivers_connected()
+            await _consume_transcripts_for(
+                transcripts,
+                duration_seconds=options.duration_seconds,
+                output=output,
+            )
+
+        stop_result = live.stop_result
+        if stop_result is None:
+            raise RuntimeError("capture closed without an authoritative StopResult")
+        result = result_event(
             live,
             remote,
             relay_routes,
             stop_result,
             duration_seconds=options.duration_seconds,
         )
-    )
+    output.completed(result)
 
 
 async def _consume_transcripts_for(
