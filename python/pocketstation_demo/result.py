@@ -125,6 +125,7 @@ def result_event(
         "duration_seconds": duration_seconds,
         "receiver_count": receiver_count,
         "session_id": str(live.application_stem.session_id),
+        "relay_session_id": str(remote.session_id),
         "source_ids": source_ids,
         "session": _stop_result(stop),
         "sources": _source_observations(live, metrics, source_ids),

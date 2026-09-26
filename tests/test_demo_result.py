@@ -57,6 +57,8 @@ def test_result_event_reports_only_public_authoritative_observations(
     assert result["duration_seconds"] == 12.5
     assert result["receiver_count"] == 2
     assert result["session_id"] == "17"
+    assert result["relay_session_id"] == "018f4e4e-2f3b-7e24-a214-9913db127c02"
+    assert result["session_id"] != result["relay_session_id"]
     assert result["source_ids"] == {
         "application": "9007199254740993",
         "microphone": "9007199254740995",
@@ -125,6 +127,26 @@ def test_result_event_names_missing_manifest_source_identity(tmp_path: Path) -> 
     }
 
 
+def test_result_event_sources_local_and_relay_session_ids_independently(
+    tmp_path: Path,
+) -> None:
+    live = _Capture(session_id=29)
+    relay_session_id = "018f4e66-28cf-7cbd-8759-965f76fb943e"
+    remote = _Remote(subscription_count=2, session_id=relay_session_id)
+
+    result = result_event(
+        live,
+        remote,
+        {},
+        _stop_result(tmp_path),
+        duration_seconds=1.0,
+    )
+
+    assert result["session_id"] == str(live.application_stem.session_id) == "29"
+    assert result["relay_session_id"] == str(remote.session_id) == relay_session_id
+    assert result["session_id"] != result["relay_session_id"]
+
+
 class _Invitation:
     def __init__(self, bus_id: str) -> None:
         self.share_alias = "calm-forest"
@@ -138,19 +160,25 @@ class _Invitation:
 
 
 class _Stem:
-    def __init__(self, stem_id: int) -> None:
+    def __init__(self, stem_id: int, *, session_id: int = 17) -> None:
         self.id = stem_id
-        self.session_id = 17
+        self.session_id = session_id
 
 
 class _Capture:
-    def __init__(self) -> None:
-        self.application_stem = _Stem(1)
-        self.microphone_stem = _Stem(2)
+    def __init__(self, *, session_id: int = 17) -> None:
+        self.application_stem = _Stem(1, session_id=session_id)
+        self.microphone_stem = _Stem(2, session_id=session_id)
 
 
 class _Remote:
-    def __init__(self, *, subscription_count: int) -> None:
+    def __init__(
+        self,
+        *,
+        subscription_count: int,
+        session_id: str = "018f4e4e-2f3b-7e24-a214-9913db127c02",
+    ) -> None:
+        self.session_id = session_id
         self.publisher_activation = _activation(subscription_count=0)
         self.receiver_activation = _activation(subscription_count=subscription_count)
 
