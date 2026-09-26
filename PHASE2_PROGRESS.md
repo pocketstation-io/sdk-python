@@ -157,3 +157,20 @@ local installation origin against the supplied artifact before recording the
 SDK's exact version, avoiding temporary artifact URLs in the dependency list;
 a wrong-origin negative test rejects sibling input. Forty-four packaging tests
 pass after these corrections. Actual corrected-artifact acceptance is pending.
+
+## W21 Python native distribution qualification
+
+Candidate 106 is now hash-accepted at fcf6422962f6b27ec7c5e11903e293152ba71fc2.
+Both the actual macOS arm64 wheel and rebuilt source archive pass isolated
+Session, typing, RECORD and uninstall checks. The independent verifier accepts
+the exact frozen artifacts and rejects nine tampered proofs. Canonical unrelated
+fixture dirt remains preserved; the qualified build checkout was clean.
+
+Candidate 107 declares six native targets and 22 Python runtime cells. Its
+qualification workflow builds each ABI3 wheel once, then runs those same bytes
+on every declared interpreter. A separate Linux source rebuild and aggregate
+artifact verifier are mandatory. Reports bind real host/runtime identity,
+source commit, wheel hash, logs, installed Session execution, strict typing,
+bounded saturation and uninstall. Twelve rejection/matrix tests pass locally.
+No remote run or target completion is claimed before its retained result.
+This workflow cannot publish; it uploads qualified artifacts for a later release.

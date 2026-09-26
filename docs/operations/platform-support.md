@@ -6,9 +6,23 @@ follow the host operating system.
 
 ## Supported Python
 
-PocketStation 0.1.4 supports CPython 3.11 and newer through one ABI3 extension
-per operating system and architecture. Install the wheel that matches the host;
-do not rely on a sibling Rust checkout.
+The Python API requires CPython 3.11 or newer and uses one ABI3 extension per
+operating system and architecture. Install the wheel that matches the host.
+
+Version 0.1.5 is undergoing installed-package testing on the following matrix:
+
+| Native host | Python versions under test |
+|---|---|
+| macOS Apple silicon and Intel | 3.11, 3.12, 3.13, 3.14 |
+| Linux glibc x86-64 and ARM64 | 3.11, 3.12, 3.13, 3.14 |
+| Windows x86-64 | 3.11, 3.12, 3.13, 3.14 |
+| Windows ARM64 | 3.13, 3.14 |
+
+The ABI3 minimum does not establish older Windows ARM64 interpreter support.
+Musl and targets outside this table remain unqualified. These hosted tests
+execute installed Sessions, typing and package cleanup; physical capture and
+device latency require separate measurements. The new version is not yet
+published.
 
 ## Check permission without prompting
 
