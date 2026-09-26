@@ -11,6 +11,11 @@ name: release-python
         description: Successful qualify-python-distribution run for this exact tag
         required: true
         type: string
+      verify_only:
+        description: Verify exact files with the publisher container without uploading
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -47,6 +52,14 @@ jobs:
           gh api "repos/pocketstation-io/sdk-python/actions/runs/$QUALIFICATION_RUN_ID" > run.json
           gh run download "$QUALIFICATION_RUN_ID" --repo pocketstation-io/sdk-python --name qualified-distributions --dir qualified
           python3 tools/prepare_release.py --qualified qualified --run-info run.json --source-commit "$source_commit" --tag "$RELEASE_TAG" --output dist --receipt prepared-release.json
+      - name: Check metadata with the exact publisher container
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --read-only --tmpfs /tmp:rw,size=64m \
+            --mount "type=bind,source=$PWD/dist,target=/dist,readonly" \
+            --entrypoint sh \
+            ghcr.io/pypa/gh-action-pypi-publish:dc37677b2e1c63e2034f94d8a5b11f265b73ba33 \
+            -c 'python -m twine check --strict /dist/*'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-inputs
@@ -57,6 +70,7 @@ jobs:
 
   publish:
     needs: validate
+    if: ${{ !inputs.verify_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
@@ -90,7 +104,7 @@ jobs:
           print('PASS: exact seven qualified distribution hashes')
           PY
       - name: Publish the qualified bytes with PyPI attestations
-        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
         with:
           packages-dir: incoming/dist/
           attestations: true

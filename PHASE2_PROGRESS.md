@@ -280,3 +280,23 @@ qualify-distribution workflow remains the only release-artifact producer and
 still requires repaired manylinux wheels, all notices and every installed
 runtime check. Unknown bundled libraries still fail closed; no release notice
 requirement or declared-platform test is removed.
+
+
+## 2026-09-26 — Publisher SPDX parser compatibility (Candidate 112)
+
+The exact Python 0.1.5 artifacts at e58b5b1 passed all 31 qualification jobs,
+all seven source-CI jobs, isolated installed execution and the finite physical
+app/microphone workflow. Release attempt 36261579822 stopped before upload:
+the pinned publisher contains packaging 25.0, which rejects nested license
+parentheses. The same seven unchanged files fail in that exact container and
+pass in the current PyPA v1.14.2 container (packaging 26.2 / Twine 7.0.0).
+A minimal parser differential isolates the nested-parenthesis bug fixed by
+pypa/packaging#931.
+
+Update only the publisher action pin to dc37677b2e1c63e2034f94d8a5b11f265b73ba33,
+and check metadata with that exact container before upload. A verification-only
+dispatch runs the full validation path while skipping the publisher job. No
+license, distribution byte, release tag, runtime code or product claim changes.
+The local old/new container differential passes; protected PR integration and
+hosted verification-only execution are the remaining gates before retrying
+publication of the already accepted files. No scaffold is introduced.
