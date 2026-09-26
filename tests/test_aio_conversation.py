@@ -6,11 +6,6 @@ from pathlib import Path
 
 import pocketstation.aio as pocketstation
 import pytest
-from conversation_support import (
-    TRANSCRIPT_SIGNAL,
-    transcript_operator,
-    transcript_source,
-)
 from pocketstation.conversation import (
     ConversationConfig,
     ConversationContext,
@@ -21,6 +16,12 @@ from pocketstation.conversation import (
     TranscriptUpdate,
 )
 from pocketstation.signal import SignalEnvelope
+
+from tests.conversation_support import (
+    TRANSCRIPT_SIGNAL,
+    transcript_operator,
+    transcript_source,
+)
 
 
 @pytest.mark.asyncio

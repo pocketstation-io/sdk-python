@@ -8,12 +8,6 @@ from threading import Event
 
 import pocketstation.aio as pocketstation
 import pytest
-from conversation_support import (
-    TRANSCRIPT_SIGNAL,
-    transcript_operator,
-    transcript_source,
-    transcript_source_after,
-)
 from pocketstation.conversation import (
     ConversationConfig,
     ConversationContext,
@@ -22,6 +16,13 @@ from pocketstation.conversation import (
     TranscriptUpdate,
 )
 from pocketstation.signal import STREAM_EOF
+
+from tests.conversation_support import (
+    TRANSCRIPT_SIGNAL,
+    transcript_operator,
+    transcript_source,
+    transcript_source_after,
+)
 
 
 @pytest.mark.asyncio
