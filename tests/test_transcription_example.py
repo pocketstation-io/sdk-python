@@ -10,6 +10,7 @@ import pytest
 from pocketstation_demo import (
     FasterWhisper,
     FasterWhisperConfiguration,
+    Transcript,
 )
 
 
@@ -48,6 +49,46 @@ class _Model:
         return iter((_Segment(),)), _Info()
 
 
+def test_transcript_retains_identity_beyond_javascript_safe_integer() -> None:
+    source_id = 9_007_199_254_740_993
+    timestamp_start_ns = 18_014_398_509_481_986
+    timestamp_end_ns = timestamp_start_ns + 960_000
+
+    transcript = Transcript.from_json(
+        json.dumps(
+            {
+                "source_id": str(source_id),
+                "text": "precise identity",
+                "language": "en",
+                "timestamp_start_ns": str(timestamp_start_ns),
+                "timestamp_end_ns": str(timestamp_end_ns),
+                "discontinuity_reasons": [],
+            }
+        )
+    )
+
+    assert transcript.source_id == source_id
+    assert transcript.timestamp_start_ns == timestamp_start_ns
+    assert transcript.timestamp_end_ns == timestamp_end_ns
+
+
+@pytest.mark.parametrize("invalid_source_id", [True, 1.5, "1.5", None])
+def test_transcript_rejects_non_integer_identity(invalid_source_id: object) -> None:
+    with pytest.raises(TypeError, match="source_id must be an integer"):
+        Transcript.from_json(
+            json.dumps(
+                {
+                    "source_id": invalid_source_id,
+                    "text": "invalid",
+                    "language": "en",
+                    "timestamp_start_ns": "1",
+                    "timestamp_end_ns": "2",
+                    "discontinuity_reasons": [],
+                }
+            )
+        )
+
+
 @pytest.mark.asyncio
 async def test_faster_whisper_is_the_concise_source_aware_python_path() -> None:
     transcription = FasterWhisper(
@@ -79,7 +120,7 @@ async def test_faster_whisper_is_the_concise_source_aware_python_path() -> None:
     finally:
         stop = await running.stop()
     transcript = json.loads(str(envelope.payload))
-    assert transcript["source_id"] == audio.source_id
-    assert transcript["stream_id"] == audio.stream_id
+    assert int(transcript["source_id"]) == audio.source_id
+    assert int(transcript["stream_id"]) == audio.stream_id
     assert transcript["text"] == "pocket station"
     assert stop.success
