@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import copy
 import importlib.util
-import json
-import shutil
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 SDK_ROOT = Path(__file__).parents[1]
-WORKSPACE_ROOT = SDK_ROOT.parents[1]
 
 
 def load_module(name: str, path: Path) -> Any:
@@ -24,10 +21,6 @@ def load_module(name: str, path: Path) -> Any:
 runner = load_module(
     "performance_resource_runner",
     SDK_ROOT / "benchmarks/run_performance_resource_qualification.py",
-)
-verifier = load_module(
-    "performance_resource_verifier",
-    WORKSPACE_ROOT / "tools/verify-python-performance-report.py",
 )
 
 
@@ -199,128 +192,6 @@ def valid_repetition(index: int) -> dict[str, Any]:
     }
 
 
-def valid_report() -> dict[str, Any]:
-    repetitions = [valid_repetition(index) for index in range(7)]
-    return {
-        "schema": "io.pocketstation.python.performance-resource-qualification.v2",
-        "task_id": "W21-PYTHON-PERFORMANCE-RESOURCE-QUALIFICATION",
-        "candidate_id": verifier.CANDIDATE_ID,
-        "source_candidate_id": verifier.SOURCE_CANDIDATE_ID,
-        "sdk_commit": verifier.SDK_COMMIT,
-        "classification": "SAFE-TO-TEST",
-        "scope": "installed-wheel-local-component",
-        "units": dict(verifier.UNITS),
-        "environment": {
-            "os": "Darwin",
-            "os_release": "test",
-            "machine": "arm64",
-            "runner_python": "3.13",
-            "uv_version": "uv 0.10.9",
-        },
-        "artifact": {
-            "wheel_path": str(
-                WORKSPACE_ROOT
-                / "docs/execution/evidence/W21-PYTHON-REAL-PATH-E2E"
-                / "candidate-103/candidate-wheel.whl"
-            ),
-            "wheel_sha256": verifier.WHEEL_SHA256,
-            "candidate_103_acceptance_sha256": verifier.SOURCE_ACCEPTANCE_SHA256,
-            "probe_path": str(
-                WORKSPACE_ROOT / "docs/execution/evidence/"
-                "W21-PYTHON-PERFORMANCE-RESOURCE-QUALIFICATION/"
-                "candidate-105/harness/performance_resource_probe.py"
-            ),
-            "probe_sha256": runner.sha256(
-                SDK_ROOT / "benchmarks/performance_resource_probe.py"
-            ),
-            "runner_path": str(
-                WORKSPACE_ROOT / "docs/execution/evidence/"
-                "W21-PYTHON-PERFORMANCE-RESOURCE-QUALIFICATION/"
-                "candidate-105/harness/run_performance_resource_qualification.py"
-            ),
-            "runner_sha256": runner.sha256(
-                SDK_ROOT / "benchmarks/run_performance_resource_qualification.py"
-            ),
-            "installed_distributions": sorted(
-                [
-                    *runner.RUNTIME_DEPENDENCIES,
-                    "pocketstation @ file:///private/tmp/c105/"
-                    + runner.WHEEL_INSTALL_NAME,
-                ]
-            ),
-            "wheel_payload_sha256": {
-                runner.WHEEL_PACKAGE_PATH: (
-                    "1b51e73722ed6e67187f24e4fb0e496023765119f0f033547f8447557cbb21b2"
-                ),
-                runner.WHEEL_NATIVE_PATH: (
-                    "3e71b71202d7d3fffe10d8c821c6b9b0bcf49735eb5d8b5fe970770e2058be21"
-                ),
-            },
-            "installation": {
-                "network_allowed": False,
-                "uv_offline": True,
-                "python_isolated_flag": True,
-                "python_user_site_disabled": True,
-                "runtime_dependencies": list(runner.RUNTIME_DEPENDENCIES),
-                "dependency_freeze_verified": True,
-                "exact_wheel_payload_verified": True,
-            },
-        },
-        "method": {
-            "warmups_total": 2,
-            "repetitions_total": 7,
-            "fresh_process_per_repetition": True,
-            "round_trip_frames": 300,
-            "capacity_frames_per_source": 1_000,
-            "product_load_frames_per_source": 400,
-            "source_count": 2,
-            "sample_rate_hz": 48_000,
-            "samples_per_frame": 480,
-            "lifecycle_cycles_per_mode_per_repetition": 20,
-            "round_trip_measurement": "serialized latency workload",
-            "raw_latency_samples_retained": True,
-            "capacity_measurement": "two-source bounded capacity workload",
-            "product_load_measurement": "two-source paced four-second workload",
-            "throughput_requirement": {
-                "sources_total": 2,
-                "frame_duration_ms": 10,
-                "frames_per_second_per_source": 100,
-                "aggregate_product_frames_per_second": 200,
-                "headroom_multiplier": 2.5,
-                "qualified_minimum_frames_per_second": 500.0,
-            },
-            "product_load_requirement": {
-                "duration_seconds": 4,
-                "configured_period_ns": 10_000_000,
-                "frames_per_source": 400,
-                "aggregate_frames_total": 800,
-                "minimum_aggregate_frames_per_second": 180.0,
-                "scheduler_tolerance_ns": 50_000_000,
-                "workload_timeout_ns": 30_000_000_000,
-            },
-            "cancellation_read_timeout_ns": 100_000_000,
-            "cancellation_total_budget_ns": 250_000_000,
-            "subprocess_timeout_seconds": 180,
-            "warmup_process_durations_ns": [1_000_000_000, 1_000_000_000],
-            "measurement_engine": ("pocketstation-installed-wheel-repeated-process-v1"),
-            "pyperf_used": False,
-            "pyperf_decision": "multi-resource workload; no pyperf claim",
-        },
-        "budgets": dict(verifier.BUDGETS),
-        "repetitions": repetitions,
-        "dispersion": runner.aggregate(repetitions),
-        "checks": runner.evaluate(repetitions),
-        "result": "PASS",
-        "non_claims": [
-            "No competitor superiority claim follows.",
-            "No physical-device claim follows.",
-            "No cross-platform claim follows.",
-            "Candidate 103 owns real-path evidence.",
-        ],
-        "source_acceptance_classification": "REAL-DEVICE-PROVEN",
-    }
-
-
 def test_given_repeated_values_when_summarized_then_dispersion_is_unit_free() -> None:
     summary = runner.distribution([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
 
@@ -328,16 +199,6 @@ def test_given_repeated_values_when_summarized_then_dispersion_is_unit_free() ->
     assert summary["median"] == 4.0
     assert summary["p95"] == 7.0
     assert summary["standard_deviation"] > 0
-
-
-def write_report(tmp_path: Path, report: dict[str, Any]) -> Path:
-    path = tmp_path / "report.json"
-    path.write_text(json.dumps(report), encoding="utf-8")
-    return path
-
-
-def test_given_complete_report_when_verified_then_it_passes(tmp_path: Path) -> None:
-    verifier.verify(write_report(tmp_path, valid_report()))
 
 
 def test_given_non_candidate_output_when_validated_then_it_is_rejected(
@@ -477,173 +338,3 @@ def test_given_tampered_raw_latency_summary_when_validated_then_it_is_rejected()
 
     with pytest.raises(RuntimeError, match="summary does not match raw samples"):
         runner.validate_raw_latency_samples(measurement, round_trip_frames=300)
-
-
-def test_candidate_104_retention_pins_every_retained_file(tmp_path: Path) -> None:
-    source = (
-        WORKSPACE_ROOT
-        / "docs/execution/evidence/W21-PYTHON-PERFORMANCE-RESOURCE-QUALIFICATION"
-        / "candidate-104"
-    )
-    target = (
-        tmp_path
-        / "docs/execution/evidence/W21-PYTHON-PERFORMANCE-RESOURCE-QUALIFICATION"
-        / "candidate-104"
-    )
-    shutil.copytree(source, target)
-
-    runner.validate_candidate_104_retention(tmp_path)
-
-
-def test_candidate_104_retention_rejects_reference_review_tampering(
-    tmp_path: Path,
-) -> None:
-    source = (
-        WORKSPACE_ROOT
-        / "docs/execution/evidence/W21-PYTHON-PERFORMANCE-RESOURCE-QUALIFICATION"
-        / "candidate-104"
-    )
-    target = (
-        tmp_path
-        / "docs/execution/evidence/W21-PYTHON-PERFORMANCE-RESOURCE-QUALIFICATION"
-        / "candidate-104"
-    )
-    shutil.copytree(source, target)
-    (target / "reference-review.json").write_text("tampered", encoding="utf-8")
-
-    with pytest.raises(RuntimeError, match=r"reference-review\.json changed"):
-        runner.validate_candidate_104_retention(tmp_path)
-
-
-@pytest.mark.parametrize(
-    ("mutation", "expected"),
-    [
-        (lambda report: report["units"].pop("memory"), "units"),
-        (
-            lambda report: report["artifact"].update(wheel_sha256="0" * 64),
-            "wheel hash changed",
-        ),
-        (
-            lambda report: report["artifact"].update(
-                candidate_103_acceptance_sha256="0" * 64
-            ),
-            "source acceptance hash changed",
-        ),
-        (
-            lambda report: report["method"].update(repetitions_total=6),
-            "fewer than seven",
-        ),
-        (
-            lambda report: report["budgets"].update(
-                cancellation_latency_ns_max=10_000_000_000
-            ),
-            "budgets",
-        ),
-        (
-            lambda report: report["repetitions"][0]["cancellation"].update(
-                latency_ns=300_000_000
-            ),
-            "reported checks do not match repetitions",
-        ),
-        (
-            lambda report: report["repetitions"][0]["cancellation"].update(
-                requested_timeout_ns=1_000_000_000
-            ),
-            "cancellation timeout changed",
-        ),
-        (
-            lambda report: report["checks"].update(
-                resources_returned_within_budget=False
-            ),
-            "reported checks do not match repetitions",
-        ),
-        (
-            lambda report: report["repetitions"][1].update(
-                process_id=report["repetitions"][0]["process_id"]
-            ),
-            "process",
-        ),
-        (
-            lambda report: report["repetitions"][0].update(
-                native_module_path=(
-                    "/private/tmp/c105-sibling/venv/lib/python3.13/"
-                    "site-packages/pocketstation/_native.abi3.so"
-                )
-            ),
-            "environment",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["capacity"].update(
-                source_count=1
-            ),
-            "source count",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["capacity"]["sources"][
-                1
-            ].update(source_id=1),
-            "source IDs",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["capacity"]["routes"][
-                1
-            ].update(route_id=1),
-            "route IDs",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["capacity"]["sources"][
-                0
-            ].update(frames_received_total=999),
-            "received",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["capacity"]["sources"][
-                0
-            ].update(last_sequence_number=998),
-            "sequence",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["capacity"].update(
-                route_drops_total=1
-            ),
-            "drop",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["product_load"].update(
-                configured_period_ns=None
-            ),
-            "period",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["capacity"].update(
-                aggregate_frames_per_second=99_999.0
-            ),
-            "derived",
-        ),
-        (
-            lambda report: report["repetitions"][0]["sync"]["product_load"].update(
-                wall_time_ns=5_000_000_000,
-                aggregate_frames_per_second=160.0,
-            ),
-            "product load",
-        ),
-        (
-            lambda report: report["repetitions"][0].update(
-                package_path=str(
-                    SDK_ROOT / "fake/site-packages/pocketstation/__init__.py"
-                )
-            ),
-            "checkout",
-        ),
-    ],
-)
-def test_given_tampered_report_when_verified_then_it_is_rejected(
-    mutation: Any,
-    expected: str,
-    tmp_path: Path,
-) -> None:
-    report = valid_report()
-    mutation(report)
-
-    with pytest.raises(verifier.Rejected, match=expected):
-        verifier.verify(write_report(tmp_path, report))

@@ -225,3 +225,23 @@ Sixty-four focused checks pass. Final same-commit hosted source CI, all native
 distributions and independent installed reproduction remain mandatory.
 Git attributes preserve exact embedded notice bytes on Windows checkouts;
 newline conversion must not invalidate original source-notice hashes.
+
+Final-source run 36256736846 exposed a notice gap in the standalone source
+rebuild: its Maturin SBOM includes alternate-target dependencies omitted from
+the six explicit-target wheel union. The first absent entry was bumpalo 3.20.3.
+The original failing archive and consumer log are retained. Notices now cover
+all 291 locked Cargo dependency versions plus three Linux repair packages;
+r-efi's license and copyright are retained from its AUTHORS file. A regression
+check binds notice coverage to the complete Cargo.lock, so source-only entries
+cannot be omitted. Runtime and dependency versions are unchanged. Sixty-five
+focused tests pass; a new full hosted qualification remains required.
+
+The full standalone source CI exposed a pre-existing factory dependency in
+test collection: Candidate105 report tests imported a verifier and historical
+artifacts from two directories above the SDK. Those 23 factory evidence checks
+now live in the factory's tools/tests/test_python_performance_evidence.py. All
+10 portable runner checks remain in the SDK and share the same synthetic
+repetition fixture. The complete 33 checks pass locally with no thresholds or
+evidence validation removed. Historical accepted reports are unchanged.
+After both corrections the full local SDK suite reports 624 passed and 34
+platform/fixture skips; the 23 relocated factory evidence checks also pass.
