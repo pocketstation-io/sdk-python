@@ -36,8 +36,9 @@ async def main() -> None:
         invite = await remote.wait_for_publisher_and_invitation(
             bus_id="assistant", timeout_seconds=30
         )
-        print(f"Invitation: {invite.join_code}  {invite.join_url}")
-        webbrowser.open(invite.join_url)
+        share_url = invite.expose_url()
+        print(f"Invitation: {invite.share_alias}  {share_url}")
+        webbrowser.open(share_url)
         await remote.wait_for_receiver(timeout_seconds=30)
         voice = await conversation.start(running)
         try:

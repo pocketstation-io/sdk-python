@@ -8,6 +8,7 @@ shared Rust Connector handles WebRTC publication.
 
 ```python
 import pocketstation.aio as pks
+from pocketstation.control import InvitationVisibility
 
 remote = await pks.RelaySession.create(
     control_plane_url="https://control.example.com",
@@ -22,12 +23,37 @@ async with remote, live:
         bus_id="application",
         timeout_seconds=30,
     )
-    print(invitation.join_code, invitation.join_url)
+    print(invitation.share_alias, invitation.expose_url())
     await remote.wait_for_receiver(timeout_seconds=30)
 ```
 
 Declare every bus before starting the Session. Create an invitation only after
 publisher readiness succeeds, and delete the remote Session during shutdown.
+
+Private invitations are the default. Their readable three-word URL contains an
+independent secret in the URL fragment. `str()`, `repr()`, and ordinary JSON
+serialization redact that URL; `expose_url()` is the explicit boundary for
+displaying, copying, or opening it. Use
+`visibility=InvitationVisibility.PUBLIC` only when possession of the
+two-word alias itself should grant access.
+
+The lower-level `ControlClient` also exposes the complete single-use lifecycle:
+
+```python
+metadata = await control.inspect_invitation(invitation.share_alias)
+secret = invitation.share_link.expose_secret()
+access = await control.redeem_invitation(
+    invitation.share_alias,
+    secret=secret,
+)
+print(metadata.expires_at, access.bus_id)
+```
+
+Inspection uses `GET` and never consumes access. Redemption always uses
+`POST /v1/invitations/{locator}/redeem`; it returns one subscriber capability
+for the exact selected AudioBus. Invalid, expired, revoked, and already-used
+invitations all raise `InvitationUnavailableError` without revealing which
+condition occurred.
 
 ## Use the shared demo service for a quick test
 

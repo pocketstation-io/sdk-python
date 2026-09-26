@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Event, Thread
 from time import sleep
 
+import httpx
 import pocketstation as public_pocketstation
 import pocketstation._api as pocketstation
 
@@ -452,6 +453,83 @@ def _exercise_operator_pcm_reentry() -> None:
         raise RuntimeError("installed Python Operator PCM did not finalize")
 
 
+def _exercise_invitation_lifecycle() -> None:
+    join_code = "4a54c6b9-fdc2-4e0c-a740-715efdcf03de"
+    alias = "gentleglow-cedarbloom-riverglen"
+    private_secret = "installed-private-secret"
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/invitations"):
+            return httpx.Response(
+                201,
+                json={
+                    "join_code": join_code,
+                    "join_url": (
+                        f"https://receiver.example/join/{join_code}"
+                        f"#secret={private_secret}"
+                    ),
+                    "share_alias": alias,
+                    "share_url": (
+                        f"https://receiver.example/{alias}"
+                        f"#secret={private_secret}"
+                    ),
+                    "visibility": "private",
+                    "expires_at": "2026-09-26T18:15:00Z",
+                },
+            )
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "share_alias": alias,
+                    "visibility": "private",
+                    "expires_at": "2026-09-26T18:15:00Z",
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "session_id": "session_123",
+                "bus_id": "application",
+                "subscriber_token": "installed-subscriber-secret",
+                "signal_url": "wss://relay.example/v1/signal",
+                "whep_url": (
+                    "https://relay.example/v1/sessions/session_123/whep"
+                ),
+                "ice_servers": [],
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = pocketstation.ControlClient(
+            "https://control.example",
+            http_client=http_client,
+        )
+        invitation = client.create_invitation(
+            "session_123",
+            pocketstation.SecretToken("source-secret"),
+            bus_id="application",
+            visibility=pocketstation.InvitationVisibility.PRIVATE,
+        )
+        metadata = client.inspect_invitation(invitation.share_alias)
+        if invitation.share_url is None:
+            raise RuntimeError("installed invitation omitted its share URL")
+        private_token = invitation.share_url.expose_secret()
+        access = client.redeem_invitation(
+            invitation.share_alias,
+            secret=private_token,
+        )
+
+    if private_secret in repr(invitation) or str(invitation.share_url) != "[redacted]":
+        raise RuntimeError("installed invitation exposed its private fragment")
+    if metadata.share_alias != alias or access.bus_id != "application":
+        raise RuntimeError("installed invitation lost alias or exact-bus scope")
+    if [request.method for request in requests] != ["POST", "GET", "POST"]:
+        raise RuntimeError("installed invitation used the wrong HTTP lifecycle")
+
+
 def main() -> None:
     provider = _exercise_complete_provider_path()
     _exercise_saturation()
@@ -460,6 +538,7 @@ def main() -> None:
     _exercise_abort()
     _exercise_structured_failure()
     _exercise_operator_pcm_reentry()
+    _exercise_invitation_lifecycle()
     package_path = Path(pocketstation.__file__).resolve()
     environment_root = Path(sys.prefix).resolve()
     if not package_path.is_relative_to(environment_root):

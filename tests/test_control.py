@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 from pocketstation._api import (
     ControlClient,
     ControlPlaneError,
+    InvitationUnavailableError,
+    InvitationVisibility,
     SecretToken,
     SessionId,
 )
@@ -34,6 +38,36 @@ PUBLISH_RESPONSE = {
     "bus_id": "microphone",
     "publisher_token": "media-only-secret",
     "signal_url": "wss://relay.example/v1/signal",
+    "ice_servers": CREATE_RESPONSE["ice_servers"],
+}
+
+JOIN_CODE = "4a54c6b9-fdc2-4e0c-a740-715efdcf03de"
+PRIVATE_SECRET = "private-fragment-secret"
+PRIVATE_INVITATION_RESPONSE = {
+    "join_code": JOIN_CODE,
+    "join_url": f"https://receiver.example/join/{JOIN_CODE}#secret={PRIVATE_SECRET}",
+    "share_alias": "gentleglow-cedarbloom-riverglen",
+    "share_url": (
+        "https://receiver.example/gentleglow-cedarbloom-riverglen"
+        f"#secret={PRIVATE_SECRET}"
+    ),
+    "visibility": "private",
+    "expires_at": "2026-09-26T18:15:00Z",
+}
+PUBLIC_INVITATION_RESPONSE = {
+    "join_code": JOIN_CODE,
+    "join_url": f"https://receiver.example/join/{JOIN_CODE}",
+    "share_alias": "gentleglow-cedarbloom",
+    "share_url": "https://receiver.example/gentleglow-cedarbloom",
+    "visibility": "public",
+    "expires_at": "2026-09-26T18:15:00Z",
+}
+REDEEM_RESPONSE = {
+    "session_id": "session_123",
+    "bus_id": "application",
+    "subscriber_token": "subscriber-secret",
+    "signal_url": "wss://relay.example/v1/signal",
+    "whep_url": "https://relay.example/v1/sessions/session_123/whep",
     "ice_servers": CREATE_RESPONSE["ice_servers"],
 }
 
@@ -86,17 +120,7 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
                 },
             )
         if request.url.path.endswith("/invitations"):
-            return httpx.Response(
-                201,
-                json={
-                    "join_code": "opaque-code",
-                    "join_url": (
-                        "https://receiver.example/?join=opaque-code"
-                        "&control=https%3A%2F%2Fcontrol.example"
-                    ),
-                    "expires_at": "2026-08-21T18:00:00Z",
-                },
-            )
+            return httpx.Response(201, json=PRIVATE_INVITATION_RESPONSE)
         assert request.headers["authorization"] == "Bearer source-secret"
         return httpx.Response(204)
 
@@ -129,7 +153,20 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
     assert snapshot.buses[0].source_generation == 1
     assert subscriber.subscriber_token.expose_secret() == "next-subscriber-secret"
     assert subscriber.bus_id == "mix"
-    assert invitation.join_code == "opaque-code"
+    assert invitation.join_code == JOIN_CODE
+    assert invitation.share_alias == "gentleglow-cedarbloom-riverglen"
+    assert invitation.visibility is InvitationVisibility.PRIVATE
+    assert invitation.expires_at == datetime(
+        2026, 9, 26, 18, 15, tzinfo=UTC
+    )
+    assert invitation.share_url is not None
+    assert str(invitation.share_url) == "[redacted]"
+    assert PRIVATE_SECRET not in repr(invitation)
+    assert PRIVATE_SECRET not in repr(asdict(invitation))
+    assert PRIVATE_SECRET not in json.dumps(asdict(invitation), default=str)
+    assert invitation.share_url.expose_url().endswith(
+        f"#secret={PRIVATE_SECRET}"
+    )
     assert [(request.method, request.url.path) for request in requests] == [
         ("POST", "/base/v1/sessions"),
         ("GET", "/base/v1/sessions/session_123"),
@@ -137,6 +174,10 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
         ("POST", "/base/v1/sessions/session_123/invitations"),
         ("DELETE", "/base/v1/sessions/session_123"),
     ]
+    assert json.loads(requests[3].content) == {
+        "bus_id": "mix",
+        "visibility": "private",
+    }
 
 
 @pytest.mark.asyncio
@@ -189,6 +230,185 @@ async def test_async_client_has_the_same_wire_contract() -> None:
         ("POST", "/v1/sessions/session_123/subscribe"),
         ("DELETE", "/v1/sessions/session_123"),
     ]
+
+
+def test_sync_invitation_lifecycle_is_nonconsuming_until_post_redeem() -> None:
+    requests: list[httpx.Request] = []
+    redeemed = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal redeemed
+        requests.append(request)
+        if request.url.path.endswith("/invitations"):
+            return httpx.Response(201, json=PRIVATE_INVITATION_RESPONSE)
+        if request.method == "GET":
+            assert redeemed is False
+            return httpx.Response(
+                200,
+                json={
+                    "share_alias": "gentleglow-cedarbloom-riverglen",
+                    "visibility": "private",
+                    "expires_at": "2026-09-26T18:15:00Z",
+                },
+            )
+        if request.method == "POST" and request.url.path.endswith("/redeem"):
+            if redeemed:
+                return httpx.Response(404, json={"error": "invitation_not_found"})
+            redeemed = True
+            return httpx.Response(200, json=REDEEM_RESPONSE)
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        created = client.create_invitation(
+            "session_123",
+            SecretToken("source-secret"),
+            bus_id="application",
+            visibility=InvitationVisibility.PRIVATE,
+        )
+        inspected = client.inspect_invitation(created.share_alias)
+        assert created.share_url is not None
+        private_secret = created.share_url.expose_secret()
+        assert private_secret is not None
+        access = client.redeem_invitation(
+            created.share_alias,
+            secret=private_secret,
+        )
+        with pytest.raises(InvitationUnavailableError) as replay:
+            client.redeem_invitation(
+                created.share_alias,
+                secret=private_secret,
+            )
+
+    assert inspected.share_alias == created.share_alias
+    assert inspected.visibility is InvitationVisibility.PRIVATE
+    assert access.bus_id == "application"
+    assert access.subscriber_token.expose_secret() == "subscriber-secret"
+    assert "subscriber-secret" not in repr(access)
+    assert replay.value.code == "control.invitation_unavailable"
+    assert replay.value.status_code == 404
+    assert json.loads(requests[0].content) == {
+        "bus_id": "application",
+        "visibility": "private",
+    }
+    assert requests[1].method == "GET"
+    assert requests[1].url.path.endswith(
+        "/v1/invitations/gentleglow-cedarbloom-riverglen"
+    )
+    assert requests[2].method == "POST"
+    assert requests[2].url.path.endswith(
+        "/v1/invitations/gentleglow-cedarbloom-riverglen/redeem"
+    )
+    assert json.loads(requests[2].content) == {"secret": PRIVATE_SECRET}
+
+
+@pytest.mark.asyncio
+async def test_async_public_invitation_lifecycle_matches_sync() -> None:
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/invitations"):
+            return httpx.Response(201, json=PUBLIC_INVITATION_RESPONSE)
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "share_alias": "gentleglow-cedarbloom",
+                    "visibility": "public",
+                    "expires_at": "2026-09-26T18:15:00Z",
+                },
+            )
+        return httpx.Response(200, json=REDEEM_RESPONSE)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        client = AsyncControlClient(
+            "https://control.example",
+            http_client=http_client,
+        )
+        created = await client.create_invitation(
+            "session_123",
+            SecretToken("source-secret"),
+            bus_id="application",
+            visibility=InvitationVisibility.PUBLIC,
+        )
+        inspected = await client.inspect_invitation(created.share_alias)
+        access = await client.redeem_invitation(created.share_alias)
+
+    assert created.visibility is InvitationVisibility.PUBLIC
+    assert created.share_url is not None
+    assert str(created.share_url) == created.share_url.expose_url()
+    assert created.share_url.expose_secret() is None
+    assert inspected.visibility is InvitationVisibility.PUBLIC
+    assert access.bus_id == "application"
+    assert json.loads(requests[0].content) == {
+        "bus_id": "application",
+        "visibility": "public",
+    }
+    assert json.loads(requests[2].content) == {}
+
+
+@pytest.mark.parametrize("operation", ["inspect", "redeem"])
+def test_unavailable_invitation_hides_expiry_replay_and_revocation(
+    operation: str,
+) -> None:
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(
+                404,
+                json={"error": "invitation_not_found"},
+            )
+        )
+    ) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(InvitationUnavailableError) as failure:
+            if operation == "inspect":
+                client.inspect_invitation("gentleglow-cedarbloom")
+            else:
+                client.redeem_invitation("gentleglow-cedarbloom")
+    assert str(failure.value) == "invitation is unavailable"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("visibility", "friends-only"),
+        ("share_alias", "short-name"),
+        ("share_alias", "gentleglow-cedarbloom"),
+        ("expires_at", "not-a-timestamp"),
+        ("join_url", "https://receiver.example/join/no-secret"),
+        (
+            "join_url",
+            "https://receiver.example/join/"
+            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa#secret=private-fragment-secret",
+        ),
+        (
+            "share_url",
+            "https://receiver.example/gentleglow-cedarbloom-riverglen"
+            "#secret=different-secret",
+        ),
+    ],
+)
+def test_private_invitation_rejects_invalid_server_contract(
+    field: str,
+    value: object,
+) -> None:
+    response = {**PRIVATE_INVITATION_RESPONSE, field: value}
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(201, json=response)
+        )
+    ) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(ControlPlaneError) as failure:
+            client.create_invitation(
+                "session_123",
+                SecretToken("source-secret"),
+                bus_id="application",
+            )
+    assert failure.value.code == "control.response_decode"
 
 
 def test_sync_publisher_credentials_have_exact_wire_and_redacted_secrets() -> None:

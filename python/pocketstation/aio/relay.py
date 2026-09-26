@@ -8,7 +8,13 @@ from time import monotonic
 from types import TracebackType
 from typing import TYPE_CHECKING
 
-from ..control import ControlPlaneError, SessionCredentials, SessionId, SessionSnapshot
+from ..control import (
+    ControlPlaneError,
+    InvitationVisibility,
+    SessionCredentials,
+    SessionId,
+    SessionSnapshot,
+)
 from ..errors import _native_call
 from ..relay import (
     PublisherActivation,
@@ -168,7 +174,10 @@ class RelaySession:
         return activation
 
     async def create_receiver_invitation(
-        self, *, bus_id: str = "mix"
+        self,
+        *,
+        bus_id: str = "mix",
+        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
     ) -> ReceiverInvitation:
         self._require_open()
         if self._publisher_activation is None:
@@ -180,6 +189,7 @@ class RelaySession:
             self.session_id,
             self.credentials.source_token,
             bus_id=bus_id,
+            visibility=visibility,
             timeout_seconds=self._request_timeout_seconds,
         )
         invitation = _receiver_invitation(created, self.session_id)
@@ -190,6 +200,7 @@ class RelaySession:
         self,
         *,
         bus_id: str = "mix",
+        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
         timeout_seconds: float = 10.0,
         poll_interval_seconds: float = 0.1,
     ) -> ReceiverInvitation:
@@ -197,7 +208,10 @@ class RelaySession:
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
         )
-        return await self.create_receiver_invitation(bus_id=bus_id)
+        return await self.create_receiver_invitation(
+            bus_id=bus_id,
+            visibility=visibility,
+        )
 
     async def wait_for_receiver(
         self,
