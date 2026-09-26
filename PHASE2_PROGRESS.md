@@ -268,3 +268,15 @@ rejected. The existing cross-platform positive test covers the reported case;
 four new rejection cases pass. No measurement thresholds or historical frozen
 Candidate105 harness/evidence changed. The short-lived c050900 CI runs are
 superseded because they still contain this known failing Windows check.
+
+The next full CI passes Linux/macOS Python tests and the source rebuild, and
+the final macOS wheel again passes isolated installation and the complete
+finite physical workflow. Linux CI's separate inspection-wheel build exposed
+a configuration mismatch: automatic repair bundled Ubuntu libasound2t64,
+whose version is not in the release's reviewed manylinux library inventory.
+Source CI now builds an unbundled linux wheel against its installed development
+libraries, as the standalone source consumer already does. The unchanged
+qualify-distribution workflow remains the only release-artifact producer and
+still requires repaired manylinux wheels, all notices and every installed
+runtime check. Unknown bundled libraries still fail closed; no release notice
+requirement or declared-platform test is removed.

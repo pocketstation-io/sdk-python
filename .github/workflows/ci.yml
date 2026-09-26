@@ -101,7 +101,13 @@ jobs:
           CARGO_TARGET_DIR: native/target-release
         shell: bash
         run: |
-          maturin build --release --locked --out dist
+          compatibility=()
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            # Source CI tests against the runner's installed libraries. Public
+            # repaired manylinux wheels are built by qualify-distribution.yml.
+            compatibility=(--compatibility linux)
+          fi
+          maturin build --release --locked "${compatibility[@]}" --out dist
           python build_backend.py dist/*.whl
 
       - name: Test isolated release wheel
