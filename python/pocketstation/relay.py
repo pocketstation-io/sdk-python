@@ -4,17 +4,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from math import isfinite
 from time import monotonic, sleep
 from types import TracebackType
 from typing import TYPE_CHECKING
-from urllib.parse import ParseResult, parse_qs, urlparse
+from urllib.parse import ParseResult, urlparse
 
 from ._native import RelayPublisher as _NativeRelayPublisher
 from .control import (
     ControlClient,
     ControlPlaneError,
     IceServer,
+    InvitationAlias,
+    InvitationLink,
+    InvitationLocator,
+    InvitationVisibility,
     SessionCredentials,
     SessionId,
     SessionSnapshot,
@@ -61,15 +66,34 @@ class ReceiverActivation:
 
 @dataclass(frozen=True, slots=True)
 class ReceiverInvitation:
-    """Opaque control-plane invitation containing no subscriber capability."""
+    """Readable, exact-bus receiver invitation containing no access token."""
 
     session_id: SessionId
-    join_code: str
-    url: str
+    join_code: InvitationLocator
+    share_alias: InvitationAlias
+    visibility: InvitationVisibility
+    expires_at: datetime
+    join_link: InvitationLink | None
+    share_link: InvitationLink | None
 
     @property
-    def join_url(self) -> str:
-        return self.url
+    def join_url(self) -> InvitationLink | None:
+        return self.join_link
+
+    @property
+    def share_url(self) -> InvitationLink | None:
+        return self.share_link
+
+    def expose_url(self) -> str:
+        """Explicitly expose the preferred readable URL for sharing."""
+
+        link = self.share_link or self.join_link
+        if link is None:
+            raise RelayError(
+                "control plane did not provide a receiver URL",
+                "relay.invitation_url_missing",
+            )
+        return link.expose_url()
 
 
 class RelayPublisher:
@@ -231,7 +255,12 @@ class RelaySession:
         self._publisher_activation = activation
         return activation
 
-    def create_receiver_invitation(self, *, bus_id: str = "mix") -> ReceiverInvitation:
+    def create_receiver_invitation(
+        self,
+        *,
+        bus_id: str = "mix",
+        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
+    ) -> ReceiverInvitation:
         """Create a scoped invitation after every required bus is attached."""
         self._require_open()
         if self._publisher_activation is None:
@@ -243,6 +272,7 @@ class RelaySession:
             self.session_id,
             self.credentials.source_token,
             bus_id=bus_id,
+            visibility=visibility,
             timeout_seconds=self._request_timeout_seconds,
         )
         invitation = _receiver_invitation(created, self.session_id)
@@ -253,6 +283,7 @@ class RelaySession:
         self,
         *,
         bus_id: str = "mix",
+        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
         timeout_seconds: float = 10.0,
         poll_interval_seconds: float = 0.1,
     ) -> ReceiverInvitation:
@@ -260,7 +291,10 @@ class RelaySession:
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
         )
-        return self.create_receiver_invitation(bus_id=bus_id)
+        return self.create_receiver_invitation(
+            bus_id=bus_id,
+            visibility=visibility,
+        )
 
     def wait_for_receiver(
         self,
@@ -524,38 +558,33 @@ def _receiver_invitation(
             "control-plane invitation belongs to a different Session",
             "relay.response_identity",
         )
-    join_code = created.join_code
-    invitation_url = created.join_url
-    parsed = urlparse(invitation_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise RelayError(
-            "relay invitation URL must be absolute HTTP or HTTPS",
-            "relay.response_decode",
-        )
-    query = parse_qs(parsed.query, keep_blank_values=True)
-    unsafe_keys = {
-        "session",
-        "session_id",
-        "source_token",
-        "subscriber_token",
-        "token",
-    }
-    if unsafe_keys.intersection(query):
-        raise RelayError(
-            "relay invitation URL exposes a credential or Session identifier",
-            "relay.unsafe_invitation",
-        )
-    if query.get("join") != [join_code]:
-        raise RelayError(
-            "relay invitation URL does not contain its opaque join code",
-            "relay.response_identity",
-        )
-    if parsed.fragment or expected_session_id in invitation_url:
-        raise RelayError(
-            "relay invitation URL exposes the Session identifier",
-            "relay.unsafe_invitation",
-        )
-    return ReceiverInvitation(created.session_id, join_code, invitation_url)
+    for link, expected_path in (
+        (created.join_url, f"/join/{created.join_code}"),
+        (created.share_url, f"/{created.share_alias}"),
+    ):
+        if link is None:
+            continue
+        exposed = link.expose_url()
+        parsed = urlparse(exposed)
+        if parsed.path != expected_path or parsed.query:
+            raise RelayError(
+                "relay invitation URL does not match its invitation locator",
+                "relay.response_identity",
+            )
+        if expected_session_id in exposed:
+            raise RelayError(
+                "relay invitation URL exposes the Session identifier",
+                "relay.unsafe_invitation",
+            )
+    return ReceiverInvitation(
+        session_id=created.session_id,
+        join_code=created.join_code,
+        share_alias=created.share_alias,
+        visibility=created.visibility,
+        expires_at=created.expires_at,
+        join_link=created.join_url,
+        share_link=created.share_url,
+    )
 
 
 __all__ = [

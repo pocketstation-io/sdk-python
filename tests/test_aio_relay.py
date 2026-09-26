@@ -15,6 +15,18 @@ CREATE_RESPONSE = {
     "whep_url": "https://relay.example/v1/sessions/session_123/whep",
     "ice_servers": [],
 }
+JOIN_CODE = "4a54c6b9-fdc2-4e0c-a740-715efdcf03de"
+INVITATION_RESPONSE = {
+    "join_code": JOIN_CODE,
+    "join_url": f"https://receiver.example/join/{JOIN_CODE}#secret=share-secret",
+    "share_alias": "gentleglow-cedarbloom-riverglen",
+    "share_url": (
+        "https://receiver.example/gentleglow-cedarbloom-riverglen"
+        "#secret=share-secret"
+    ),
+    "visibility": "private",
+    "expires_at": "2026-09-26T18:15:00Z",
+}
 
 
 @pytest.mark.asyncio
@@ -45,14 +57,7 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
             return httpx.Response(200, json=next(snapshots))
         assert request.headers["authorization"] == "Bearer source-secret"
         if request.method == "POST" and request.url.path.endswith("/invitations"):
-            return httpx.Response(
-                201,
-                json={
-                    "join_code": "opaque-code",
-                    "join_url": "https://receiver.example/?join=opaque-code",
-                    "expires_at": "2026-08-21T18:00:00Z",
-                },
-            )
+            return httpx.Response(201, json=INVITATION_RESPONSE)
         return httpx.Response(204)
 
     async with httpx.AsyncClient(
@@ -84,7 +89,10 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
         )
 
         assert app_route.route_id != mic_route.route_id
-        assert invitation.join_code == "opaque-code"
+        assert invitation.join_code == JOIN_CODE
+        assert invitation.share_alias == "gentleglow-cedarbloom-riverglen"
+        assert "share-secret" not in repr(invitation)
+        assert invitation.expose_url().endswith("#secret=share-secret")
         assert receiver.snapshot.subscription_count == 1
         assert "source-secret" not in repr(remote)
 

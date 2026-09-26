@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+Control-plane clients now expose the complete readable invitation lifecycle in
+both synchronous and asyncio code: create a public or private exact-bus
+invitation, inspect it without consuming access, and redeem it once through an
+explicit POST. Private URL fragments redact themselves unless the application
+calls `expose_url()` or `expose_secret()`. Relay helpers prefer the readable
+share alias and preserve the same visibility, expiry, and redaction behavior.
+
 ## 0.1.4 — 2026-09-04
 
 Capture the complete desktop output mix with the same Python Session used for

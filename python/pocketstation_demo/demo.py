@@ -25,8 +25,9 @@ async def run_demo() -> None:
     transcripts = FasterWhisper().transcribe(live)
     async with remote, live:
         invitation = await remote.wait_for_publisher_and_invitation(timeout_seconds=30)
-        print(f"Listen live: {invitation.join_url}", flush=True)
-        webbrowser.open(invitation.join_url)
+        share_url = invitation.expose_url()
+        print(f"Listen live: {share_url}", flush=True)
+        webbrowser.open(share_url)
         await remote.wait_for_receiver(timeout_seconds=30)
         async for transcript in transcripts:
             print(f"source {transcript.source_id}: {transcript.text}", flush=True)

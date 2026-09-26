@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
 from types import TracebackType
 from typing import Any, cast
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
 
@@ -32,6 +34,17 @@ class ControlPlaneError(PocketStationError):
     ) -> None:
         super().__init__(message, code)
         self.status_code = status_code
+
+
+class InvitationUnavailableError(ControlPlaneError):
+    """An invitation is invalid, expired, revoked, or already redeemed."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "invitation is unavailable",
+            "control.invitation_unavailable",
+            status_code=404,
+        )
 
 
 class SessionId(str):
@@ -71,6 +84,97 @@ class SecretToken:
 
     def __repr__(self) -> str:
         return "SecretToken('[redacted]')"
+
+    def __str__(self) -> str:
+        return "[redacted]"
+
+
+class InvitationVisibility(StrEnum):
+    """Whether an invitation locator alone is sufficient to redeem it."""
+
+    PUBLIC = "public"
+    PRIVATE = "private"
+
+
+class InvitationAlias(str):
+    """Validated two- or three-word readable invitation locator."""
+
+    def __new__(cls, value: str) -> InvitationAlias:
+        words = value.split("-")
+        if (
+            not 9 <= len(value) <= 128
+            or len(words) not in {2, 3}
+            or any(
+                not 4 <= len(word) <= 24
+                or not all("a" <= character <= "z" for character in word)
+                for word in words
+            )
+        ):
+            raise ValueError(
+                "invitation alias must contain two or three lowercase ASCII "
+                "words of 4 to 24 letters separated by '-'"
+            )
+        return str.__new__(cls, value)
+
+
+class InvitationLocator(str):
+    """Validated opaque join code or readable invitation alias."""
+
+    def __new__(cls, value: str) -> InvitationLocator:
+        if _is_opaque_invitation_code(value):
+            return str.__new__(cls, value)
+        try:
+            InvitationAlias(value)
+        except ValueError as error:
+            raise ValueError(
+                "invitation locator must be an opaque join code or readable alias"
+            ) from error
+        return str.__new__(cls, value)
+
+
+class InvitationLink:
+    """Receiver URL that redacts a private fragment until explicitly exposed."""
+
+    __slots__ = ("_url", "visibility")
+
+    def __init__(self, url: str, visibility: InvitationVisibility) -> None:
+        parsed = urlparse(url)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("invitation URL must be an absolute HTTP or HTTPS URL")
+        secret = _fragment_secret(parsed.fragment)
+        if visibility is InvitationVisibility.PRIVATE and secret is None:
+            raise ValueError("private invitation URL must contain a fragment secret")
+        if visibility is InvitationVisibility.PUBLIC and parsed.fragment:
+            raise ValueError("public invitation URL must not contain a fragment")
+        self._url = url
+        self.visibility = visibility
+
+    @property
+    def is_private(self) -> bool:
+        return self.visibility is InvitationVisibility.PRIVATE
+
+    def expose_url(self) -> str:
+        """Return the complete URL, including a private fragment secret."""
+
+        return self._url
+
+    def expose_secret(self) -> SecretToken | None:
+        """Return the private fragment secret, if this is a private link."""
+
+        secret = _fragment_secret(urlparse(self._url).fragment)
+        return None if secret is None else SecretToken(secret)
+
+    def __str__(self) -> str:
+        return "[redacted]" if self.is_private else self._url
+
+    def __repr__(self) -> str:
+        value = "[redacted]" if self.is_private else self._url
+        return f"InvitationLink({value!r}, visibility={self.visibility.value!r})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,9 +225,33 @@ class SessionSnapshot:
 @dataclass(frozen=True, slots=True)
 class Invitation:
     session_id: SessionId
-    join_code: str
-    join_url: str
-    expires_at: str
+    join_code: InvitationLocator
+    share_alias: InvitationAlias
+    visibility: InvitationVisibility
+    expires_at: datetime
+    join_url: InvitationLink | None
+    share_url: InvitationLink | None
+
+
+@dataclass(frozen=True, slots=True)
+class InvitationMetadata:
+    """Non-consuming invitation metadata containing no receiver capability."""
+
+    share_alias: InvitationAlias
+    visibility: InvitationVisibility
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ReceiverAccess:
+    """Single-use subscriber capability scoped to one exact AudioBus."""
+
+    session_id: SessionId
+    bus_id: str
+    subscriber_token: SecretToken
+    signal_url: str
+    whep_url: str | None
+    ice_servers: tuple[IceServer, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,19 +369,75 @@ class ControlClient:
         source_token: SecretToken,
         *,
         bus_id: str = "mix",
+        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
         timeout_seconds: float | None = None,
     ) -> Invitation:
         identifier = SessionId(str(session_id))
         bus_id = _bus_id(bus_id, "bus_id")
+        visibility = _invitation_visibility(visibility)
         payload = self._json_request(
             "POST",
             f"v1/sessions/{quote(identifier, safe='')}/invitations",
             expected_status=201,
             timeout_seconds=timeout_seconds,
             authorization=source_token,
-            json_body={"bus_id": bus_id},
+            json_body={"bus_id": bus_id, "visibility": visibility.value},
         )
         return _invitation(payload, identifier)
+
+    def inspect_invitation(
+        self,
+        locator: str | InvitationLocator,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> InvitationMetadata:
+        """Inspect an invitation without consuming its single-use access."""
+
+        identifier = InvitationLocator(str(locator))
+        try:
+            payload = self._json_request(
+                "GET",
+                f"v1/invitations/{quote(identifier, safe='')}",
+                expected_status=200,
+                timeout_seconds=timeout_seconds,
+            )
+        except ControlPlaneError as error:
+            if error.status_code == 404:
+                raise InvitationUnavailableError() from None
+            raise
+        return _invitation_metadata(payload)
+
+    def redeem_invitation(
+        self,
+        locator: str | InvitationLocator,
+        *,
+        secret: SecretToken | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ReceiverAccess:
+        """Consume an invitation once and return exact-bus receiver access."""
+
+        identifier = InvitationLocator(str(locator))
+        json_body = (
+            {}
+            if secret is None
+            else {"secret": secret.expose_secret()}
+        )
+        try:
+            payload = self._json_request(
+                "POST",
+                f"v1/invitations/{quote(identifier, safe='')}/redeem",
+                expected_status=200,
+                timeout_seconds=timeout_seconds,
+                json_body=json_body,
+                redacted_values=(
+                    () if secret is None else (secret.expose_secret(),)
+                ),
+            )
+        except ControlPlaneError as error:
+            if error.status_code == 404:
+                raise InvitationUnavailableError() from None
+            raise
+        return _receiver_access(payload)
 
     def delete_session(
         self,
@@ -301,6 +485,7 @@ class ControlClient:
         timeout_seconds: float | None,
         authorization: SecretToken | None = None,
         json_body: dict[str, Any] | None = None,
+        redacted_values: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         return self._request(
             method,
@@ -310,6 +495,7 @@ class ControlClient:
             authorization=authorization,
             expect_json=True,
             json_body=json_body,
+            redacted_values=redacted_values,
         )
 
     def _request(
@@ -322,15 +508,15 @@ class ControlClient:
         authorization: SecretToken | None,
         expect_json: bool,
         json_body: dict[str, Any] | None = None,
+        redacted_values: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         if self._closed:
             raise RuntimeError("ControlClient has closed")
         headers = {}
-        redacted_values: tuple[str, ...] = ()
         if authorization is not None:
             exposed = authorization.expose_secret()
             headers["Authorization"] = f"Bearer {exposed}"
-            redacted_values = (exposed,)
+            redacted_values = (*redacted_values, exposed)
         timeout = _resolve_timeout(self._timeout_seconds, timeout_seconds)
         try:
             with self._http_client.stream(
@@ -552,12 +738,189 @@ def _publisher_credentials(payload: dict[str, Any]) -> PublisherCredentials:
 
 
 def _invitation(payload: dict[str, Any], session_id: SessionId) -> Invitation:
-    return Invitation(
-        session_id=session_id,
-        join_code=_required(payload, "join_code", str),
-        join_url=_required(payload, "join_url", str),
-        expires_at=_required(payload, "expires_at", str),
-    )
+    try:
+        visibility = _invitation_visibility(_required(payload, "visibility", str))
+        alias = InvitationAlias(_required(payload, "share_alias", str))
+        expected_words = 2 if visibility is InvitationVisibility.PUBLIC else 3
+        if len(alias.split("-")) != expected_words:
+            raise ValueError(
+                f"{visibility.value} invitation alias must contain "
+                f"{expected_words} words"
+            )
+        join_code = InvitationLocator(_required(payload, "join_code", str))
+        join_url = _optional_invitation_link(payload, "join_url", visibility)
+        share_url = _optional_invitation_link(payload, "share_url", visibility)
+        _validate_invitation_links(
+            join_code,
+            alias,
+            join_url,
+            share_url,
+        )
+        return Invitation(
+            session_id=session_id,
+            join_code=join_code,
+            share_alias=alias,
+            visibility=visibility,
+            expires_at=_timestamp(payload, "expires_at"),
+            join_url=join_url,
+            share_url=share_url,
+        )
+    except ValueError as error:
+        raise ControlPlaneError(str(error), "control.response_decode") from error
+
+
+def _invitation_metadata(payload: dict[str, Any]) -> InvitationMetadata:
+    try:
+        visibility = _invitation_visibility(_required(payload, "visibility", str))
+        alias = InvitationAlias(_required(payload, "share_alias", str))
+        expected_words = 2 if visibility is InvitationVisibility.PUBLIC else 3
+        if len(alias.split("-")) != expected_words:
+            raise ValueError(
+                f"{visibility.value} invitation alias must contain "
+                f"{expected_words} words"
+            )
+        return InvitationMetadata(
+            share_alias=alias,
+            visibility=visibility,
+            expires_at=_timestamp(payload, "expires_at"),
+        )
+    except ValueError as error:
+        raise ControlPlaneError(str(error), "control.response_decode") from error
+
+
+def _receiver_access(payload: dict[str, Any]) -> ReceiverAccess:
+    signal_url = _required(payload, "signal_url", str)
+    parsed_signal_url = urlparse(signal_url)
+    if parsed_signal_url.scheme not in {"ws", "wss"} or not parsed_signal_url.netloc:
+        raise ControlPlaneError(
+            "control-plane signal_url must be an absolute ws or wss URL",
+            "control.response_decode",
+        )
+    try:
+        session_id = SessionId(_required(payload, "session_id", str))
+        whep_url = _optional_string(payload, "whep_url")
+        if whep_url is not None:
+            _validate_media_endpoint(whep_url, session_id, "whep")
+        return ReceiverAccess(
+            session_id=session_id,
+            bus_id=_bus_id(_required(payload, "bus_id", str), "bus_id"),
+            subscriber_token=SecretToken(
+                _required(payload, "subscriber_token", str)
+            ),
+            signal_url=signal_url,
+            whep_url=whep_url,
+            ice_servers=_ice_servers(payload),
+        )
+    except ValueError as error:
+        raise ControlPlaneError(str(error), "control.response_decode") from error
+
+
+def _invitation_visibility(
+    value: InvitationVisibility | str,
+) -> InvitationVisibility:
+    try:
+        return InvitationVisibility(value)
+    except ValueError as error:
+        raise ValueError("visibility must be 'public' or 'private'") from error
+
+
+def _timestamp(payload: dict[str, Any], key: str) -> datetime:
+    value = _required(payload, key, str)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"{key} must be an RFC 3339 timestamp") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{key} must include a UTC offset")
+    return parsed.astimezone(UTC)
+
+
+def _optional_invitation_link(
+    payload: dict[str, Any],
+    key: str,
+    visibility: InvitationVisibility,
+) -> InvitationLink | None:
+    value = _optional_string(payload, key)
+    if not value:
+        return None
+    return InvitationLink(value, visibility)
+
+
+def _fragment_secret(fragment: str) -> str | None:
+    if not fragment:
+        return None
+    values = parse_qs(fragment, keep_blank_values=True, strict_parsing=True)
+    if set(values) != {"secret"} or len(values["secret"]) != 1:
+        raise ValueError("private invitation fragment must contain only one secret")
+    secret = values["secret"][0]
+    if not secret:
+        raise ValueError("private invitation fragment secret must not be empty")
+    return secret
+
+
+def _validate_invitation_links(
+    join_code: InvitationLocator,
+    share_alias: InvitationAlias,
+    join_url: InvitationLink | None,
+    share_url: InvitationLink | None,
+) -> None:
+    parsed_links: list[tuple[InvitationLink, Any]] = []
+    for link, expected_path in (
+        (join_url, f"/join/{join_code}"),
+        (share_url, f"/{share_alias}"),
+    ):
+        if link is None:
+            continue
+        parsed = urlparse(link.expose_url())
+        if parsed.path != expected_path or parsed.params or parsed.query:
+            raise ValueError("invitation URL does not match its locator")
+        parsed_links.append((link, parsed))
+    if len(parsed_links) == 2:
+        first_link, first = parsed_links[0]
+        second_link, second = parsed_links[1]
+        if (first.scheme, first.netloc) != (second.scheme, second.netloc):
+            raise ValueError("invitation URLs must use one receiver origin")
+        first_secret = first_link.expose_secret()
+        second_secret = second_link.expose_secret()
+        if (
+            first_secret is not None
+            and second_secret is not None
+            and first_secret.expose_secret() != second_secret.expose_secret()
+        ):
+            raise ValueError("private invitation URLs must carry the same secret")
+
+
+def _is_opaque_invitation_code(value: str) -> bool:
+    if len(value) != 36:
+        return False
+    for index, character in enumerate(value):
+        if index in {8, 13, 18, 23}:
+            if character != "-":
+                return False
+        elif not ("0" <= character <= "9" or "a" <= character <= "f"):
+            return False
+    return True
+
+
+def _validate_media_endpoint(
+    value: str,
+    session_id: SessionId,
+    endpoint: str,
+) -> None:
+    parsed = urlparse(value)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != f"/v1/sessions/{session_id}/{endpoint}"
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(
+            f"control-plane {endpoint.upper()} endpoint does not match its Session"
+        )
 
 
 def _nonnegative_integer(payload: dict[str, Any], key: str, *, minimum: int = 0) -> int:
@@ -665,7 +1028,14 @@ __all__ = [
     "ControlPlaneError",
     "IceServer",
     "Invitation",
+    "InvitationAlias",
+    "InvitationLink",
+    "InvitationLocator",
+    "InvitationMetadata",
+    "InvitationUnavailableError",
+    "InvitationVisibility",
     "PublisherCredentials",
+    "ReceiverAccess",
     "SecretToken",
     "SessionCredentials",
     "SessionId",

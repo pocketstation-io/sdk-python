@@ -377,7 +377,17 @@ def main() -> int:
             "invitation",
             session_id=str(remote.session_id),
             join_code=invitation.join_code,
-            join_url=invitation.join_url,
+            share_alias=invitation.share_alias,
+            join_url=(
+                None
+                if invitation.join_url is None
+                else invitation.join_url.expose_url()
+            ),
+            share_url=(
+                None
+                if invitation.share_url is None
+                else invitation.share_url.expose_url()
+            ),
             buses=[route.bus_id for route in routes],
             route_ids=[route.route_id for route in routes],
             source_mode=source_mode,

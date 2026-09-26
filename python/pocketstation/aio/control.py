@@ -14,7 +14,12 @@ from ..control import (
     _MAX_JSON_BODY_BYTES,
     ControlPlaneError,
     Invitation,
+    InvitationLocator,
+    InvitationMetadata,
+    InvitationUnavailableError,
+    InvitationVisibility,
     PublisherCredentials,
+    ReceiverAccess,
     SecretToken,
     SessionCredentials,
     SessionId,
@@ -23,8 +28,11 @@ from ..control import (
     _bus_id,
     _bus_ids,
     _invitation,
+    _invitation_metadata,
+    _invitation_visibility,
     _normalize_base_url,
     _publisher_credentials,
+    _receiver_access,
     _redact,
     _resolve_timeout,
     _session_credentials,
@@ -131,19 +139,71 @@ class ControlClient:
         source_token: SecretToken,
         *,
         bus_id: str = "mix",
+        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
         timeout_seconds: float | None = None,
     ) -> Invitation:
         identifier = SessionId(str(session_id))
         bus_id = _bus_id(bus_id, "bus_id")
+        visibility = _invitation_visibility(visibility)
         payload = await self._json_request(
             "POST",
             f"v1/sessions/{quote(identifier, safe='')}/invitations",
             expected_status=201,
             timeout_seconds=timeout_seconds,
             authorization=source_token,
-            json_body={"bus_id": bus_id},
+            json_body={"bus_id": bus_id, "visibility": visibility.value},
         )
         return _invitation(payload, identifier)
+
+    async def inspect_invitation(
+        self,
+        locator: str | InvitationLocator,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> InvitationMetadata:
+        """Inspect an invitation without consuming its single-use access."""
+
+        identifier = InvitationLocator(str(locator))
+        try:
+            payload = await self._json_request(
+                "GET",
+                f"v1/invitations/{quote(identifier, safe='')}",
+                expected_status=200,
+                timeout_seconds=timeout_seconds,
+            )
+        except ControlPlaneError as error:
+            if error.status_code == 404:
+                raise InvitationUnavailableError() from None
+            raise
+        return _invitation_metadata(payload)
+
+    async def redeem_invitation(
+        self,
+        locator: str | InvitationLocator,
+        *,
+        secret: SecretToken | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ReceiverAccess:
+        """Consume an invitation once and return exact-bus receiver access."""
+
+        identifier = InvitationLocator(str(locator))
+        json_body = {} if secret is None else {"secret": secret.expose_secret()}
+        try:
+            payload = await self._json_request(
+                "POST",
+                f"v1/invitations/{quote(identifier, safe='')}/redeem",
+                expected_status=200,
+                timeout_seconds=timeout_seconds,
+                json_body=json_body,
+                redacted_values=(
+                    () if secret is None else (secret.expose_secret(),)
+                ),
+            )
+        except ControlPlaneError as error:
+            if error.status_code == 404:
+                raise InvitationUnavailableError() from None
+            raise
+        return _receiver_access(payload)
 
     async def delete_session(
         self,
@@ -191,6 +251,7 @@ class ControlClient:
         timeout_seconds: float | None,
         authorization: SecretToken | None = None,
         json_body: dict[str, Any] | None = None,
+        redacted_values: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         return await self._request(
             method,
@@ -200,6 +261,7 @@ class ControlClient:
             authorization=authorization,
             expect_json=True,
             json_body=json_body,
+            redacted_values=redacted_values,
         )
 
     async def _request(
@@ -212,15 +274,15 @@ class ControlClient:
         authorization: SecretToken | None,
         expect_json: bool,
         json_body: dict[str, Any] | None = None,
+        redacted_values: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         if self._closed:
             raise RuntimeError("ControlClient has closed")
         headers = {}
-        redacted_values: tuple[str, ...] = ()
         if authorization is not None:
             exposed = authorization.expose_secret()
             headers["Authorization"] = f"Bearer {exposed}"
-            redacted_values = (exposed,)
+            redacted_values = (*redacted_values, exposed)
         timeout = _resolve_timeout(self._timeout_seconds, timeout_seconds)
         try:
             async with self._http_client.stream(
