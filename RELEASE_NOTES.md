@@ -13,7 +13,10 @@ The installed `pocketstation-demo` command now discovers Relay endpoints from
 one control-plane URL, creates separate application and microphone invitation
 links, waits for both receiver subscriptions, and stops after a finite selected
 duration. Its optional JSON Lines output is intended for ephemeral automation
-and explicitly exposes private invitation URLs.
+and explicitly exposes private invitation URLs. Its final line contains no
+capability and reports exact recording Source identities, Session termination,
+per-stem recording outcomes, Relay publication outcomes, and available
+drop/discontinuity observations.
 
 ## 0.1.4 — 2026-09-04
 

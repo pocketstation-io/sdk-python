@@ -15,8 +15,16 @@
 - Human output labels both invitations. JSON Lines output is an explicit
   secret-exposure boundary for ephemeral Lab piping: each invitation line
   contains only `event`, `bus_id`, and `share_url`, while the final result line
-  contains no capability. Ordinary invitation string and representation paths
-  remain redacted.
+  contains no capability. The final result carries exact application and
+  microphone Source identities from the completed public recording manifest,
+  Session termination and failure counters, manifest and per-stem outcomes,
+  terminal Relay bus outcomes, and available source/route drop and
+  discontinuity observations. Ordinary invitation string and representation
+  paths remain redacted.
+- The final result names two precise public-observation limits instead of
+  inferring them: live capture Stems do not expose their Source IDs before the
+  recording manifest finalizes, and Relay subscription readiness does not
+  prove browser decode or loudspeaker playout.
 - Focused synchronous/asyncio Relay and demo tests pass 33 cases. The complete
   source-tree suite passes 520 cases with 34 platform-dependent skips. Ruff and
   strict MyPy pass.
