@@ -102,6 +102,23 @@ class FasterWhisperConfiguration:
             not self.model_revision.strip() or not self.model_revision.isascii()
         ):
             raise ValueError("model_revision must be None or non-empty ASCII")
+        for name, integer_value in (
+            ("cpu_threads", self.cpu_threads),
+            ("num_workers", self.num_workers),
+            ("beam_size", self.beam_size),
+            ("queue_capacity_signals", self.queue_capacity_signals),
+            ("maximum_sources", self.maximum_sources),
+            ("maximum_output_bytes", self.maximum_output_bytes),
+        ):
+            if isinstance(integer_value, bool):
+                raise TypeError(f"{name} must be an integer")
+        for name, seconds_value in (
+            ("window_seconds", self.window_seconds),
+            ("create_timeout_s", self.create_timeout_s),
+            ("inference_timeout_s", self.inference_timeout_s),
+        ):
+            if isinstance(seconds_value, bool):
+                raise TypeError(f"{name} must be a number of seconds")
         if not 1 <= self.cpu_threads <= 64:
             raise ValueError("cpu_threads must be between 1 and 64")
         if not 1 <= self.num_workers <= 16:
