@@ -338,3 +338,22 @@ def test_given_tampered_raw_latency_summary_when_validated_then_it_is_rejected()
 
     with pytest.raises(RuntimeError, match="summary does not match raw samples"):
         runner.validate_raw_latency_samples(measurement, round_trip_frames=300)
+
+
+@pytest.mark.parametrize("kind", ["remote-host", "query", "fragment", "sibling"])
+def test_dependency_freeze_rejects_nonlocal_or_changed_wheel_uri(
+    tmp_path: Path, kind: str
+) -> None:
+    wheel = tmp_path / runner.WHEEL_INSTALL_NAME
+    uri = wheel.as_uri()
+    if kind == "remote-host":
+        uri = uri.replace("file://", "file://untrusted.example")
+    elif kind == "query":
+        uri += "?other=wheel"
+    elif kind == "fragment":
+        uri += "#other"
+    else:
+        uri = wheel.with_name("another.whl").as_uri()
+    installed = [*runner.RUNTIME_DEPENDENCIES, f"pocketstation @ {uri}"]
+    with pytest.raises(RuntimeError, match="exact wheel"):
+        runner.validate_dependency_freeze(installed, wheel)

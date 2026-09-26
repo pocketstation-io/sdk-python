@@ -259,3 +259,12 @@ runtime or public API. Final same-commit source and distribution CI must pass.
 Both source-CI jobs now have explicit 45-minute upper limits, matching the
 finite qualification gates. Focused API/notice/archive checks: 49 passed;
 Ruff and the updated uv lock consistency check pass.
+
+The completed Windows jobs additionally exposed a file-URI conversion bug in
+the historical benchmark runner: file:///C:/... was treated as a literal
+/C:/... filesystem name. Standard-library url2pathname now handles native
+Windows paths, with remote hosts, query/fragment additions and sibling wheels
+rejected. The existing cross-platform positive test covers the reported case;
+four new rejection cases pass. No measurement thresholds or historical frozen
+Candidate105 harness/evidence changed. The short-lived c050900 CI runs are
+superseded because they still contain this known failing Windows check.
