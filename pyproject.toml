@@ -70,6 +70,7 @@ python-packages = ["pocketstation", "pocketstation_demo"]
 module-name = "pocketstation._native"
 exclude = ["**/__pycache__/**", "**/*.pyc", "**/*.pyo"]
 include = [
+    { path = "uv.lock", format = "sdist" },
     { path = "NOTICE", format = "sdist" },
     { path = "RELEASE_NOTES.md", format = "sdist" },
     { path = "docs/**/*.md", format = "sdist" },

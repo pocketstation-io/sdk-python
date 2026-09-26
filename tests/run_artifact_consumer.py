@@ -17,6 +17,7 @@ import venv
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn
+from urllib.parse import unquote, urlsplit
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 _MYPY_REQUIREMENT = "mypy==2.3.1"
@@ -373,6 +374,8 @@ def _installed_dependencies(
     *,
     cwd: Path,
     environment: dict[str, str],
+    install_target: Path,
+    expected_version: str,
 ) -> list[str]:
     process = _run(
         (interpreter, "-m", "pip", "freeze", "--all"),
@@ -384,6 +387,23 @@ def _installed_dependencies(
     dependencies = sorted(line.strip() for line in process.stdout.splitlines() if line)
     if not dependencies:
         _fail("installed dependency inventory is empty")
+    # pip records the local artifact URL for this distribution. Bind that URL
+    # to the actual tested input, then retain its version beside the separately
+    # hashed artifact instead of persisting a temporary build-directory name.
+    for index, dependency in enumerate(dependencies):
+        if dependency.startswith("pocketstation @ "):
+            source = urlsplit(dependency.removeprefix("pocketstation @ "))
+            source_path = unquote(source.path)
+            if os.name == "nt" and source_path.startswith("/"):
+                source_path = source_path[1:]
+            if (
+                source.scheme != "file"
+                or source.netloc not in ("", "localhost")
+                or Path(source_path).resolve() != install_target.resolve()
+            ):
+                _fail("installed PocketStation origin differs from the tested artifact")
+            dependencies[index] = f"pocketstation=={expected_version}"
+    dependencies.sort()
     return dependencies
 
 
@@ -523,6 +543,8 @@ def main() -> int:
             interpreter,
             cwd=root,
             environment=process_environment,
+            install_target=install_target,
+            expected_version=install_report["version"],
         )
 
         _run(
