@@ -235,6 +235,7 @@ class OpenAIRealtime:
     This demo adapter owns the provider WebSocket and PCM conversion. The
     Session supplied by :class:`pocketstation.voice.Conversation` continues to
     own capture, routing, recording, Relay, and generated-audio cancellation.
+    Connections are one-shot: after closure, create a new adapter and Session.
     """
 
     def __init__(
@@ -551,12 +552,13 @@ class _OpenAIRealtimeVoice:
         if failure is None:
             return
         self._media_worker_errors += 1
+        safe_failure = RuntimeError(self._safe_detail(failure))
         if self._failure is None:
-            self._failure = failure
+            self._failure = safe_failure
         self._event(
             "pocketstation.media_worker.failed",
             worker=task.get_name(),
-            detail=f"{type(failure).__name__}: {failure}"[:2_048],
+            detail=str(safe_failure),
         )
         self._stop_requested.set()
 
@@ -641,9 +643,7 @@ class _OpenAIRealtimeVoice:
             history=history,
             events=events,
             failure=(
-                None
-                if self._failure is None
-                else f"{type(self._failure).__name__}: {self._failure}"
+                None if self._failure is None else self._safe_detail(self._failure)
             ),
         )
 
@@ -766,11 +766,12 @@ class _OpenAIRealtimeVoice:
         except asyncio.CancelledError:
             raise
         except BaseException as error:
-            self._failure = error
+            safe_failure = RuntimeError(self._safe_detail(error))
+            self._failure = safe_failure
             self._provider_errors += 1
             self._event(
                 "provider.connection.failed",
-                detail=f"{type(error).__name__}: {error}"[:2_048],
+                detail=str(safe_failure),
             )
         finally:
             self._ready.set()
@@ -785,9 +786,12 @@ class _OpenAIRealtimeVoice:
             return
         if event_type == "error":
             detail = event.get("error")
+            safe_detail = self._safe_detail(
+                RuntimeError(f"OpenAI Realtime error: {detail}")
+            )
             self._provider_errors += 1
-            self._event(event_type, detail=str(detail)[:2_048])
-            self._failure = RuntimeError(f"OpenAI Realtime error: {detail}")
+            self._event(event_type, detail=safe_detail)
+            self._failure = RuntimeError(safe_detail)
             self._ready.set()
             return
         if event_type == "response.created":
@@ -1040,6 +1044,10 @@ class _OpenAIRealtimeVoice:
             self._events.try_write(event, timestamp_ns=monotonic_ns())
         except EventInputFullError:
             self._event_input_drops += 1
+
+    def _safe_detail(self, error: BaseException) -> str:
+        detail = f"{type(error).__name__}: {error}"
+        return detail.replace(self._api_key, "[REDACTED]")[:2_048]
 
 
 def _encode_microphone_frame(frame: Any) -> str:

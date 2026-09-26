@@ -21,6 +21,7 @@ from time import perf_counter_ns, process_time_ns, sleep
 import pocketstation
 import pocketstation.aio as aio
 from pocketstation.errors import AudioInputFullError
+from pocketstation.signal import EndOfStream
 
 try:
     import resource
@@ -135,6 +136,8 @@ def qualify_sync(frames_total: int, samples_per_frame: int) -> BoundaryResult:
             frame = running.audio.read(timeout_s=1.0)
             if frame is None:
                 raise RuntimeError("sync qualification timed out waiting for audio")
+            if isinstance(frame, EndOfStream):
+                raise RuntimeError("sync qualification ended before receiving audio")
             if frame.source_id != audio.source_id:
                 raise RuntimeError("sync qualification changed source identity")
             if frame.stream_id != audio.stream_id:
@@ -209,6 +212,8 @@ async def qualify_async(
             frame = await running.audio.read(timeout_s=1.0)
             if frame is None:
                 raise RuntimeError("async qualification timed out waiting for audio")
+            if isinstance(frame, EndOfStream):
+                raise RuntimeError("async qualification ended before receiving audio")
             if frame.source_id != audio.source_id:
                 raise RuntimeError("async qualification changed source identity")
             if frame.stream_id != audio.stream_id:
