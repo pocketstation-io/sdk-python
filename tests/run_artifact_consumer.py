@@ -242,6 +242,7 @@ def _validate_installed_record(report: dict[str, Any]) -> tuple[Path, ...]:
         ".dist-info/RECORD",
         ".dist-info/licenses/LICENSE",
         ".dist-info/licenses/NOTICE",
+        ".dist-info/sboms/pocketstation-python.cyclonedx.json",
     )
     for suffix in required_suffixes:
         if sum(record.endswith(suffix) for record in records) != 1:
@@ -254,15 +255,9 @@ def _validate_installed_record(report: dict[str, Any]) -> tuple[Path, ...]:
     )
     if len(native_modules) != 1:
         _fail("installed RECORD must contain exactly one pocketstation._native module")
-    sboms = tuple(
-        record
-        for record in records
-        if ".dist-info/sboms/" in record and record.endswith(".json")
-    )
-    if len(sboms) != 1:
-        _fail(
-            "installed RECORD must contain exactly one JSON software bill of materials"
-        )
+    # PEP 770 permits repair tools to add their own SBOMs. The package SBOM
+    # above is mandatory; every additional file receives the same RECORD
+    # hash/size verification below and ownership/uninstall checks.
     missing = tuple(path for path in resolved_paths if not os.path.lexists(path))
     if missing:
         _fail(f"installed RECORD contains missing files: {missing}")

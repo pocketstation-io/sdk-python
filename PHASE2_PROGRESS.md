@@ -174,3 +174,14 @@ source commit, wheel hash, logs, installed Session execution, strict typing,
 bounded saturation and uninstall. Twelve rejection/matrix tests pass locally.
 No remote run or target completion is claimed before its retained result.
 This workflow cannot publish; it uploads qualified artifacts for a later release.
+
+Run 36252864677 built all six wheels and passed the Linux standalone source
+rebuild. Installed Linux wheel consumers exposed a harness standards error:
+auditwheel adds a second SBOM for repaired native libraries, while the installed
+check incorrectly required exactly one JSON SBOM in total. PEP 770 permits
+multiple SBOM files. The explicit standards review is retained with Candidate
+107 evidence. The check now requires the named PocketStation SBOM, retains
+repair SBOMs, and still verifies every RECORD size/hash and complete uninstall.
+Regression cases cover accepted additional SBOMs, missing package SBOM, and
+changed repair-SBOM bytes. The failed run remains retained; a complete new
+matrix must pass before qualification is accepted.

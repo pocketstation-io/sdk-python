@@ -177,6 +177,41 @@ def test_given_duplicate_native_modules_when_validated_then_record_is_rejected(
         _validate_installed_record(_record_report(tmp_path, records))
 
 
+@pytest.mark.parametrize(
+    "case", ["complete", "missing-package-sbom", "changed-repair-sbom"]
+)
+def test_given_repair_sbom_when_record_checked_then_package_sbom_and_hashes_required(
+    tmp_path: Path, case: str
+) -> None:
+    package_sbom = (
+        "pocketstation-0.1.5.dist-info/sboms/pocketstation-python.cyclonedx.json"
+    )
+    repair_sbom = "pocketstation-0.1.5.dist-info/sboms/auditwheel.cdx.json"
+    records = (
+        "pocketstation/py.typed",
+        "pocketstation/_native.pyi",
+        "pocketstation/_native.abi3.so",
+        "pocketstation-0.1.5.dist-info/METADATA",
+        "pocketstation-0.1.5.dist-info/RECORD",
+        "pocketstation-0.1.5.dist-info/licenses/LICENSE",
+        "pocketstation-0.1.5.dist-info/licenses/NOTICE",
+        repair_sbom,
+    )
+    if case != "missing-package-sbom":
+        records += (package_sbom,)
+    report = _record_report(tmp_path, records)
+    if case == "changed-repair-sbom":
+        original = (tmp_path / repair_sbom).read_bytes()
+        (tmp_path / repair_sbom).write_bytes(b"x" * len(original))
+        with pytest.raises(SystemExit, match="RECORD digest does not match"):
+            _validate_installed_record(report)
+    elif case == "missing-package-sbom":
+        with pytest.raises(SystemExit, match=r"pocketstation-python\.cyclonedx\.json"):
+            _validate_installed_record(report)
+    else:
+        assert len(_validate_installed_record(report)) == len(records)
+
+
 @pytest.mark.parametrize("field", ("digest", "size"))
 def test_given_tampered_installed_file_when_record_validated_then_rejected(
     tmp_path: Path, field: str
