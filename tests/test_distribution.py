@@ -16,6 +16,8 @@ from types import ModuleType
 
 import pytest
 
+from tests.test_build_backend import notice_document
+
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "0.1.5"
 
@@ -63,6 +65,7 @@ def _metadata() -> bytes:
         "License-Expression: MIT\n"
         "License-File: LICENSE\n"
         "License-File: NOTICE\n"
+        "License-File: THIRD_PARTY_NOTICES.md\n"
         "\n"
     ).encode()
 
@@ -128,6 +131,7 @@ def _wheel(
         ),
         f"{dist_info}/licenses/LICENSE": b"MIT License\npermission granted\n",
         f"{dist_info}/licenses/NOTICE": b"PocketStation contributors\n",
+        f"{dist_info}/licenses/THIRD_PARTY_NOTICES.md": notice_document(),
         f"{dist_info}/sboms/pocketstation-python.cyclonedx.json": _sbom(),
     }
     files.update(extra_files or {})
@@ -145,14 +149,14 @@ def _wheel(
 def _pyproject(*, version: str = VERSION) -> bytes:
     return (
         "[build-system]\n"
-        'requires = ["maturin>=1.9.4,<2.0"]\n'
-        'build-backend = "maturin"\n\n'
+        'requires = ["maturin==1.13.0"]\n'
+        'build-backend = "build_backend"\nbackend-path = ["."]\n\n'
         "[project]\n"
         'name = "pocketstation"\n'
         f'version = "{version}"\n'
         'requires-python = ">=3.11"\n'
         'license = "MIT"\n'
-        'license-files = ["LICENSE", "NOTICE"]\n'
+        'license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]\n'
         '\n[project.scripts]\npocketstation-demo = "pocketstation_demo:main"\n'
         '\n[tool.maturin]\nmanifest-path = "native/Cargo.toml"\n'
     ).encode()
@@ -223,6 +227,8 @@ def _sdist(
         "PKG-INFO": _metadata(),
         "LICENSE": b"MIT License\npermission granted\n",
         "NOTICE": b"PocketStation contributors\n",
+        "THIRD_PARTY_NOTICES.md": notice_document(),
+        "build_backend.py": (ROOT / "build_backend.py").read_bytes(),
         "pyproject.toml": pyproject or _pyproject(),
         "native/Cargo.toml": cargo_manifest or _cargo_manifest(),
         "native/Cargo.lock": _cargo_lock(),
@@ -257,9 +263,9 @@ def test_given_complete_archives_when_validated_then_all_distribution_checks_pas
     sdist_report = VALIDATOR.validate_sdist(sdist, expected_version=VERSION)
 
     assert wheel_report.filename == wheel.name
-    assert wheel_report.members_total == 13
+    assert wheel_report.members_total == 14
     assert sdist_report.filename == sdist.name
-    assert sdist_report.members_total == 13
+    assert sdist_report.members_total == 15
 
 
 @pytest.mark.parametrize(
@@ -366,7 +372,7 @@ def test_given_build_requirement_url_when_sdist_validated_then_candidate_is_reje
     tmp_path: Path,
 ) -> None:
     pyproject = _pyproject().replace(
-        b'requires = ["maturin>=1.9.4,<2.0"]',
+        b'requires = ["maturin==1.13.0"]',
         b'requires = ["maturin @ file:///tmp/maturin"]',
     )
     sdist = _sdist(tmp_path, pyproject=pyproject)

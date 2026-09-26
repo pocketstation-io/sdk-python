@@ -9,6 +9,7 @@ import base64
 import configparser
 import csv
 import hashlib
+import importlib.util
 import io
 import json
 import tarfile
@@ -21,6 +22,14 @@ from email.parser import BytesParser
 from email.policy import compat32
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+_backend_spec = importlib.util.spec_from_file_location(
+    "pocketstation_build_backend",
+    Path(__file__).resolve().parents[1] / "build_backend.py",
+)
+assert _backend_spec is not None and _backend_spec.loader is not None
+BUILD_BACKEND = importlib.util.module_from_spec(_backend_spec)
+_backend_spec.loader.exec_module(BUILD_BACKEND)
 
 PROJECT_NAME = "pocketstation"
 NATIVE_PACKAGE_NAME = "pocketstation-python"
@@ -135,12 +144,14 @@ def _metadata(data: bytes, *, archive: str) -> Message:
     return BytesParser(policy=compat32).parsebytes(data)
 
 
-def _required_metadata(metadata: Message, *, version: str, archive: str) -> None:
+def _required_metadata(
+    metadata: Message, *, version: str, archive: str, license_expression: str = "MIT"
+) -> None:
     expected = {
         "Name": PROJECT_NAME,
         "Version": version,
         "Requires-Python": ">=3.11",
-        "License-Expression": "MIT",
+        "License-Expression": license_expression,
     }
     for field, value in expected.items():
         if metadata.get(field) != value:
@@ -307,8 +318,16 @@ def _source_versions(
     if not isinstance(license_files, list) or set(license_files) != {
         "LICENSE",
         "NOTICE",
+        "THIRD_PARTY_NOTICES.md",
     }:
-        _fail("pyproject.toml license-files must contain LICENSE and NOTICE")
+        _fail("pyproject.toml license-files must contain SDK and dependency notices")
+    build_system = pyproject.get("build-system", {})
+    if (
+        build_system.get("build-backend") != "build_backend"
+        or build_system.get("backend-path") != ["."]
+        or build_system.get("requires") != ["maturin==1.13.0"]
+    ):
+        _fail("source build must use the self-contained license-aware Maturin wrapper")
     if package.get("name") != NATIVE_PACKAGE_NAME:
         _fail(f"native Cargo package name must be {NATIVE_PACKAGE_NAME!r}")
     if package.get("license") != "MIT":
@@ -555,7 +574,21 @@ def validate_wheel(path: Path, *, expected_version: str) -> ArtifactReport:
             archive="wheel",
         )
         metadata = _metadata(archive.read(metadata_name), archive="wheel")
-        _required_metadata(metadata, version=expected_version, archive="wheel")
+        license_inputs = {
+            name: archive.read(name)
+            for name in names
+            if ".dist-info/sboms/" in name or name.endswith("/THIRD_PARTY_NOTICES.md")
+        }
+        try:
+            expression = BUILD_BACKEND.wheel_license_expression(license_inputs)
+        except (ValueError, KeyError, TypeError) as error:
+            _fail(f"wheel dependency notices are invalid: {error}")
+        _required_metadata(
+            metadata,
+            version=expected_version,
+            archive="wheel",
+            license_expression=expression,
+        )
         _validate_python_versions(
             package_init=archive.read("pocketstation/__init__.py"),
             private_api=archive.read("pocketstation/_api.py"),
@@ -563,8 +596,8 @@ def validate_wheel(path: Path, *, expected_version: str) -> ArtifactReport:
             version=expected_version,
         )
         license_files = set(metadata.get_all("License-File", []))
-        if license_files != {"LICENSE", "NOTICE"}:
-            _fail("wheel metadata License-File entries must be LICENSE and NOTICE")
+        if license_files != {"LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"}:
+            _fail("wheel metadata must include SDK and dependency license files")
         if b"MIT License" not in archive.read(license_name):
             _fail("wheel LICENSE is not the MIT license text")
         if not archive.read(notice_name).strip():
@@ -618,6 +651,8 @@ def validate_sdist(path: Path, *, expected_version: str) -> ArtifactReport:
             "PKG-INFO",
             "LICENSE",
             "NOTICE",
+            "THIRD_PARTY_NOTICES.md",
+            "build_backend.py",
             "pyproject.toml",
             "native/Cargo.toml",
             "native/Cargo.lock",
@@ -646,6 +681,10 @@ def validate_sdist(path: Path, *, expected_version: str) -> ArtifactReport:
             _fail("source distribution LICENSE is not the MIT license text")
         if not read("NOTICE").strip():
             _fail("source distribution NOTICE is empty")
+        try:
+            BUILD_BACKEND.read_notices(read("THIRD_PARTY_NOTICES.md"))
+        except (ValueError, KeyError, TypeError) as error:
+            _fail(f"source dependency notices are invalid: {error}")
         version = _source_versions(
             _parse_toml(read("pyproject.toml"), member="pyproject.toml"),
             _parse_toml(read("native/Cargo.toml"), member="native/Cargo.toml"),

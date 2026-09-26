@@ -2,7 +2,7 @@ name: qualify-python-distribution
 
 'on':
   push:
-    branches: [candidate/python-0.1.5-platform-107]
+    branches: [candidate/python-0.1.5-platform-107, candidate/python-0.1.5-oss-108]
   workflow_dispatch:
 
 permissions:
@@ -52,6 +52,9 @@ jobs:
           manylinux: ${{ matrix.manylinux }}
           before-script-linux: dnf install -y alsa-lib-devel openssl-devel opus-devel pipewire-devel clang cmake ninja-build
           args: --release --locked --compatibility pypi --out dist
+      - name: Finalize dependency license metadata before qualification
+        shell: bash
+        run: python build_backend.py dist/*.whl
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: wheel-${{ matrix.id }}

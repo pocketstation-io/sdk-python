@@ -1,6 +1,7 @@
 [build-system]
-requires = ["maturin>=1.9.4,<2.0"]
-build-backend = "maturin"
+requires = ["maturin==1.13.0"]
+build-backend = "build_backend"
+backend-path = ["."]
 
 [project]
 name = "pocketstation"
@@ -9,7 +10,7 @@ description = "Source-aware live audio capture, processing, and routing for Pyth
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-license-files = ["LICENSE", "NOTICE"]
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -70,6 +71,8 @@ python-packages = ["pocketstation", "pocketstation_demo"]
 module-name = "pocketstation._native"
 exclude = ["**/__pycache__/**", "**/*.pyc", "**/*.pyo"]
 include = [
+    { path = "build_backend.py", format = "sdist" },
+    { path = "THIRD_PARTY_NOTICES.md", format = "sdist" },
     { path = "uv.lock", format = "sdist" },
     { path = "NOTICE", format = "sdist" },
     { path = "RELEASE_NOTES.md", format = "sdist" },

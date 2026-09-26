@@ -152,6 +152,7 @@ def test_given_complete_record_when_validated_then_native_and_typing_files_are_o
         "pocketstation-0.1.5.dist-info/RECORD",
         "pocketstation-0.1.5.dist-info/licenses/LICENSE",
         "pocketstation-0.1.5.dist-info/licenses/NOTICE",
+        "pocketstation-0.1.5.dist-info/licenses/THIRD_PARTY_NOTICES.md",
         "pocketstation-0.1.5.dist-info/sboms/pocketstation-python.cyclonedx.json",
     )
     assert len(_validate_installed_record(_record_report(tmp_path, records))) == len(
@@ -171,6 +172,7 @@ def test_given_duplicate_native_modules_when_validated_then_record_is_rejected(
         "pocketstation-0.1.5.dist-info/RECORD",
         "pocketstation-0.1.5.dist-info/licenses/LICENSE",
         "pocketstation-0.1.5.dist-info/licenses/NOTICE",
+        "pocketstation-0.1.5.dist-info/licenses/THIRD_PARTY_NOTICES.md",
         "pocketstation-0.1.5.dist-info/sboms/pocketstation-python.cyclonedx.json",
     )
     with pytest.raises(SystemExit, match=r"exactly one pocketstation\._native"):
@@ -195,6 +197,7 @@ def test_given_repair_sbom_when_record_checked_then_package_sbom_and_hashes_requ
         "pocketstation-0.1.5.dist-info/RECORD",
         "pocketstation-0.1.5.dist-info/licenses/LICENSE",
         "pocketstation-0.1.5.dist-info/licenses/NOTICE",
+        "pocketstation-0.1.5.dist-info/licenses/THIRD_PARTY_NOTICES.md",
         repair_sbom,
     )
     if case != "missing-package-sbom":
@@ -224,6 +227,7 @@ def test_given_tampered_installed_file_when_record_validated_then_rejected(
         "pocketstation-0.1.5.dist-info/RECORD",
         "pocketstation-0.1.5.dist-info/licenses/LICENSE",
         "pocketstation-0.1.5.dist-info/licenses/NOTICE",
+        "pocketstation-0.1.5.dist-info/licenses/THIRD_PARTY_NOTICES.md",
         "pocketstation-0.1.5.dist-info/sboms/pocketstation-python.cyclonedx.json",
     )
     report = _record_report(tmp_path, records)
@@ -248,6 +252,7 @@ def test_given_duplicate_installed_record_row_when_validated_then_rejected(
         "pocketstation-0.1.5.dist-info/RECORD",
         "pocketstation-0.1.5.dist-info/licenses/LICENSE",
         "pocketstation-0.1.5.dist-info/licenses/NOTICE",
+        "pocketstation-0.1.5.dist-info/licenses/THIRD_PARTY_NOTICES.md",
         "pocketstation-0.1.5.dist-info/sboms/pocketstation-python.cyclonedx.json",
     )
     report = _record_report(tmp_path, records)

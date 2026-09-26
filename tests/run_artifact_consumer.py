@@ -242,6 +242,7 @@ def _validate_installed_record(report: dict[str, Any]) -> tuple[Path, ...]:
         ".dist-info/RECORD",
         ".dist-info/licenses/LICENSE",
         ".dist-info/licenses/NOTICE",
+        ".dist-info/licenses/THIRD_PARTY_NOTICES.md",
         ".dist-info/sboms/pocketstation-python.cyclonedx.json",
     )
     for suffix in required_suffixes:

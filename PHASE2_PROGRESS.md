@@ -185,3 +185,28 @@ repair SBOMs, and still verifies every RECORD size/hash and complete uninstall.
 Regression cases cover accepted additional SBOMs, missing package SBOM, and
 changed repair-SBOM bytes. The failed run remains retained; a complete new
 matrix must pass before qualification is accepted.
+
+## W21 Python OSS release readiness
+
+Candidate 107 is hash-accepted at fc4673b9a9680912d9131cf107f25af3ee3dc2b1.
+Run 36253613676 passes six wheels, 22 installed CPython runtime cells and the
+standalone Linux source rebuild. An independent clean-checkout verifier
+reproduces the CI manifest byte for byte. The first failed run is retained.
+This is hosted installed-package evidence, with no new device or latency claim.
+
+Candidate 108 audits the actual wheel dependency SBOMs before publication.
+The union contains 248 Rust package versions, plus ALSA, OpenSSL and PipeWire
+RPM packages added during Linux repair. Retained crate/upstream license and
+copyright texts and exact source-RPM references now produce one self-contained
+THIRD_PARTY_NOTICES.md. All six actual SBOMs have complete notice coverage and
+valid SPDX expressions. Notice content hashes and unknown component versions
+are checked before a wheel can qualify.
+
+The source package remains MIT. A small PEP 517 wrapper delegates compilation
+to pinned Maturin 1.13.0 and finalizes each wheel's License-Expression from its
+own SBOM before qualification and hashing. The hosted wheel workflow applies
+the same operation after repair. The wrapper and notices ship in the standalone
+source archive. Runtime code is unchanged. Forty-nine focused packaging,
+notice, metadata-preservation, integrity and uninstall tests pass; Ruff and the
+unchanged uv lock check pass. Final archive rebuild and release readiness are
+still pending; no tag, public release, upload or deployment has occurred.
