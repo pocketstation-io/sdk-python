@@ -7,6 +7,7 @@ import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from time import monotonic
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -100,9 +101,10 @@ async def test_demo_service_discovers_relay_from_control_plane(
 async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
     remote = _Remote()
-    live = _Capture()
+    live = _Capture(tmp_path)
     transcription = _Transcription()
     capture_calls: list[dict[str, object]] = []
 
@@ -153,7 +155,7 @@ async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     assert transcription.capture is live
     assert "application" not in repr(_Invitation("application"))
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert lines == [
+    assert lines[:2] == [
         {
             "event": "invitation",
             "bus_id": "application",
@@ -164,13 +166,41 @@ async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
             "bus_id": "microphone",
             "share_url": "https://receiver.example/calm-forest#secret=microphone",
         },
+    ]
+    result = lines[2]
+    assert result["event"] == "result"
+    assert result["status"] == "completed"
+    assert result["receiver_count"] == 2
+    assert result["source_ids"] == {
+        "application": "9007199254740993",
+        "microphone": "9007199254740995",
+    }
+    assert result["session"]["success"] is True
+    assert result["session"]["disposition"] == "stopped"
+    assert result["recording"]["complete"] is True
+    assert {item["stem_name"] for item in result["recording"]["stems"]} == {
+        "application",
+        "microphone",
+    }
+    assert {item["bus_id"] for item in result["relay"]["outcomes"]} == {
+        "application",
+        "microphone",
+    }
+    assert result["sources"] == [
         {
-            "event": "result",
-            "status": "completed",
-            "duration_seconds": 0.02,
-            "receiver_count": 2,
+            "label": "application",
+            "stem_id": "1",
+            "source_id": "9007199254740993",
+            "metrics": None,
+        },
+        {
+            "label": "microphone",
+            "stem_id": "2",
+            "source_id": "9007199254740995",
+            "metrics": None,
         },
     ]
+    assert "#secret=" not in json.dumps(result)
 
 
 class _Invitation:
@@ -186,24 +216,72 @@ class _Invitation:
 
 
 class _Stem:
-    def __init__(self) -> None:
+    def __init__(self, stem_id: int) -> None:
+        self.id = stem_id
+        self.session_id = 17
         self.publications: list[tuple[object, str]] = []
 
-    def publish(self, publisher: object, bus_id: str) -> None:
+    def publish(self, publisher: object, bus_id: str) -> Any:
         self.publications.append((publisher, bus_id))
+        return SimpleNamespace(bus_id=bus_id, route_id=stem_id_for_bus(bus_id) + 10)
 
 
 class _Capture:
-    def __init__(self) -> None:
+    def __init__(self, root: Path) -> None:
         self.session = object()
-        self.application_stem = _Stem()
-        self.microphone_stem = _Stem()
+        self.application_stem = _Stem(1)
+        self.microphone_stem = _Stem(2)
+        self.stop_result: Any = None
+        self._root = root
 
     async def __aenter__(self) -> _Capture:
         return self
 
     async def __aexit__(self, *_details: object) -> None:
-        return None
+        manifest_path = self._root / "manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "stems": [
+                        {"label": "application", "source_id": 9_007_199_254_740_993},
+                        {"label": "microphone", "source_id": 9_007_199_254_740_995},
+                    ],
+                }
+            )
+        )
+        recording_stems = tuple(_recording_stem(label) for label in _BUS_IDS)
+        recording = SimpleNamespace(
+            session_id=17,
+            group_id="session.multistem.default.v1",
+            state=SimpleNamespace(value="complete"),
+            complete=True,
+            completed_stems=2,
+            failed_stems=0,
+            session_directory=self._root,
+            manifest_path=manifest_path,
+            manifest_schema_version=2,
+            error_code=None,
+            stems=recording_stems,
+        )
+        self.stop_result = SimpleNamespace(
+            success=True,
+            already_stopped=False,
+            disposition=SimpleNamespace(value="stopped"),
+            session_state=SimpleNamespace(value="stopped"),
+            runtime_worker_panicked=False,
+            capture_finalization_failures_total=0,
+            operator_finalization_failures_total=0,
+            endpoint_finalization_failures_total=0,
+            runtime_failures_total=0,
+            lineage_failures_total=0,
+            source_send_rejections_total=0,
+            runtime_events_total=1,
+            recording=recording,
+            metrics=None,
+            metrics_unavailable_reason="fixture",
+            relay_outcomes=tuple(_relay_outcome(bus_id) for bus_id in _BUS_IDS),
+        )
 
 
 class _Remote:
@@ -211,12 +289,14 @@ class _Remote:
         self.publisher_value = object()
         self.invitation_buses: list[str] = []
         self.minimum_receivers: int | None = None
+        self.publisher_activation: Any = None
+        self.receiver_activation: Any = None
 
     def publisher(self, _session: object) -> object:
         return self.publisher_value
 
     async def wait_for_publisher(self, **_values: object) -> None:
-        return None
+        self.publisher_activation = _activation(subscription_count=0)
 
     async def create_receiver_invitation(self, *, bus_id: str) -> Any:
         self.invitation_buses.append(bus_id)
@@ -230,6 +310,7 @@ class _Remote:
     ) -> None:
         assert timeout_seconds == 30
         self.minimum_receivers = minimum_receivers
+        self.receiver_activation = _activation(subscription_count=2)
 
     async def __aenter__(self) -> _Remote:
         return self
@@ -250,3 +331,64 @@ class _Transcription:
             yield Transcript(1, "", "en", 0, 0, ())
 
         return idle()
+
+
+_BUS_IDS = ("application", "microphone")
+
+
+def stem_id_for_bus(bus_id: str) -> int:
+    return _BUS_IDS.index(bus_id) + 1
+
+
+def _activation(*, subscription_count: int) -> Any:
+    return SimpleNamespace(
+        snapshot=SimpleNamespace(
+            ready=True,
+            subscription_count=subscription_count,
+            buses=tuple(
+                SimpleNamespace(
+                    bus_id=bus_id,
+                    source_active=True,
+                    source_generation=1,
+                )
+                for bus_id in _BUS_IDS
+            ),
+            subscriptions=tuple(
+                SimpleNamespace(bus_id=bus_id)
+                for bus_id in _BUS_IDS[:subscription_count]
+            ),
+        )
+    )
+
+
+def _recording_stem(label: str) -> Any:
+    return SimpleNamespace(
+        stem_name=label,
+        frames_written_total=10,
+        stale_frames_total=0,
+        error=None,
+        queue_capacity_frames=8,
+        queue_peak_frames=2,
+        frames_delivered_total=10,
+        frames_dropped_total=0,
+        queue_full_drops_total=0,
+        discontinuities_total=0,
+        discontinuities=(),
+    )
+
+
+def _relay_outcome(bus_id: str) -> Any:
+    return SimpleNamespace(
+        bus_id=bus_id,
+        endpoint_id=stem_id_for_bus(bus_id) + 20,
+        route_id=stem_id_for_bus(bus_id) + 10,
+        frames_received_total=10,
+        rtp_packets_sent_total=5,
+        rtp_payload_bytes_sent_total=500,
+        ingress_queue_drops_total=0,
+        publisher_stale_drops_total=0,
+        cancelled_output_frames_total=0,
+        cancelled_output_samples_total=0,
+        failures_total=0,
+        error=None,
+    )
