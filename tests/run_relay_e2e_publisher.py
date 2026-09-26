@@ -12,7 +12,7 @@ from array import array
 from collections.abc import Iterator
 from pathlib import Path
 from time import sleep
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import pocketstation._api as pks
 import pocketstation._native as native
@@ -463,9 +463,11 @@ def main() -> int:
             ]
         )
         transcript_source_ids = {
-            cast(int, value["source_id"])
+            int(source_id)
             for value in transcript_values
-            if isinstance(value.get("source_id"), int) and value.get("text")
+            if isinstance((source_id := value.get("source_id")), (int, str))
+            and str(source_id).isdigit()
+            and value.get("text")
         }
         expected_transcript_source_ids = (
             set()

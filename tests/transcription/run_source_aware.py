@@ -205,8 +205,14 @@ async def _collect_transcripts(
         value = json.loads(str(envelope.payload))
         if not isinstance(value, dict):
             raise RuntimeError("transcript payload must be a JSON object")
-        source_id = value.get("source_id")
-        if not isinstance(source_id, int) or source_id not in expected_sources:
+        source_id_value = value.get("source_id")
+        if not isinstance(source_id_value, (int, str)):
+            raise RuntimeError("transcript lost its input source identity")
+        try:
+            source_id = int(source_id_value)
+        except ValueError as error:
+            raise RuntimeError("transcript lost its input source identity") from error
+        if source_id not in expected_sources:
             raise RuntimeError("transcript lost its input source identity")
         if value.get("text"):
             _accumulate_transcript(received, expected_sources[source_id], value)
@@ -244,9 +250,10 @@ def _accumulate_transcript(
         "session_timestamp_end_ns",
     ):
         summary[terminal_field] = window.get(terminal_field)
-    summary["inference_duration_ns"] = cast(
-        int, summary.get("inference_duration_ns", 0)
-    ) + cast(int, window.get("inference_duration_ns", 0))
+    summary["inference_duration_ns"] = str(
+        int(str(summary.get("inference_duration_ns", 0)))
+        + int(str(window.get("inference_duration_ns", 0)))
+    )
     summary["discontinuity_reasons"] = sorted(
         {
             *cast(list[str], summary.get("discontinuity_reasons", [])),

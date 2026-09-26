@@ -117,8 +117,8 @@ async def test_one_bounded_model_preserves_two_source_identities(
     assert set(received) == {application.source_id, microphone.source_id}
     assert received[application.source_id]["text"] == "application source"
     assert received[microphone.source_id]["text"] == "microphone source"
-    assert all(value["sequence_start"] == 0 for value in received.values())
-    assert all(value["sequence_end"] == 9 for value in received.values())
+    assert all(value["sequence_start"] == "0" for value in received.values())
+    assert all(value["sequence_end"] == "9" for value in received.values())
     assert all(value["clock_id"] == 1 for value in received.values())
     assert outcome.success
     assert outcome.recording is not None and outcome.recording.complete
@@ -155,9 +155,9 @@ async def test_real_faster_whisper_transcribes_two_upstream_fixtures(
     assert isinstance(transcripts, dict)
     application = transcripts["application"]
     microphone = transcripts["microphone"]
-    assert application["source_id"] == result["application_source_id"]
-    assert microphone["source_id"] == result["microphone_source_id"]
+    assert int(str(application["source_id"])) == result["application_source_id"]
+    assert int(str(microphone["source_id"])) == result["microphone_source_id"]
     assert "country" in str(application["text"]).lower()
     assert str(microphone["text"]).strip()
-    assert application["inference_duration_ns"] > 0
-    assert microphone["inference_duration_ns"] > 0
+    assert int(str(application["inference_duration_ns"])) > 0
+    assert int(str(microphone["inference_duration_ns"])) > 0

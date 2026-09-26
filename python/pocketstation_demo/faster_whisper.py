@@ -265,17 +265,19 @@ def _transcribe_window(
     result = {
         "channel_count": window.channel_count,
         "clock_id": window.clock_id,
-        "discontinuity_epoch": window.discontinuity_epoch,
+        "discontinuity_epoch": str(window.discontinuity_epoch),
         "discontinuity_reasons": list(window.discontinuity_reasons),
         "duration_ms": window.duration_ms,
-        "inference_duration_ns": monotonic_ns() - inference_started_ns,
+        "inference_duration_ns": str(monotonic_ns() - inference_started_ns),
         "language": info.language,
         "language_probability": info.language_probability,
-        "policy_epoch": window.policy_epoch,
+        "policy_epoch": str(window.policy_epoch),
         "sample_rate_hz": window.sample_rate_hz,
-        "session_id": window.session_id,
-        "session_timestamp_end_ns": window.session_timestamp_end_ns,
-        "session_timestamp_start_ns": window.session_timestamp_start_ns,
+        "session_id": str(window.session_id),
+        "session_timestamp_end_ns": _optional_decimal(window.session_timestamp_end_ns),
+        "session_timestamp_start_ns": _optional_decimal(
+            window.session_timestamp_start_ns
+        ),
         "segments": [
             {
                 "end_s": segment.end,
@@ -284,21 +286,27 @@ def _transcribe_window(
             }
             for segment in completed
         ],
-        "sequence_end": window.sequence_end,
-        "sequence_start": window.sequence_start,
-        "source_id": window.source_id,
+        "sequence_end": str(window.sequence_end),
+        "sequence_start": str(window.sequence_start),
+        "source_id": str(window.source_id),
         "source_generation": window.source_generation,
-        "source_timestamp_end_ns": window.source_timestamp_end_ns,
-        "source_timestamp_start_ns": window.source_timestamp_start_ns,
-        "stream_id": window.stream_id,
+        "source_timestamp_end_ns": _optional_decimal(window.source_timestamp_end_ns),
+        "source_timestamp_start_ns": _optional_decimal(
+            window.source_timestamp_start_ns
+        ),
+        "stream_id": str(window.stream_id),
         "text": " ".join(segment.text.strip() for segment in completed).strip(),
-        "timestamp_end_ns": window.timestamp_end_ns,
-        "timestamp_start_ns": window.timestamp_start_ns,
+        "timestamp_end_ns": str(window.timestamp_end_ns),
+        "timestamp_start_ns": str(window.timestamp_start_ns),
     }
     encoded = json.dumps(result, separators=(",", ":"), sort_keys=True)
     if len(encoded.encode()) > configuration.maximum_output_bytes:
         raise RuntimeError("transcript envelope exceeds maximum_output_bytes")
     return OperatorEmission.text(encoded, signal=TRANSCRIPT_SIGNAL)
+
+
+def _optional_decimal(value: int | None) -> str | None:
+    return None if value is None else str(value)
 
 
 class _SyncFasterWhisperFactory:
