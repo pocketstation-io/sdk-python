@@ -149,3 +149,11 @@ The two new freezer tests prove failed diagnostics survive and successful
 scratch output is removed. Package NOTICE is installed only under dist-info
 licenses, avoiding a shared top-level site-packages NOTICE file. The existing
 consumer CLI retains both --artifact-format and --artifact-kind spellings.
+
+The first real archive build failed before freezing: Maturin omitted uv.lock
+from the sdist. Explicit sdist inclusion fixes the missing build input. Failed
+artifacts and diagnostics remain retained. The consumer also verifies pip's
+local installation origin against the supplied artifact before recording the
+SDK's exact version, avoiding temporary artifact URLs in the dependency list;
+a wrong-origin negative test rejects sibling input. Forty-four packaging tests
+pass after these corrections. Actual corrected-artifact acceptance is pending.

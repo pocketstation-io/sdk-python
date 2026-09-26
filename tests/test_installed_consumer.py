@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,11 +12,40 @@ import pytest
 
 from tests.run_artifact_consumer import (
     _artifact,
+    _installed_dependencies,
     _isolated_environment,
     _run,
     _validate_installed_record,
     _verify_uninstalled,
 )
+
+
+@pytest.mark.parametrize("wrong_origin", [False, True])
+def test_given_local_install_origin_when_inventory_recorded_then_input_must_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wrong_origin: bool
+) -> None:
+    artifact = tmp_path / "pocketstation-0.1.5.whl"
+    origin = tmp_path / "sibling.whl" if wrong_origin else artifact
+    output = f"mypy==2.3.1\npocketstation @ {origin.as_uri()}#sha256=abc\n"
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout=output),
+    )
+    arguments = {
+        "cwd": tmp_path,
+        "environment": {},
+        "install_target": artifact,
+        "expected_version": "0.1.5",
+    }
+    if wrong_origin:
+        with pytest.raises(SystemExit, match="origin differs"):
+            _installed_dependencies(Path(sys.executable), **arguments)
+    else:
+        assert _installed_dependencies(Path(sys.executable), **arguments) == [
+            "mypy==2.3.1",
+            "pocketstation==0.1.5",
+        ]
 
 
 def _digest(payload: bytes) -> str:
