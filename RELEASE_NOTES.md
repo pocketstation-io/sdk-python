@@ -9,6 +9,12 @@ explicit POST. Private URL fragments redact themselves unless the application
 calls `expose_url()` or `expose_secret()`. Relay helpers prefer the readable
 share alias and preserve the same visibility, expiry, and redaction behavior.
 
+The installed `pocketstation-demo` command now discovers Relay endpoints from
+one control-plane URL, creates separate application and microphone invitation
+links, waits for both receiver subscriptions, and stops after a finite selected
+duration. Its optional JSON Lines output is intended for ephemeral automation
+and explicitly exposes private invitation URLs.
+
 ## 0.1.4 — 2026-09-04
 
 Capture the complete desktop output mix with the same Python Session used for

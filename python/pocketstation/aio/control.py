@@ -195,9 +195,7 @@ class ControlClient:
                 expected_status=200,
                 timeout_seconds=timeout_seconds,
                 json_body=json_body,
-                redacted_values=(
-                    () if secret is None else (secret.expose_secret(),)
-                ),
+                redacted_values=(() if secret is None else (secret.expose_secret(),)),
             )
         except ControlPlaneError as error:
             if error.status_code == 404:

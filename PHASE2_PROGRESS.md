@@ -1,5 +1,31 @@
 # Phase 2 progress
 
+## W21 installed Python real-path entry point
+
+- The installed `pocketstation-demo` command now accepts explicit application,
+  microphone, recording, model, download-policy, duration, browser, and output
+  settings. The duration is finite and capped at one hour; the deadline ends
+  the run even when transcript iteration is idle.
+- The command sends only the control-plane origin. The control plane's WHIP and
+  WHEP endpoints select the authoritative Relay origin; no default or
+  environment-provided Relay URL is forwarded by the demo.
+- Application and microphone remain separate stems. The command creates one
+  readable single-use invitation for each exact AudioBus and waits for at least
+  two active receiver subscriptions before its timed capture interval begins.
+- Human output labels both invitations. JSON Lines output is an explicit
+  secret-exposure boundary for ephemeral Lab piping: each invitation line
+  contains only `event`, `bus_id`, and `share_url`, while the final result line
+  contains no capability. Ordinary invitation string and representation paths
+  remain redacted.
+- Focused synchronous/asyncio Relay and demo tests pass 33 cases. The complete
+  source-tree suite passes 520 cases with 34 platform-dependent skips. Ruff and
+  strict MyPy pass.
+- This change makes the installed artifact finite and automatable. Physical
+  application/microphone capture, real model inference, two Chromium receivers,
+  recording lineage, fault isolation, and resource return remain owned by the
+  Lab real-path acceptance run; no such claim is made from these component
+  tests.
+
 ## W21 receiver word-alias SDK projection
 
 Candidate 95 projects the accepted control-plane invitation lifecycle into the

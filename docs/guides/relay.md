@@ -12,7 +12,6 @@ from pocketstation.control import InvitationVisibility
 
 remote = await pks.RelaySession.create(
     control_plane_url="https://control.example.com",
-    relay_url="https://relay.example.com",
     required_buses=("application",),
 )
 live = pks.capture(application="Spotify", stream_audio=False)
@@ -61,11 +60,12 @@ condition occurred.
 through `pocketstation_demo`. The deployment may reject a session when its
 capacity is in use and is not a hosted production service.
 
-Set these variables to run the same example against services you operate:
+Set the control-plane URL to run the same example against services you operate.
+The control plane returns the authoritative Relay endpoints; the application
+does not configure a second service URL:
 
 ```bash
 export POCKETSTATION_CONTROL_URL="https://control.example.com"
-export POCKETSTATION_RELAY_URL="https://relay.example.com"
 python examples/stream_any_app_audio.py
 ```
 

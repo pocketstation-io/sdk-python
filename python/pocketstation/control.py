@@ -417,11 +417,7 @@ class ControlClient:
         """Consume an invitation once and return exact-bus receiver access."""
 
         identifier = InvitationLocator(str(locator))
-        json_body = (
-            {}
-            if secret is None
-            else {"secret": secret.expose_secret()}
-        )
+        json_body = {} if secret is None else {"secret": secret.expose_secret()}
         try:
             payload = self._json_request(
                 "POST",
@@ -429,9 +425,7 @@ class ControlClient:
                 expected_status=200,
                 timeout_seconds=timeout_seconds,
                 json_body=json_body,
-                redacted_values=(
-                    () if secret is None else (secret.expose_secret(),)
-                ),
+                redacted_values=(() if secret is None else (secret.expose_secret(),)),
             )
         except ControlPlaneError as error:
             if error.status_code == 404:
@@ -804,9 +798,7 @@ def _receiver_access(payload: dict[str, Any]) -> ReceiverAccess:
         return ReceiverAccess(
             session_id=session_id,
             bus_id=_bus_id(_required(payload, "bus_id", str), "bus_id"),
-            subscriber_token=SecretToken(
-                _required(payload, "subscriber_token", str)
-            ),
+            subscriber_token=SecretToken(_required(payload, "subscriber_token", str)),
             signal_url=signal_url,
             whep_url=whep_url,
             ice_servers=_ice_servers(payload),

@@ -78,6 +78,29 @@ def main() -> int:
             raise SystemExit(
                 "installed artifact contains no pocketstation-demo command"
             )
+        demo_help = subprocess.run(
+            [os.fspath(demo), "--help"],
+            cwd=root,
+            env=process_environment,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout
+        for option in (
+            "--application",
+            "--microphone-id",
+            "--recording-root",
+            "--duration-seconds",
+            "--model",
+            "--allow-model-download",
+            "--no-browser",
+            "--output-format",
+        ):
+            if option not in demo_help:
+                raise SystemExit(f"installed demo help omitted {option}")
+        if "--relay" in demo_help:
+            raise SystemExit("installed demo exposes Relay plumbing")
         qualification = root / "runtime_resources.py"
         report = root / "runtime-qualification.json"
         shutil.copyfile(

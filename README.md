@@ -211,10 +211,10 @@ waits for Relay readiness, and prints a single-use word code and browser URL.
 It does not open a microphone or record audio.
 
 The example uses PocketStation's small, rate-limited demonstration services
-unless you set `POCKETSTATION_CONTROL_URL` and `POCKETSTATION_RELAY_URL` to
-services you operate. Shared service URLs live in `pocketstation_demo`; they are
-not repeated in application code. The demonstration is not a hosted service or
-SLA and can return `HTTP 429` when its configured capacity is in use.
+unless you set `POCKETSTATION_CONTROL_URL` to a control plane you operate. The
+control plane supplies the authoritative Relay endpoints, so application code
+does not configure them separately. The demonstration is not a hosted service
+or SLA and can return `HTTP 429` when its configured capacity is in use.
 
 ## Send audio to your own provider
 

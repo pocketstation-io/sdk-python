@@ -472,8 +472,7 @@ def _exercise_invitation_lifecycle() -> None:
                     ),
                     "share_alias": alias,
                     "share_url": (
-                        f"https://receiver.example/{alias}"
-                        f"#secret={private_secret}"
+                        f"https://receiver.example/{alias}#secret={private_secret}"
                     ),
                     "visibility": "private",
                     "expires_at": "2026-09-26T18:15:00Z",
@@ -495,9 +494,7 @@ def _exercise_invitation_lifecycle() -> None:
                 "bus_id": "application",
                 "subscriber_token": "installed-subscriber-secret",
                 "signal_url": "wss://relay.example/v1/signal",
-                "whep_url": (
-                    "https://relay.example/v1/sessions/session_123/whep"
-                ),
+                "whep_url": ("https://relay.example/v1/sessions/session_123/whep"),
                 "ice_servers": [],
             },
         )

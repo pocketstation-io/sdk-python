@@ -156,17 +156,13 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
     assert invitation.join_code == JOIN_CODE
     assert invitation.share_alias == "gentleglow-cedarbloom-riverglen"
     assert invitation.visibility is InvitationVisibility.PRIVATE
-    assert invitation.expires_at == datetime(
-        2026, 9, 26, 18, 15, tzinfo=UTC
-    )
+    assert invitation.expires_at == datetime(2026, 9, 26, 18, 15, tzinfo=UTC)
     assert invitation.share_url is not None
     assert str(invitation.share_url) == "[redacted]"
     assert PRIVATE_SECRET not in repr(invitation)
     assert PRIVATE_SECRET not in repr(asdict(invitation))
     assert PRIVATE_SECRET not in json.dumps(asdict(invitation), default=str)
-    assert invitation.share_url.expose_url().endswith(
-        f"#secret={PRIVATE_SECRET}"
-    )
+    assert invitation.share_url.expose_url().endswith(f"#secret={PRIVATE_SECRET}")
     assert [(request.method, request.url.path) for request in requests] == [
         ("POST", "/base/v1/sessions"),
         ("GET", "/base/v1/sessions/session_123"),
@@ -321,9 +317,7 @@ async def test_async_public_invitation_lifecycle_matches_sync() -> None:
             )
         return httpx.Response(200, json=REDEEM_RESPONSE)
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(handler)
-    ) as http_client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
         client = AsyncControlClient(
             "https://control.example",
             http_client=http_client,
