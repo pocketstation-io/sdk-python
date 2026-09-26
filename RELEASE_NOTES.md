@@ -1,6 +1,6 @@
 # PocketStation for Python release notes
 
-## 0.1.5 — Unreleased
+## 0.1.5
 
 Control-plane clients now expose the complete readable invitation lifecycle in
 both synchronous and asyncio code: create a public or private exact-bus
@@ -20,7 +20,11 @@ drop/discontinuity observations.
 
 This version uses released PocketStation Core 1.1.11 and Relay Connector 0.1.5.
 The package includes complete typing, license/notice metadata, and standalone
-source-distribution inputs. Platform and publication qualification are pending.
+source-distribution inputs. Native qualification covers six targets and 22
+CPython runtime combinations, with separate source rebuild and uninstall
+checks. Wheels retain dependency notices and describe their own bundled
+component licenses. Publication selects the exact qualified artifact hashes;
+registry availability is recorded on PyPI and GitHub Releases.
 
 ## 0.1.4 — 2026-09-04
 

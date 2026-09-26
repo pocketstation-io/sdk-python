@@ -210,3 +210,18 @@ source archive. Runtime code is unchanged. Forty-nine focused packaging,
 notice, metadata-preservation, integrity and uninstall tests pass; Ruff and the
 unchanged uv lock check pass. Final archive rebuild and release readiness are
 still pending; no tag, public release, upload or deployment has occurred.
+
+Release preparation now independently verifies the complete qualified manifest,
+successful same-source GitHub run and seven exact distribution hashes before
+copying any files. The publication workflow uses a separate minimal-permission
+PyPI OIDC job, rechecks those copies, and never rebuilds or silently skips an
+existing release. Tests reject changed files/manifests and wrong run origins.
+Support, security, contribution and release instructions describe the actual
+matrix and honest support limits. The native dependency review records two
+PyO3 0.27.2 advisories affecting APIs unused in the reviewed SDK; it does not
+claim the dependency is patched or formal whole-program reachability proof.
+Public documentation language is checked before the final hosted run.
+Sixty-four focused checks pass. Final same-commit hosted source CI, all native
+distributions and independent installed reproduction remain mandatory.
+Git attributes preserve exact embedded notice bytes on Windows checkouts;
+newline conversion must not invalidate original source-notice hashes.

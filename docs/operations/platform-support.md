@@ -9,9 +9,9 @@ follow the host operating system.
 The Python API requires CPython 3.11 or newer and uses one ABI3 extension per
 operating system and architecture. Install the wheel that matches the host.
 
-Version 0.1.5 is undergoing installed-package testing on the following matrix:
+Version 0.1.5 native runtime tests cover the following matrix:
 
-| Native host | Python versions under test |
+| Native host | Python versions tested |
 |---|---|
 | macOS Apple silicon and Intel | 3.11, 3.12, 3.13, 3.14 |
 | Linux glibc x86-64 and ARM64 | 3.11, 3.12, 3.13, 3.14 |
@@ -21,8 +21,8 @@ Version 0.1.5 is undergoing installed-package testing on the following matrix:
 The ABI3 minimum does not establish older Windows ARM64 interpreter support.
 Musl and targets outside this table remain unqualified. These hosted tests
 execute installed Sessions, typing and package cleanup; physical capture and
-device latency require separate measurements. The new version is not yet
-published.
+device latency require separate measurements. Public version availability is
+recorded on PyPI; the release receipt identifies the exact tested bytes.
 
 ## Check permission without prompting
 
