@@ -30,8 +30,11 @@
   secret-boundary tests; `pocketstation_demo.demo` remains the small runnable
   workflow. Numeric application selectors are parsed as positive process IDs,
   while display names and bundle IDs remain strings.
-- Focused synchronous/asyncio Relay and demo tests pass 44 cases. The complete
-  source-tree suite passes 531 cases with 34 platform-dependent skips. Ruff and
+- The allocated Relay Session enters cleanup ownership before capture, model,
+  publication, or receiver setup. Capture and model declaration failures close
+  every resource that was entered; focused regression tests cover both paths.
+- Focused synchronous/asyncio Relay and demo tests pass 46 cases. The complete
+  source-tree suite passes 533 cases with 34 platform-dependent skips. Ruff and
   strict MyPy pass.
 - This change makes the installed artifact finite and automatable. Physical
   application/microphone capture, real model inference, two Chromium receivers,

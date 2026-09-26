@@ -121,6 +121,50 @@ async def test_demo_service_discovers_relay_from_control_plane(
     assert capsys.readouterr().out == ""
 
 
+@pytest.mark.parametrize("failure", ["capture", "model"])
+@pytest.mark.asyncio
+async def test_demo_closes_allocated_resources_when_declaration_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    remote = _Remote()
+    live = _Capture()
+
+    async def create_remote() -> _Remote:
+        return remote
+
+    def capture(**_values: object) -> _Capture:
+        if failure == "capture":
+            raise RuntimeError("capture declaration failed")
+        return live
+
+    def create_model(_configuration: object) -> _Transcription:
+        raise RuntimeError("model declaration failed")
+
+    monkeypatch.setattr(demo, "demo_relay_session", create_remote)
+    monkeypatch.setattr(demo.pks, "capture", capture)
+    monkeypatch.setattr(demo, "FasterWhisper", create_model)
+
+    with pytest.raises(RuntimeError, match=f"{failure} declaration failed"):
+        await demo.run_demo(
+            demo.DemoOptions(
+                application=4312,
+                microphone_id="mic-7",
+                recording_root=Path("captures"),
+                duration_seconds=0.02,
+                model="/models/whisper",
+                allow_model_download=False,
+                no_browser=True,
+                output_format="jsonl",
+            )
+        )
+
+    assert remote.entered is True
+    assert remote.exited is True
+    assert live.entered is (failure == "model")
+    assert live.exited is (failure == "model")
+
+
 @pytest.mark.asyncio
 async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     monkeypatch: pytest.MonkeyPatch,
@@ -188,6 +232,8 @@ async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     assert live.microphone_stem.publications == [(remote.publisher_value, "microphone")]
     assert remote.invitation_buses == ["application", "microphone"]
     assert remote.minimum_receivers == 2
+    assert remote.exited is True
+    assert live.exited is True
     assert transcription.capture is live
     assert result_calls == [
         (live, remote, relay_routes_for(live, remote), live.stop_result, 0.02)
@@ -240,11 +286,15 @@ class _Capture:
         self.application_stem = _Stem(1)
         self.microphone_stem = _Stem(2)
         self.stop_result: Any = None
+        self.entered = False
+        self.exited = False
 
     async def __aenter__(self) -> _Capture:
+        self.entered = True
         return self
 
     async def __aexit__(self, *_details: object) -> None:
+        self.exited = True
         self.stop_result = object()
 
 
@@ -255,6 +305,8 @@ class _Remote:
         self.minimum_receivers: int | None = None
         self.publisher_activation: Any = None
         self.receiver_activation: Any = None
+        self.entered = False
+        self.exited = False
 
     def publisher(self, _session: object) -> object:
         return self.publisher_value
@@ -277,10 +329,11 @@ class _Remote:
         self.receiver_activation = _activation(subscription_count=2)
 
     async def __aenter__(self) -> _Remote:
+        self.entered = True
         return self
 
     async def __aexit__(self, *_details: object) -> None:
-        return None
+        self.exited = True
 
 
 class _Transcription:
