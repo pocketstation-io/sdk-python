@@ -25,6 +25,9 @@
   inferring them: live capture Stems do not expose their Source IDs before the
   recording manifest finalizes, and Relay subscription readiness does not
   prove browser decode or loudspeaker playout.
+- The final result reports the local Core runtime `session_id` and the remote
+  control-plane/Relay `relay_session_id` separately. Browser invitation
+  redemption matches the latter; neither identity is relabeled as the other.
 - Result construction and human/JSON Lines serialization are isolated in the
   focused `pocketstation_demo.result` module with direct schema and
   secret-boundary tests; `pocketstation_demo.demo` remains the small runnable
