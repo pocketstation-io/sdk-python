@@ -30,6 +30,8 @@ need the lower-level API.
 - [Prepare and qualify each platform](operations/platform-support.md)
 - [Troubleshoot capture, delivery, and shutdown](troubleshooting.md)
 - [Read the release notes](../RELEASE_NOTES.md)
+- [Release operations](operations/releasing.md)
+- [Support](../SUPPORT.md) and [security reporting](../SECURITY.md)
 
 ## Reference
 

@@ -345,10 +345,11 @@ Rust code.
 | Windows x86-64 and ARM64 | published wheels; Core selection and 10 ms capture in a Windows 11 ARM64 VM; physical-device and latency qualification remain separate |
 | WAN and TURN | not yet qualified |
 
-Development version 0.1.5 uses PocketStation Core 1.1.11 and the shared Relay
-Connector 0.1.5. The table describes previously published packages and recorded
-device results. Qualification and publication of the new version are pending;
-the existing PyPI 0.1.4 release remains unchanged.
+Version 0.1.5 uses PocketStation Core 1.1.11 and the shared Relay Connector
+0.1.5. Installed runtime checks cover CPython 3.11–3.14 on the six native
+targets, except Windows ARM64, which is tested on 3.13–3.14. Device results in
+the table are separate retained measurements. Public availability and exact
+release receipts are recorded on PyPI and GitHub Releases.
 
 Reading native audio into Python copies samples into Python-owned bytes before
 exposing a `memoryview`. The view avoids another Python-side copy; the
@@ -383,4 +384,8 @@ uv run mypy python tests/qualification/typing_contract.py examples
 
 ## License
 
-PocketStation for Python is available under the MIT license.
+PocketStation SDK source is available under the MIT license. Native wheels
+include dependencies with their own terms; see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+Read [support](SUPPORT.md), [security](SECURITY.md), and
+[contributing](CONTRIBUTING.md) for reporting and development expectations.

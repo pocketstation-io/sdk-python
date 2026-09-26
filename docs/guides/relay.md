@@ -31,7 +31,7 @@ publisher readiness succeeds, and delete the remote Session during shutdown.
 
 Private invitations are the default. Their readable three-word URL contains an
 independent secret in the URL fragment. `str()`, `repr()`, and ordinary JSON
-serialization redact that URL; `expose_url()` is the explicit boundary for
+serialization redact that URL; `expose_url()` is the explicit call for
 displaying, copying, or opening it. Use
 `visibility=InvitationVisibility.PUBLIC` only when possession of the
 two-word alias itself should grant access.

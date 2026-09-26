@@ -1,0 +1,2 @@
+# Embedded source-notice hashes require original bytes on every host.
+/THIRD_PARTY_NOTICES.md -text
