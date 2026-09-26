@@ -345,8 +345,10 @@ Rust code.
 | Windows x86-64 and ARM64 | published wheels; Core selection and 10 ms capture in a Windows 11 ARM64 VM; physical-device and latency qualification remain separate |
 | WAN and TURN | not yet qualified |
 
-Version 0.1.4 uses PocketStation Core 1.1.9 and the shared Relay Connector
-0.1.5.
+Development version 0.1.5 uses PocketStation Core 1.1.11 and the shared Relay
+Connector 0.1.5. The table describes previously published packages and recorded
+device results. Qualification and publication of the new version are pending;
+the existing PyPI 0.1.4 release remains unchanged.
 
 Reading native audio into Python copies samples into Python-owned bytes before
 exposing a `memoryview`. The view avoids another Python-side copy; the
@@ -381,4 +383,4 @@ uv run mypy python tests/qualification/typing_contract.py examples
 
 ## License
 
-PocketStation for Python is available under the MIT or Apache-2.0 license.
+PocketStation for Python is available under the MIT license.

@@ -1,6 +1,6 @@
 # PocketStation for Python release notes
 
-## Unreleased
+## 0.1.5 — Unreleased
 
 Control-plane clients now expose the complete readable invitation lifecycle in
 both synchronous and asyncio code: create a public or private exact-bus
@@ -17,6 +17,10 @@ and explicitly exposes private invitation URLs. Its final line contains no
 capability and reports exact recording Source identities, Session termination,
 per-stem recording outcomes, Relay publication outcomes, and available
 drop/discontinuity observations.
+
+This version uses released PocketStation Core 1.1.11 and Relay Connector 0.1.5.
+The package includes complete typing, license/notice metadata, and standalone
+source-distribution inputs. Platform and publication qualification are pending.
 
 ## 0.1.4 — 2026-09-04
 
