@@ -25,8 +25,13 @@
   inferring them: live capture Stems do not expose their Source IDs before the
   recording manifest finalizes, and Relay subscription readiness does not
   prove browser decode or loudspeaker playout.
-- Focused synchronous/asyncio Relay and demo tests pass 33 cases. The complete
-  source-tree suite passes 520 cases with 34 platform-dependent skips. Ruff and
+- Result construction and human/JSON Lines serialization are isolated in the
+  focused `pocketstation_demo.result` module with direct schema and
+  secret-boundary tests; `pocketstation_demo.demo` remains the small runnable
+  workflow. Numeric application selectors are parsed as positive process IDs,
+  while display names and bundle IDs remain strings.
+- Focused synchronous/asyncio Relay and demo tests pass 44 cases. The complete
+  source-tree suite passes 531 cases with 34 platform-dependent skips. Ruff and
   strict MyPy pass.
 - This change makes the installed artifact finite and automatable. Physical
   application/microphone capture, real model inference, two Chromium receivers,

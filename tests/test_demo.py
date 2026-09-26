@@ -48,6 +48,30 @@ def test_demo_options_cover_the_finite_installed_workflow() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("4312", 4312),
+        (" 4312 ", 4312),
+        ("Browser", "Browser"),
+        ("com.example.browser", "com.example.browser"),
+    ],
+)
+def test_application_selector_preserves_names_and_parses_process_ids(
+    value: str,
+    expected: str | int,
+) -> None:
+    assert demo._parse_options(["--application", value]).application == expected
+
+
+@pytest.mark.parametrize("value", ["", " ", "0", "-1"])
+def test_application_selector_rejects_empty_or_nonpositive_process_ids(
+    value: str,
+) -> None:
+    with pytest.raises(SystemExit):
+        demo._parse_options(["--application", value])
+
+
 def test_demo_help_exposes_workflow_inputs_without_relay_plumbing() -> None:
     help_text = demo._parser().format_help()
 
@@ -101,12 +125,12 @@ async def test_demo_service_discovers_relay_from_control_plane(
 async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
 ) -> None:
     remote = _Remote()
-    live = _Capture(tmp_path)
+    live = _Capture()
     transcription = _Transcription()
     capture_calls: list[dict[str, object]] = []
+    result_calls: list[tuple[object, object, object, object, float]] = []
 
     async def create_remote() -> _Remote:
         return remote
@@ -118,12 +142,24 @@ async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     def fail_browser_open(_url: str) -> bool:
         raise AssertionError("--no-browser must not open a browser")
 
+    def result_event(
+        capture: object,
+        relay_session: object,
+        routes: object,
+        stop: object,
+        *,
+        duration_seconds: float,
+    ) -> dict[str, object]:
+        result_calls.append((capture, relay_session, routes, stop, duration_seconds))
+        return {"event": "result", "status": "completed"}
+
     monkeypatch.setattr(demo, "demo_relay_session", create_remote)
     monkeypatch.setattr(demo.pks, "capture", capture)
     monkeypatch.setattr(demo, "FasterWhisper", lambda _configuration: transcription)
     monkeypatch.setattr(demo.webbrowser, "open", fail_browser_open)
+    monkeypatch.setattr(demo, "result_event", result_event)
     options = demo.DemoOptions(
-        application="Browser",
+        application=4312,
         microphone_id="mic-7",
         recording_root=Path("captures"),
         duration_seconds=0.02,
@@ -140,7 +176,7 @@ async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     assert elapsed < 0.5
     assert capture_calls == [
         {
-            "application": "Browser",
+            "application": 4312,
             "microphone": "mic-7",
             "record_to": Path("captures"),
             "stream_audio": False,
@@ -153,6 +189,9 @@ async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
     assert remote.invitation_buses == ["application", "microphone"]
     assert remote.minimum_receivers == 2
     assert transcription.capture is live
+    assert result_calls == [
+        (live, remote, relay_routes_for(live, remote), live.stop_result, 0.02)
+    ]
     assert "application" not in repr(_Invitation("application"))
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert lines[:2] == [
@@ -168,38 +207,7 @@ async def test_demo_emits_two_exact_bus_invitations_and_stops_when_idle(
         },
     ]
     result = lines[2]
-    assert result["event"] == "result"
-    assert result["status"] == "completed"
-    assert result["receiver_count"] == 2
-    assert result["source_ids"] == {
-        "application": "9007199254740993",
-        "microphone": "9007199254740995",
-    }
-    assert result["session"]["success"] is True
-    assert result["session"]["disposition"] == "stopped"
-    assert result["recording"]["complete"] is True
-    assert {item["stem_name"] for item in result["recording"]["stems"]} == {
-        "application",
-        "microphone",
-    }
-    assert {item["bus_id"] for item in result["relay"]["outcomes"]} == {
-        "application",
-        "microphone",
-    }
-    assert result["sources"] == [
-        {
-            "label": "application",
-            "stem_id": "1",
-            "source_id": "9007199254740993",
-            "metrics": None,
-        },
-        {
-            "label": "microphone",
-            "stem_id": "2",
-            "source_id": "9007199254740995",
-            "metrics": None,
-        },
-    ]
+    assert result == {"event": "result", "status": "completed"}
     assert "#secret=" not in json.dumps(result)
 
 
@@ -227,61 +235,17 @@ class _Stem:
 
 
 class _Capture:
-    def __init__(self, root: Path) -> None:
+    def __init__(self) -> None:
         self.session = object()
         self.application_stem = _Stem(1)
         self.microphone_stem = _Stem(2)
         self.stop_result: Any = None
-        self._root = root
 
     async def __aenter__(self) -> _Capture:
         return self
 
     async def __aexit__(self, *_details: object) -> None:
-        manifest_path = self._root / "manifest.json"
-        manifest_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 2,
-                    "stems": [
-                        {"label": "application", "source_id": 9_007_199_254_740_993},
-                        {"label": "microphone", "source_id": 9_007_199_254_740_995},
-                    ],
-                }
-            )
-        )
-        recording_stems = tuple(_recording_stem(label) for label in _BUS_IDS)
-        recording = SimpleNamespace(
-            session_id=17,
-            group_id="session.multistem.default.v1",
-            state=SimpleNamespace(value="complete"),
-            complete=True,
-            completed_stems=2,
-            failed_stems=0,
-            session_directory=self._root,
-            manifest_path=manifest_path,
-            manifest_schema_version=2,
-            error_code=None,
-            stems=recording_stems,
-        )
-        self.stop_result = SimpleNamespace(
-            success=True,
-            already_stopped=False,
-            disposition=SimpleNamespace(value="stopped"),
-            session_state=SimpleNamespace(value="stopped"),
-            runtime_worker_panicked=False,
-            capture_finalization_failures_total=0,
-            operator_finalization_failures_total=0,
-            endpoint_finalization_failures_total=0,
-            runtime_failures_total=0,
-            lineage_failures_total=0,
-            source_send_rejections_total=0,
-            runtime_events_total=1,
-            recording=recording,
-            metrics=None,
-            metrics_unavailable_reason="fixture",
-            relay_outcomes=tuple(_relay_outcome(bus_id) for bus_id in _BUS_IDS),
-        )
+        self.stop_result = object()
 
 
 class _Remote:
@@ -340,6 +304,13 @@ def stem_id_for_bus(bus_id: str) -> int:
     return _BUS_IDS.index(bus_id) + 1
 
 
+def relay_routes_for(live: _Capture, remote: _Remote) -> dict[str, object]:
+    return {
+        "application": SimpleNamespace(bus_id="application", route_id=11),
+        "microphone": SimpleNamespace(bus_id="microphone", route_id=12),
+    }
+
+
 def _activation(*, subscription_count: int) -> Any:
     return SimpleNamespace(
         snapshot=SimpleNamespace(
@@ -358,37 +329,4 @@ def _activation(*, subscription_count: int) -> Any:
                 for bus_id in _BUS_IDS[:subscription_count]
             ),
         )
-    )
-
-
-def _recording_stem(label: str) -> Any:
-    return SimpleNamespace(
-        stem_name=label,
-        frames_written_total=10,
-        stale_frames_total=0,
-        error=None,
-        queue_capacity_frames=8,
-        queue_peak_frames=2,
-        frames_delivered_total=10,
-        frames_dropped_total=0,
-        queue_full_drops_total=0,
-        discontinuities_total=0,
-        discontinuities=(),
-    )
-
-
-def _relay_outcome(bus_id: str) -> Any:
-    return SimpleNamespace(
-        bus_id=bus_id,
-        endpoint_id=stem_id_for_bus(bus_id) + 20,
-        route_id=stem_id_for_bus(bus_id) + 10,
-        frames_received_total=10,
-        rtp_packets_sent_total=5,
-        rtp_payload_bytes_sent_total=500,
-        ingress_queue_drops_total=0,
-        publisher_stale_drops_total=0,
-        cancelled_output_frames_total=0,
-        cancelled_output_samples_total=0,
-        failures_total=0,
-        error=None,
     )
