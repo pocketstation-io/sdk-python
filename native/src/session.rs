@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use pocketstation_relay::RelayConnector;
+use pocketstation_relay::{RelayConnector, RelayIceServer};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -491,15 +491,28 @@ impl PythonSession {
         })
     }
 
+    #[pyo3(signature = (relay_url, relay_session_id, source_token, ice_servers=None))]
     fn relay(
         &self,
         relay_url: String,
         relay_session_id: String,
         source_token: String,
+        ice_servers: Option<Vec<Vec<String>>>,
     ) -> PyResult<PythonRelayPublisher> {
         validate_nonempty("relay URL", &relay_url)?;
         validate_nonempty("relay Session ID", &relay_session_id)?;
         validate_nonempty("source token", &source_token)?;
+        let ice_servers = ice_servers
+            .unwrap_or_default()
+            .into_iter()
+            .map(RelayIceServer::new)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                PyValueError::new_err(coded_reason(
+                    "relay.invalid_configuration",
+                    error.to_string(),
+                ))
+            })?;
         let mut declared = self
             .relay_declared
             .lock()
@@ -531,6 +544,7 @@ impl PythonSession {
             relay_url,
             relay_session_id,
             source_token,
+            ice_servers,
             routes: Arc::clone(&self.relay_routes),
         })
     }
