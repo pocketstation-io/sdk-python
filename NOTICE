@@ -1,9 +1,15 @@
 PocketStation Python SDK
 Copyright 2026 PocketStation contributors
 
-This distribution is licensed under the MIT License in LICENSE.
+PocketStation SDK source is licensed under the MIT License in LICENSE.
 
 The bundled native extension includes PocketStation Core, PocketStation Relay
 Connector, and their Rust dependencies. The wheel's CycloneDX software bill of
 materials identifies the exact bundled component versions. Each dependency
 retains its own copyright and license terms.
+
+THIRD_PARTY_NOTICES.md includes the retained component license texts,
+copyright notices, exact source references and Linux source-RPM hashes.
+The wheel's License-Expression covers its SBOM-listed components, including
+the shared libraries added by Linux wheel repair. The source archive's MIT
+expression describes SDK source; it does not relicense resolved dependencies.
