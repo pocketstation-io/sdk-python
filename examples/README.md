@@ -65,8 +65,8 @@ the loudspeaker. The example therefore reports acoustic hearing and exact
 provider-history truncation as unavailable.
 
 The installed examples use the small shared demo service by default. It has
-strict admission limits. Set `POCKETSTATION_CONTROL_URL` and
-`POCKETSTATION_RELAY_URL` to use your own deployment.
+strict admission limits. Set `POCKETSTATION_CONTROL_URL` to use your own
+deployment; that control plane supplies its authoritative Relay endpoints.
 
 ## Transcribe both sides of a voice application
 
@@ -105,9 +105,9 @@ control plane. It does not open a microphone or write a recording. The shared
 Fly deployment is a small, rate-limited demonstration service and may return
 `HTTP 429` when capacity is in use. It is not a hosted production service.
 
-To use services you operate, set `POCKETSTATION_CONTROL_URL` and
-`POCKETSTATION_RELAY_URL` before running the command. No shared secret belongs
-in application code.
+To use services you operate, set `POCKETSTATION_CONTROL_URL` before running the
+command. The control plane supplies its authoritative Relay endpoints. No
+shared secret belongs in application code.
 
 ## Run the complete demo
 
@@ -117,8 +117,16 @@ and a finalized two-stem recording.
 
 ```bash
 python -m pip install 'pocketstation[transcription]'
-pocketstation-demo
+pocketstation-demo --application "Brave Browser" --duration-seconds 30 \
+  --allow-model-download
 ```
+
+Use `--microphone-id` to select a discovered physical microphone explicitly,
+`--recording-root` to choose the stem destination, and `--no-browser` when an
+automation harness will open the two exact-bus invitations. The default human
+output labels the application and microphone links separately. The `jsonl`
+output format explicitly exposes private invitation URLs for ephemeral piping;
+do not retain those lines as logs or evidence.
 
 The current physical voice proof runs the browser on the publisher host through
 the deployed Relay. WAN and TURN behavior have not been qualified yet.

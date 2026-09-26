@@ -29,8 +29,7 @@ INVITATION_RESPONSE = {
     "join_url": f"https://receiver.example/join/{JOIN_CODE}#secret=share-secret",
     "share_alias": "gentleglow-cedarbloom-riverglen",
     "share_url": (
-        "https://receiver.example/gentleglow-cedarbloom-riverglen"
-        "#secret=share-secret"
+        "https://receiver.example/gentleglow-cedarbloom-riverglen#secret=share-secret"
     ),
     "visibility": "private",
     "expires_at": "2026-09-26T18:15:00Z",
@@ -52,6 +51,7 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
         [
             _snapshot(ready=True, subscription_count=0),
             _snapshot(ready=True, subscription_count=1),
+            _snapshot(ready=True, subscription_count=2),
         ]
     )
 
@@ -93,6 +93,7 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
         )
         invitation = remote.create_receiver_invitation()
         receiver_ready = remote.wait_for_receiver(
+            minimum_receivers=2,
             timeout_seconds=0.1,
             poll_interval_seconds=0.001,
         )
@@ -102,7 +103,7 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
         assert app_route.route_id != mic_route.route_id
         assert publisher_ready.snapshot.ready is True
         assert publisher_ready.snapshot.subscription_count == 0
-        assert receiver_ready.snapshot.subscription_count == 1
+        assert receiver_ready.snapshot.subscription_count == 2
         assert remote.relay_url == "https://relay.example"
         assert "source-secret" not in repr(remote)
 
@@ -121,6 +122,7 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
         ("POST", "/v1/sessions"),
         ("GET", "/v1/sessions/session_123"),
         ("POST", "/v1/sessions/session_123/invitations"),
+        ("GET", "/v1/sessions/session_123"),
         ("GET", "/v1/sessions/session_123"),
         ("DELETE", "/v1/sessions/session_123"),
     ]
@@ -325,10 +327,7 @@ def test_relay_wait_retries_transient_control_transport_failure() -> None:
             f"https://receiver.example/join/{JOIN_CODE}"
             "?session_id=session_123#secret=share-secret"
         ),
-        (
-            f"https://receiver.example/join/{JOIN_CODE}/session_123"
-            "#secret=share-secret"
-        ),
+        (f"https://receiver.example/join/{JOIN_CODE}/session_123#secret=share-secret"),
     ],
 )
 def test_relay_rejects_unsafe_or_mismatched_invitations(join_url: str) -> None:

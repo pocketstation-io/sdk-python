@@ -28,6 +28,7 @@ from ..relay import (
     _receiver_invitation,
     _relay_publisher_ice_servers,
     _resolve_relay_url,
+    _validate_minimum_receivers,
     _validate_request_timeout,
     _validate_wait,
 )
@@ -216,10 +217,12 @@ class RelaySession:
     async def wait_for_receiver(
         self,
         *,
+        minimum_receivers: int = 1,
         timeout_seconds: float = 30.0,
         poll_interval_seconds: float = 0.1,
     ) -> ReceiverActivation:
         self._require_open()
+        minimum_receivers = _validate_minimum_receivers(minimum_receivers)
         if self._invitation is None:
             raise RelayError(
                 "create_receiver_invitation() must succeed before waiting "
@@ -227,7 +230,7 @@ class RelaySession:
                 "relay.invitation_missing",
             )
         snapshot = await self._wait_for_snapshot(
-            lambda value: value.ready and value.subscription_count > 0,
+            lambda value: value.ready and value.subscription_count >= minimum_receivers,
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             timeout_code="relay.receiver_timeout",

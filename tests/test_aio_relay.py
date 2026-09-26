@@ -21,8 +21,7 @@ INVITATION_RESPONSE = {
     "join_url": f"https://receiver.example/join/{JOIN_CODE}#secret=share-secret",
     "share_alias": "gentleglow-cedarbloom-riverglen",
     "share_url": (
-        "https://receiver.example/gentleglow-cedarbloom-riverglen"
-        "#secret=share-secret"
+        "https://receiver.example/gentleglow-cedarbloom-riverglen#secret=share-secret"
     ),
     "visibility": "private",
     "expires_at": "2026-09-26T18:15:00Z",
@@ -46,6 +45,7 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
         [
             _snapshot(ready=True, subscription_count=0),
             _snapshot(ready=True, subscription_count=1),
+            _snapshot(ready=True, subscription_count=2),
         ]
     )
 
@@ -84,6 +84,7 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
             poll_interval_seconds=0.001,
         )
         receiver = await remote.wait_for_receiver(
+            minimum_receivers=2,
             timeout_seconds=0.1,
             poll_interval_seconds=0.001,
         )
@@ -93,7 +94,7 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
         assert invitation.share_alias == "gentleglow-cedarbloom-riverglen"
         assert "share-secret" not in repr(invitation)
         assert invitation.expose_url().endswith("#secret=share-secret")
-        assert receiver.snapshot.subscription_count == 1
+        assert receiver.snapshot.subscription_count == 2
         assert "source-secret" not in repr(remote)
 
         await remote.aclose()
@@ -104,8 +105,29 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
         ("GET", "/v1/sessions/session_123"),
         ("POST", "/v1/sessions/session_123/invitations"),
         ("GET", "/v1/sessions/session_123"),
+        ("GET", "/v1/sessions/session_123"),
         ("DELETE", "/v1/sessions/session_123"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_async_relay_rejects_invalid_minimum_receiver_count() -> None:
+    async def control_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            return httpx.Response(201, json=CREATE_RESPONSE)
+        return httpx.Response(204)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(control_handler)
+    ) as control_http:
+        control = ControlClient("https://control.example", http_client=control_http)
+        remote = await RelaySession.create(
+            control_plane_url="https://control.example",
+            control_client=control,
+        )
+        with pytest.raises((TypeError, ValueError)):
+            await remote.wait_for_receiver(minimum_receivers=0)
+        await remote.aclose()
 
 
 @pytest.mark.asyncio

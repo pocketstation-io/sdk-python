@@ -299,11 +299,13 @@ class RelaySession:
     def wait_for_receiver(
         self,
         *,
+        minimum_receivers: int = 1,
         timeout_seconds: float = 30.0,
         poll_interval_seconds: float = 0.1,
     ) -> ReceiverActivation:
         """Wait for relay-confirmed WebRTC connection and downlink install."""
         self._require_open()
+        minimum_receivers = _validate_minimum_receivers(minimum_receivers)
         if self._invitation is None:
             raise RelayError(
                 "create_receiver_invitation() must succeed before waiting "
@@ -311,7 +313,7 @@ class RelaySession:
                 "relay.invitation_missing",
             )
         snapshot = self._wait_for_snapshot(
-            lambda value: value.ready and value.subscription_count > 0,
+            lambda value: value.ready and value.subscription_count >= minimum_receivers,
             timeout_seconds=timeout_seconds,
             poll_interval_seconds=poll_interval_seconds,
             timeout_code="relay.receiver_timeout",
@@ -540,6 +542,14 @@ def _validate_wait(timeout_seconds: float, poll_interval_seconds: float) -> None
             raise TypeError(f"{name} must be a number")
         if not isfinite(value) or not 0 < value <= 300:
             raise ValueError(f"{name} must be greater than 0 and at most 300")
+
+
+def _validate_minimum_receivers(value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("minimum_receivers must be an integer")
+    if not 1 <= value <= 1_024:
+        raise ValueError("minimum_receivers must be between 1 and 1024")
+    return value
 
 
 def _bounded_request_timeout(

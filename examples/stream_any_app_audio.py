@@ -14,7 +14,10 @@ async def main() -> None:
     live.application_stem.publish(remote.publisher(live.session), "application")
 
     async with remote, live:
-        invitation = await remote.wait_for_publisher_and_invitation(timeout_seconds=30)
+        invitation = await remote.wait_for_publisher_and_invitation(
+            bus_id="application",
+            timeout_seconds=30,
+        )
         share_url = invitation.expose_url()
         print(f"Invitation name: {invitation.share_alias}")
         print(f"Listen in a browser: {share_url}")
