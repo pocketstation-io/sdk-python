@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use pocketstation::connector::RegisteredConnector;
-use pocketstation_relay::{RelayConnector, RelayPublishReceiptKey};
+use pocketstation_relay::{RelayConnector, RelayIceServer, RelayPublishReceiptKey};
 use pyo3::prelude::*;
 
 #[pyclass(name = "RelayPublisher", frozen)]
@@ -11,6 +11,7 @@ pub(crate) struct PythonRelayPublisher {
     pub(crate) relay_url: String,
     pub(crate) relay_session_id: String,
     pub(crate) source_token: String,
+    pub(crate) ice_servers: Vec<RelayIceServer>,
     pub(crate) routes: Arc<Mutex<Vec<RelayRouteRegistration>>>,
 }
 

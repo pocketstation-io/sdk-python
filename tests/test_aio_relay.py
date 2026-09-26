@@ -101,6 +101,101 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_relay_forwards_stun_servers_to_native_publisher() -> None:
+    response = {
+        **CREATE_RESPONSE,
+        "ice_servers": [
+            {
+                "urls": ["stun:stun.example:3478"],
+                "username": None,
+                "credential": None,
+            }
+        ],
+    }
+
+    async def control_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(201, json=response)
+        return httpx.Response(204)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(control_handler)
+    ) as control_http:
+        control = ControlClient("https://control.example", http_client=control_http)
+        remote = await RelaySession.create(
+            control_plane_url="https://control.example",
+            control_client=control,
+        )
+        calls: list[tuple[str, str, str, list[list[str]]]] = []
+
+        class NativeSession:
+            def relay(
+                self,
+                relay_url: str,
+                session_id: str,
+                source_token: str,
+                ice_servers: list[list[str]],
+            ) -> object:
+                calls.append((relay_url, session_id, source_token, ice_servers))
+                return object()
+
+        class ManagedSession:
+            _native = NativeSession()
+
+        remote.publisher(ManagedSession())  # type: ignore[arg-type]
+        await remote.aclose()
+
+    assert calls == [
+        (
+            "https://relay.example",
+            "session_123",
+            "source-secret",
+            [["stun:stun.example:3478"]],
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_relay_rejects_unsupported_ice_and_deletes_remote_session() -> None:
+    requests: list[tuple[str, str]] = []
+
+    async def control_handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.method == "POST":
+            return httpx.Response(
+                201,
+                json={
+                    **CREATE_RESPONSE,
+                    "ice_servers": [
+                        {
+                            "urls": ["turn:turn.example:3478"],
+                            "username": "publisher",
+                            "credential": "turn-secret",
+                        }
+                    ],
+                },
+            )
+        return httpx.Response(204)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(control_handler)
+    ) as control_http:
+        control = ControlClient("https://control.example", http_client=control_http)
+        with pytest.raises(RelayError) as unsupported:
+            await RelaySession.create(
+                control_plane_url="https://control.example",
+                control_client=control,
+            )
+
+    assert getattr(unsupported.value, "code", None) == "relay.unsupported_ice_server"
+    assert "turn-secret" not in str(unsupported.value)
+    assert requests == [
+        ("POST", "/v1/sessions"),
+        ("DELETE", "/v1/sessions/session_123"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_async_relay_wait_retries_transient_control_transport_failure() -> None:
     get_calls = 0
 

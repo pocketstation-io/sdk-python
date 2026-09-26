@@ -1315,6 +1315,7 @@ class Session:
         relay_url: str,
         relay_session_id: str,
         source_token: str,
+        ice_servers: list[list[str]] | None = None,
     ) -> RelayPublisher: ...
     def subscribe_derived(
         self,

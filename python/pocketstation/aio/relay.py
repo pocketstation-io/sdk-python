@@ -20,6 +20,7 @@ from ..relay import (
     _bounded_request_timeout,
     _normalize_relay_url,
     _receiver_invitation,
+    _relay_publisher_ice_servers,
     _resolve_relay_url,
     _validate_request_timeout,
     _validate_wait,
@@ -41,12 +42,14 @@ class RelaySession:
         control: ControlClient,
         owns_control: bool,
         request_timeout_seconds: float,
+        ice_servers: tuple[tuple[str, ...], ...],
     ) -> None:
         self.relay_url = _normalize_relay_url(relay_url)
         self.credentials = credentials
         self._control = control
         self._owns_control = owns_control
         self._request_timeout_seconds = request_timeout_seconds
+        self._ice_servers = ice_servers
         self._publisher_activation: PublisherActivation | None = None
         self._invitation: ReceiverInvitation | None = None
         self._receiver_activation: ReceiverActivation | None = None
@@ -81,6 +84,7 @@ class RelaySession:
                 credentials,
                 requested_relay_url,
             )
+            ice_servers = _relay_publisher_ice_servers(credentials.ice_servers)
         except BaseException as error:
             if credentials is not None:
                 try:
@@ -109,6 +113,7 @@ class RelaySession:
             control=control,
             owns_control=owns_control,
             request_timeout_seconds=request_timeout_seconds,
+            ice_servers=ice_servers,
         )
 
     @property
@@ -135,6 +140,7 @@ class RelaySession:
                 self.relay_url,
                 str(self.session_id),
                 self.credentials.source_token.expose_secret(),
+                [list(urls) for urls in self._ice_servers],
             )
         )
         return RelayPublisher(

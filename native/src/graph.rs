@@ -779,7 +779,13 @@ fn publish_route(
             .map_err(|error| PyValueError::new_err(error.to_string()))?,
         &bus_id,
     )
-    .map_err(|error| PyValueError::new_err(error.to_string()))?;
+    .and_then(|configuration| configuration.with_ice_servers(publisher.ice_servers.iter().cloned()))
+    .map_err(|error| {
+        PyValueError::new_err(coded_reason(
+            "relay.invalid_configuration",
+            error.to_string(),
+        ))
+    })?;
     let mut routes = publisher
         .routes
         .lock()

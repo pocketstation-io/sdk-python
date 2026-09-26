@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from pocketstation import _native
 from pocketstation._api import (
     ControlClient,
     RelayError,
@@ -119,6 +120,128 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
         ("GET", "/v1/sessions/session_123"),
         ("DELETE", "/v1/sessions/session_123"),
     ]
+
+
+def test_relay_forwards_control_plane_stun_servers_to_native_publisher() -> None:
+    response = {
+        **CREATE_RESPONSE,
+        "ice_servers": [
+            {
+                "urls": ["stun:stun.example:3478"],
+                "username": None,
+                "credential": None,
+            }
+        ],
+    }
+
+    def control_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(201, json=response)
+        return httpx.Response(204)
+
+    with httpx.Client(transport=httpx.MockTransport(control_handler)) as control_http:
+        control = ControlClient("https://control.example", http_client=control_http)
+        remote = RelaySession.create(
+            control_plane_url="https://control.example",
+            control_client=control,
+        )
+        calls: list[tuple[str, str, str, list[list[str]]]] = []
+
+        class NativeSession:
+            def relay(
+                self,
+                relay_url: str,
+                session_id: str,
+                source_token: str,
+                ice_servers: list[list[str]],
+            ) -> object:
+                calls.append((relay_url, session_id, source_token, ice_servers))
+                return object()
+
+        class ManagedSession:
+            _native = NativeSession()
+
+        remote.publisher(ManagedSession())  # type: ignore[arg-type]
+        remote.close()
+
+    assert calls == [
+        (
+            "https://relay.example",
+            "session_123",
+            "source-secret",
+            [["stun:stun.example:3478"]],
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "ice_server",
+    [
+        {
+            "urls": ["turn:turn.example:3478"],
+            "username": None,
+            "credential": None,
+        },
+        {
+            "urls": ["stun:stun.example:3478"],
+            "username": "publisher",
+            "credential": "turn-secret",
+        },
+    ],
+)
+def test_relay_rejects_unsupported_ice_and_deletes_remote_session(
+    ice_server: dict[str, object],
+) -> None:
+    requests: list[tuple[str, str]] = []
+
+    def control_handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.method, request.url.path))
+        if request.method == "POST":
+            return httpx.Response(
+                201,
+                json={**CREATE_RESPONSE, "ice_servers": [ice_server]},
+            )
+        return httpx.Response(204)
+
+    with httpx.Client(transport=httpx.MockTransport(control_handler)) as control_http:
+        control = ControlClient("https://control.example", http_client=control_http)
+        with pytest.raises(RelayError) as unsupported:
+            RelaySession.create(
+                control_plane_url="https://control.example",
+                control_client=control,
+            )
+
+    assert unsupported.value.code == "relay.unsupported_ice_server"
+    assert "turn-secret" not in str(unsupported.value)
+    assert requests == [
+        ("POST", "/v1/sessions"),
+        ("DELETE", "/v1/sessions/session_123"),
+    ]
+
+
+def test_native_relay_route_accepts_stun_configuration() -> None:
+    session = _native.Session()
+    source = session.audio_input(48_000, 1)
+    publisher = session.relay(
+        "https://relay.example",
+        "session_123",
+        "source-secret",
+        [["stun:stun.example:3478"]],
+    )
+
+    route_id = source.output.publish(publisher, "application")
+
+    assert int(route_id) > 0
+
+
+def test_native_relay_route_rejects_unsupported_ice_configuration() -> None:
+    with pytest.raises(ValueError, match=r"\[relay\.invalid_configuration\]"):
+        _native.Session().relay(
+            "https://relay.example",
+            "session_123",
+            "source-secret",
+            [["turn:turn.example:3478"]],
+        )
 
 
 def test_relay_wait_uses_a_single_bounded_deadline() -> None:

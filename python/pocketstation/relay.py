@@ -14,6 +14,7 @@ from ._native import RelayPublisher as _NativeRelayPublisher
 from .control import (
     ControlClient,
     ControlPlaneError,
+    IceServer,
     SessionCredentials,
     SessionId,
     SessionSnapshot,
@@ -104,12 +105,14 @@ class RelaySession:
         control: ControlClient,
         owns_control: bool,
         request_timeout_seconds: float,
+        ice_servers: tuple[tuple[str, ...], ...],
     ) -> None:
         self.relay_url = _normalize_relay_url(relay_url)
         self.credentials = credentials
         self._control = control
         self._owns_control = owns_control
         self._request_timeout_seconds = request_timeout_seconds
+        self._ice_servers = ice_servers
         self._publisher_activation: PublisherActivation | None = None
         self._invitation: ReceiverInvitation | None = None
         self._receiver_activation: ReceiverActivation | None = None
@@ -144,6 +147,7 @@ class RelaySession:
                 credentials,
                 requested_relay_url,
             )
+            ice_servers = _relay_publisher_ice_servers(credentials.ice_servers)
         except Exception as error:
             if credentials is not None:
                 try:
@@ -172,6 +176,7 @@ class RelaySession:
             control=control,
             owns_control=owns_control,
             request_timeout_seconds=request_timeout_seconds,
+            ice_servers=ice_servers,
         )
 
     @property
@@ -198,6 +203,7 @@ class RelaySession:
                 self.relay_url,
                 str(self.session_id),
                 self.credentials.source_token.expose_secret(),
+                [list(urls) for urls in self._ice_servers],
             )
         )
         return RelayPublisher(
@@ -378,6 +384,25 @@ def _normalize_relay_url(value: str) -> str:
         code="relay.invalid_url",
         message="relay_url must contain a valid host and port",
     )
+
+
+def _relay_publisher_ice_servers(
+    ice_servers: tuple[IceServer, ...],
+) -> tuple[tuple[str, ...], ...]:
+    supported: list[tuple[str, ...]] = []
+    for server in ice_servers:
+        if (
+            server.username is not None
+            or server.credential is not None
+            or any(not url.startswith("stun:") for url in server.urls)
+        ):
+            raise RelayError(
+                "the native Relay publisher accepts unauthenticated STUN servers; "
+                "the control plane returned an unsupported ICE server",
+                "relay.unsupported_ice_server",
+            )
+        supported.append(server.urls)
+    return tuple(supported)
 
 
 def _resolve_relay_url(
