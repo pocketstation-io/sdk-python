@@ -17,7 +17,8 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 CANDIDATE_ID = "pks-20260926-w21-python-performance-resource-qualification-105"
 SOURCE_CANDIDATE_ID = "pks-20260926-w21-python-real-path-e2e-103"
@@ -247,7 +248,9 @@ def validate_dependency_freeze(installed: list[str], install_wheel: Path) -> lis
     parsed = urlparse(wheel_uri)
     if (
         parsed.scheme != "file"
-        or Path(unquote(parsed.path)).resolve() != install_wheel.resolve()
+        or parsed.netloc not in ("", "localhost")
+        or bool(parsed.query or parsed.fragment)
+        or Path(url2pathname(parsed.path)).resolve() != install_wheel.resolve()
     ):
         raise RuntimeError(
             "installed PocketStation distribution is not bound to the exact wheel: "
