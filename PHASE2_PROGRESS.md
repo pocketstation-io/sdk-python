@@ -110,3 +110,42 @@ Classification is `SAFE-TO-TEST`. This is installed-wheel local component
 evidence, not a new physical-device, browser, WAN, cross-platform, competitor,
 or public-release claim. Candidate 103 remains the physical product-path
 authority. No scaffold, mock runtime, or loopback transport was added.
+
+## W21 Python wheel and source-distribution qualification
+
+Candidate 106 adds one fail-closed packaging path for a fresh wheel and source
+distribution from the exact committed SDK tree.
+
+- The archive validator requires one native extension, installed typing files,
+  the demo command, complete and non-duplicated `RECORD` hashes, MIT license and
+  notice, the CycloneDX SBOM, and exact SDK/Core/Relay version agreement.
+- The source distribution must contain both lockfiles, use only registry
+  dependencies, reject checkout, path, Git, URL and absolute-manifest inputs,
+  contain no compiled/build output, and rebuild without sibling repositories.
+- Separate isolated consumers install the frozen wheel and the extracted
+  source distribution, run `pip check`, execute the canonical Session and
+  runtime-resource vector, type-check against the installed package with exact
+  MyPy 2.3.1, rehash every installed `RECORD` file, inspect the command, and
+  prove all owned files and entry points disappear after uninstall.
+- The freezer requires at least 8 GiB of free disk, a clean committed source
+  tree before and after the run, an external atomic output directory, exact
+  retained membership, and frozen-byte revalidation after both consumers.
+- Forty focused rejection and behavior tests pass. The final wheel/sdist build,
+  independent verifier, and hash-backed acceptance run occur from the clean
+  Candidate 106 commit; these source-tree tests alone do not accept the task.
+
+Classification remains `SAFE-TO-TEST`. Resumed on 2026-09-26 for the authorized
+new Python 0.1.5 release against Core 1.1.11 and Relay Connector 0.1.5. Own
+package versions, lock entries and runtime compatibility values now agree.
+The actual wheel/sdist and installed-consumer gates remain pending; no public
+release or new platform/device claim follows from the metadata edit.
+The unrelated native-extension fixture modification remains outside this task.
+
+Resumption checks: all 9 native tests and strict Clippy pass; Ruff and strict
+MyPy pass; Python reports 610 passed and 34 platform/fixture skips. The first
+Python run exposed duplicate filenames in a packaging rejection fixture after
+the version bump; distinct 0.1.5/0.1.6 inputs restore the intended ambiguity.
+The two new freezer tests prove failed diagnostics survive and successful
+scratch output is removed. Package NOTICE is installed only under dist-info
+licenses, avoiding a shared top-level site-packages NOTICE file. The existing
+consumer CLI retains both --artifact-format and --artifact-kind spellings.
