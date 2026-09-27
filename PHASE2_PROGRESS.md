@@ -545,3 +545,24 @@ made. Local real-model proof repairs the earlier country regression. Final
 composed browser/Relay proof remains owned by Lab, and current physical-host
 capture availability is separate. Existing Linux/Windows native evidence is
 prior-revision evidence, not current-native qualification.
+
+
+### C129 deterministic complete-window overload follow-up (test-only)
+
+Two actual native PCM/recording tests hold one mocked model callback while
+feeding both stems. Each observes23 dropped complete windows at the existing
+16-window aggregate capacity, zero audio/recording loss, and source sequence
+gaps after recovery. Recover/abort finalize in104/106ms (2s budget), with all
+workers joined and no work after return. Python cannot preempt arbitrary code:
+the test releases a finite callback50ms after cancel starts, and3 invocations
+may begin before cancellation propagates. This differs from JS's owned child
+abort hook; no identical cancellation/full-parity claim is made.
+
+The initial zero-time mock also saturated the separate transcript output branch:
+finalization truthfully failed while recording remained complete. Its evidence
+is retained. The final model-input overload test gives each mocked inference
+10ms so the active transcript consumer can drain; no queues or product code
+changed. Focused pytest2/2 and Ruff pass. Only tests and this progress file
+changed; Python/native trees and final production wheel remain byte-identical.
+This is MOCKED model callback and LOOPBACK-ONLY native PCM, not model quality
+or current physical-device qualification.
