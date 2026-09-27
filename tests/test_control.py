@@ -467,7 +467,7 @@ def test_sync_transport_failure_redacts_the_authorization_secret() -> None:
     assert failure.value.code == "control.request"
     assert "source-secret" not in str(failure.value)
     assert failure.value.__context__ is None
-    assert "[redacted]" in str(failure.value)
+    assert str(failure.value) == "control-plane request failed"
     assert failure.value.__cause__ is None
 
 
@@ -488,7 +488,7 @@ async def test_async_transport_failure_redacts_the_authorization_secret() -> Non
     assert failure.value.code == "control.request"
     assert "source-secret" not in str(failure.value)
     assert failure.value.__context__ is None
-    assert "[redacted]" in str(failure.value)
+    assert str(failure.value) == "control-plane request failed"
     assert failure.value.__cause__ is None
 
 
@@ -566,7 +566,9 @@ def test_publisher_http_failure_redacts_source_capability() -> None:
     assert raised.value.code == "control.http_status"
     assert raised.value.status_code == 403
     assert "source-secret" not in str(raised.value)
-    assert "[redacted]" in str(raised.value)
+    assert (
+        str(raised.value) == f"control-plane returned HTTP {raised.value.status_code}"
+    )
 
 
 @pytest.mark.asyncio
@@ -622,7 +624,9 @@ def test_control_client_redacts_authorization_from_http_error() -> None:
             client.delete_session("session_123", token)
 
     assert "must-not-leak" not in str(raised.value)
-    assert "[redacted]" in str(raised.value)
+    assert (
+        str(raised.value) == f"control-plane returned HTTP {raised.value.status_code}"
+    )
 
 
 @pytest.mark.parametrize("value", ["", "../escape", "with/slash", "café"])
@@ -845,3 +849,48 @@ async def test_malformed_redemption_body_does_not_retain_raw_error_cause(
     assert JOIN_CODE not in str(raised.value)
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize(
+    "malformation",
+    ["visibility", "expires_at", "share_url", "http_status", "transport"],
+)
+async def test_untrusted_response_diagnostics_never_expose_new_credentials(
+    asynchronous: bool,
+    malformation: str,
+) -> None:
+    import traceback
+
+    marker = "AUDIT_FAKE_CREDENTIAL_12345"
+    body = dict(PRIVATE_INVITATION_RESPONSE)
+    if malformation in {"visibility", "expires_at"}:
+        body[malformation] = marker
+    elif malformation == "share_url":
+        body["share_url"] = f"https://[{marker}]/#join={JOIN_CODE}"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if malformation == "transport":
+            raise httpx.ReadError(f"untrusted response {marker}", request=request)
+        if malformation == "http_status":
+            return httpx.Response(500, json={"subscriber_token": marker})
+        return httpx.Response(201, json=body)
+
+    if asynchronous:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            client = AsyncControlClient("https://control.example", http_client=http)
+            with pytest.raises(ControlPlaneError) as failure:
+                await client.create_invitation("session_123", SecretToken("owner"))
+    else:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as sync_http:
+            sync = ControlClient("https://control.example", http_client=sync_http)
+            with pytest.raises(ControlPlaneError) as failure:
+                sync.create_invitation("session_123", SecretToken("owner"))
+    assert marker not in str(failure.value)
+    assert marker not in repr(failure.value)
+    assert marker not in "".join(traceback.format_exception(failure.value))
+    assert failure.value.__cause__ is None
+    assert failure.value.__context__ is None
+    if malformation == "http_status":
+        assert failure.value.status_code == 500

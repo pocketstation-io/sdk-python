@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import TracebackType
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 import httpx
@@ -305,7 +306,7 @@ class ControlClient:
             timeout_seconds=timeout_seconds,
             json_body={"required_buses": list(required_buses)},
         )
-        return _session_credentials(payload)
+        return _decode_response(_session_credentials, payload)
 
     def session(
         self,
@@ -322,7 +323,7 @@ class ControlClient:
             timeout_seconds=timeout_seconds,
             authorization=source_token,
         )
-        return _session_snapshot(payload)
+        return _decode_response(_session_snapshot, payload)
 
     def issue_subscriber_credentials(
         self,
@@ -342,7 +343,7 @@ class ControlClient:
             authorization=source_token,
             json_body={"bus_id": bus_id},
         )
-        return _subscriber_credentials(payload)
+        return _decode_response(_subscriber_credentials, payload)
 
     def issue_publisher_credentials(
         self,
@@ -364,7 +365,7 @@ class ControlClient:
             authorization=source_token,
             json_body={"bus_id": bus_id},
         )
-        return _publisher_credentials(payload)
+        return _decode_response(_publisher_credentials, payload)
 
     def create_invitation(
         self,
@@ -386,7 +387,7 @@ class ControlClient:
             authorization=source_token,
             json_body={"bus_id": bus_id, "visibility": visibility.value},
         )
-        return _invitation(payload, identifier)
+        return _decode_response(_invitation, payload, identifier)
 
     def inspect_invitation(
         self,
@@ -410,7 +411,7 @@ class ControlClient:
             if error.status_code == 404:
                 raise InvitationUnavailableError() from None
             raise
-        return _invitation_metadata(payload)
+        return _decode_response(_invitation_metadata, payload)
 
     def redeem_invitation(
         self,
@@ -454,7 +455,7 @@ class ControlClient:
             if error.status_code == 404:
                 raise InvitationUnavailableError() from None
             raise
-        return _receiver_access(payload)
+        return _decode_response(_receiver_access, payload)
 
     def delete_session(
         self,
@@ -547,11 +548,8 @@ class ControlClient:
             ) as response:
                 if response.status_code != expected_status:
                     body = _read_bounded(response.iter_bytes(), _MAX_ERROR_BODY_BYTES)
-                    detail = body.decode("utf-8", errors="replace")
-                    for value in redacted_values:
-                        detail = detail.replace(value, "[redacted]")
                     raise ControlPlaneError(
-                        f"control-plane returned HTTP {response.status_code}: {detail}",
+                        f"control-plane returned HTTP {response.status_code}",
                         "control.http_status",
                         status_code=response.status_code,
                     )
@@ -560,10 +558,9 @@ class ControlClient:
                 body = _read_bounded(response.iter_bytes(), _MAX_JSON_BODY_BYTES)
         except ControlPlaneError:
             raise
-        except httpx.HTTPError as error:
-            detail = _redact(str(error), redacted_values)
+        except httpx.HTTPError:
             transport_failure = ControlPlaneError(
-                f"control-plane request failed: {detail}",
+                "control-plane request failed",
                 "control.request",
             )
         if transport_failure is not None:
@@ -595,10 +592,19 @@ def _normalize_base_url(value: str) -> str:
     return value.split("?", 1)[0].split("#", 1)[0].rstrip("/") + "/"
 
 
-def _redact(value: str, secrets: tuple[str, ...]) -> str:
-    for secret in secrets:
-        value = value.replace(secret, "[redacted]")
-    return value
+_Decoded = TypeVar("_Decoded")
+
+
+def _decode_response(decoder: Callable[..., _Decoded], *arguments: Any) -> _Decoded:
+    """Detach untrusted field values and parser exceptions at the API boundary."""
+    code = "control.response_decode"
+    try:
+        return decoder(*arguments)
+    except (ValueError, TypeError, ControlPlaneError) as error:
+        if isinstance(error, ControlPlaneError):
+            code = error.code
+    # Raise outside the handler so raw exceptions are not retained as context.
+    raise ControlPlaneError("control-plane response fields are invalid", code)
 
 
 def _validate_timeout(value: float) -> float:
