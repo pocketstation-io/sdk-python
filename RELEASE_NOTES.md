@@ -1,5 +1,15 @@
 # PocketStation for Python release notes
 
+## Unreleased
+
+The native binding now uses released Core 1.1.12, which corrects false microphone
+timestamp discontinuities when the device audio format is converted for a
+Session. Python API behavior and Relay Connector 0.1.5 are unchanged. Dependency
+notices and runtime compatibility values are refreshed with the Core pin.
+
+This source candidate is not a new PyPI release. Published 0.1.5 artifacts still
+use Core 1.1.11; new distribution and release qualification is required.
+
 ## 0.1.5
 
 Control-plane clients now expose the complete readable invitation lifecycle in

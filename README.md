@@ -389,3 +389,7 @@ include dependencies with their own terms; see [third-party notices](THIRD_PARTY
 
 Read [support](SUPPORT.md), [security](SECURITY.md), and
 [contributing](CONTRIBUTING.md) for reporting and development expectations.
+
+The unreleased source candidate pins Core 1.1.12 for the microphone timestamp
+correction. Published 0.1.5 remains unchanged; consult the Unreleased release
+notes before building this candidate.
