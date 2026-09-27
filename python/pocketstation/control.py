@@ -373,19 +373,20 @@ class ControlClient:
         source_token: SecretToken,
         *,
         bus_id: str = "mix",
-        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
+        visibility: InvitationVisibility | str | None = None,
+        word_count: int | None = None,
         timeout_seconds: float | None = None,
     ) -> Invitation:
         identifier = SessionId(str(session_id))
         bus_id = _bus_id(bus_id, "bus_id")
-        visibility = _invitation_visibility(visibility)
+        body = _invitation_request(bus_id, visibility, word_count)
         payload = self._json_request(
             "POST",
             f"v1/sessions/{quote(identifier, safe='')}/invitations",
             expected_status=201,
             timeout_seconds=timeout_seconds,
             authorization=source_token,
-            json_body={"bus_id": bus_id, "visibility": visibility.value},
+            json_body=body,
         )
         return _decode_response(_invitation, payload, identifier)
 
@@ -844,6 +845,26 @@ def _receiver_access(payload: dict[str, Any]) -> ReceiverAccess:
         )
     except ValueError as error:
         raise ControlPlaneError(str(error), "control.response_decode") from error
+
+
+def _invitation_request(
+    bus_id: str,
+    visibility: InvitationVisibility | str | None,
+    word_count: int | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"bus_id": bus_id}
+    if word_count is not None:
+        if type(word_count) is not int or word_count not in (2, 3):
+            raise ValueError("word_count must be 2 or 3")
+        body["word_count"] = word_count
+    if visibility is not None:
+        selected = _invitation_visibility(visibility)
+        if word_count is not None and word_count != (
+            2 if selected is InvitationVisibility.PUBLIC else 3
+        ):
+            raise ValueError("word_count conflicts with visibility")
+        body["visibility"] = selected.value
+    return body
 
 
 def _invitation_visibility(

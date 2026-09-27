@@ -169,10 +169,7 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
         ("POST", "/base/v1/sessions/session_123/invitations"),
         ("DELETE", "/base/v1/sessions/session_123"),
     ]
-    assert json.loads(requests[3].content) == {
-        "bus_id": "mix",
-        "visibility": "private",
-    }
+    assert json.loads(requests[3].content) == {"bus_id": "mix"}
 
 
 @pytest.mark.asyncio
@@ -957,3 +954,118 @@ def test_short_words_in_created_invitation_response_preserve_authority(
         )
         assert invitation.share_alias == words
         assert JOIN_CODE not in repr(invitation)
+
+
+@pytest.mark.parametrize(
+    "response", [PUBLIC_INVITATION_RESPONSE, PRIVATE_INVITATION_RESPONSE]
+)
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.asyncio
+async def test_omitted_name_format_uses_validated_server_result(
+    response: dict[str, object], asynchronous: bool
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content) == {"bus_id": "application"}
+        return httpx.Response(201, json=response)
+
+    if asynchronous:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            async with AsyncControlClient(
+                "https://control.example", http_client=http
+            ) as client:
+                result = await client.create_invitation(
+                    "session_123", SecretToken("owner"), bus_id="application"
+                )
+    else:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as http_sync:
+            with ControlClient(
+                "https://control.example", http_client=http_sync
+            ) as sync_client:
+                result = sync_client.create_invitation(
+                    "session_123", SecretToken("owner"), bus_id="application"
+                )
+    assert result.visibility.value == response["visibility"]
+
+
+@pytest.mark.parametrize("word_count", [2, 3])
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.asyncio
+async def test_explicit_word_count_is_forwarded_without_legacy_visibility(
+    word_count: int, asynchronous: bool
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content) == {
+            "bus_id": "mix",
+            "word_count": word_count,
+        }
+        return httpx.Response(
+            201,
+            json=PUBLIC_INVITATION_RESPONSE
+            if word_count == 2
+            else PRIVATE_INVITATION_RESPONSE,
+        )
+
+    if asynchronous:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            async with AsyncControlClient(
+                "https://control.example", http_client=http
+            ) as client:
+                result = await client.create_invitation(
+                    "session_123", SecretToken("owner"), word_count=word_count
+                )
+    else:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as http_sync:
+            with ControlClient(
+                "https://control.example", http_client=http_sync
+            ) as sync_client:
+                result = sync_client.create_invitation(
+                    "session_123", SecretToken("owner"), word_count=word_count
+                )
+    assert len(result.share_alias.split("-")) == word_count
+
+
+@pytest.mark.parametrize(
+    "word_count,visibility",
+    [
+        (True, None),
+        (False, None),
+        (1, None),
+        (4, None),
+        (2.0, None),
+        ("2", None),
+        (2, "private"),
+        (3, "public"),
+    ],
+)
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.asyncio
+async def test_invalid_or_conflicting_word_count_is_rejected_before_http(
+    word_count: object, visibility: str | None, asynchronous: bool
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("invalid format reached HTTP")
+
+    if asynchronous:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            async with AsyncControlClient(
+                "https://control.example", http_client=http
+            ) as client:
+                with pytest.raises(ValueError):
+                    await client.create_invitation(
+                        "session_123",
+                        SecretToken("owner"),
+                        word_count=word_count,
+                        visibility=visibility,
+                    )  # type: ignore[arg-type]
+    else:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as http_sync:
+            with ControlClient(
+                "https://control.example", http_client=http_sync
+            ) as sync_client:
+                with pytest.raises(ValueError):
+                    sync_client.create_invitation(
+                        "session_123",
+                        SecretToken("owner"),
+                        word_count=word_count,
+                        visibility=visibility,
+                    )  # type: ignore[arg-type]

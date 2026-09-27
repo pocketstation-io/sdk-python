@@ -178,7 +178,8 @@ class RelaySession:
         self,
         *,
         bus_id: str = "mix",
-        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
+        visibility: InvitationVisibility | str | None = None,
+        word_count: int | None = None,
     ) -> ReceiverInvitation:
         self._require_open()
         if self._publisher_activation is None:
@@ -191,6 +192,7 @@ class RelaySession:
             self.credentials.source_token,
             bus_id=bus_id,
             visibility=visibility,
+            word_count=word_count,
             timeout_seconds=self._request_timeout_seconds,
         )
         invitation = _receiver_invitation(created, self.session_id)
@@ -201,7 +203,8 @@ class RelaySession:
         self,
         *,
         bus_id: str = "mix",
-        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
+        visibility: InvitationVisibility | str | None = None,
+        word_count: int | None = None,
         timeout_seconds: float = 10.0,
         poll_interval_seconds: float = 0.1,
     ) -> ReceiverInvitation:
@@ -212,6 +215,7 @@ class RelaySession:
         return await self.create_receiver_invitation(
             bus_id=bus_id,
             visibility=visibility,
+            word_count=word_count,
         )
 
     async def wait_for_receiver(

@@ -31,7 +31,7 @@ from ..control import (
     _invitation,
     _invitation_locator,
     _invitation_metadata,
-    _invitation_visibility,
+    _invitation_request,
     _is_opaque_invitation_code,
     _normalize_base_url,
     _publisher_credentials,
@@ -142,19 +142,20 @@ class ControlClient:
         source_token: SecretToken,
         *,
         bus_id: str = "mix",
-        visibility: InvitationVisibility | str = InvitationVisibility.PRIVATE,
+        visibility: InvitationVisibility | str | None = None,
+        word_count: int | None = None,
         timeout_seconds: float | None = None,
     ) -> Invitation:
         identifier = SessionId(str(session_id))
         bus_id = _bus_id(bus_id, "bus_id")
-        visibility = _invitation_visibility(visibility)
+        body = _invitation_request(bus_id, visibility, word_count)
         payload = await self._json_request(
             "POST",
             f"v1/sessions/{quote(identifier, safe='')}/invitations",
             expected_status=201,
             timeout_seconds=timeout_seconds,
             authorization=source_token,
-            json_body={"bus_id": bus_id, "visibility": visibility.value},
+            json_body=body,
         )
         return _decode_response(_invitation, payload, identifier)
 

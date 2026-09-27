@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from pocketstation._api import RelayError, Source
@@ -38,8 +40,11 @@ async def test_async_relay_session_rejects_unbounded_request_timeout() -> None:
         )
 
 
+@pytest.mark.parametrize("word_count", [None, 3])
 @pytest.mark.asyncio
-async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
+async def test_async_relay_composes_native_routes_and_real_readiness(
+    word_count: int | None,
+) -> None:
     control_requests: list[httpx.Request] = []
     snapshots = iter(
         [
@@ -80,6 +85,7 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
         mic_route = microphone.publish(publisher, "microphone")
 
         invitation = await remote.wait_for_publisher_and_invitation(
+            word_count=word_count,
             timeout_seconds=0.1,
             poll_interval_seconds=0.001,
         )
@@ -108,6 +114,11 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
         ("GET", "/v1/sessions/session_123"),
         ("DELETE", "/v1/sessions/session_123"),
     ]
+
+    expected = {"bus_id": "mix"}
+    if word_count is not None:
+        expected["word_count"] = word_count
+    assert json.loads(control_requests[2].content) == expected
 
 
 @pytest.mark.asyncio
