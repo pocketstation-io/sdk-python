@@ -424,4 +424,3 @@ unsafe extern "C-unwind" fn pks_extension_library_v1(output: *mut ExtensionLibra
     };
     status(STATUS_OK)
 }
-

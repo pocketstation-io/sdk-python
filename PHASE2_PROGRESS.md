@@ -639,3 +639,30 @@ unchanged. This commit changes documentation only; packaged Python/native bytes
 remain those of 9f2ecfb. Evidence is LOOPBACK-ONLY real local model/PCM/recording,
 not physical capture or new cross-platform qualification. No scaffold introduced;
 inventory n/a. Documentation/API names, source-tree identity and diff checks PASS.
+
+
+## C131 — consolidate qualified Python work onto local main
+
+Local main fast-forwards the qualified runtime and responsive-profile guide.
+The pre-existing native-extension fixture edit is retained intentionally: remove
+one redundant trailing blank line, with no token or behavior change. Exact
+staged/unstaged bytes and all 36 registered worktree heads were preserved before
+integration. Older nonancestor work is patch-equivalent; the original renewal
+commit differs from its integrated counterpart only in progress-file context.
+
+On the canonical checkout, the full production suite passes 789 tests with 34
+conditional skips; Ruff, 159-file format check, strict MyPy on 72 source files,
+native cargo fmt and diff checks pass. The ignored local extension is restored
+from the exact previously qualified production binary; the old local binary is
+preserved separately. Python and native source trees match the qualified 9f2ecfb
+wheel. No native rebuild, version edit, publication, physical-device or new
+cross-platform claim. Existing native test/clippy and installed real-path
+qualification are retained, not reported as newly executed. A standalone
+rustfmt check of the fixture reports two pre-existing line-wrap differences;
+this whitespace-only preservation does not widen into unrelated formatting.
+
+Product outcome: the qualified two-stem Session, scoped join handling, bounded
+model pipeline and documented responsive API profile are on the owning local
+main. No scaffold introduced; inventory n/a. CODE_PROTOCOL boundary, source
+identity, preservation and component checks PASS. Staff decision SAFE-TO-MERGE
+for this local integration; physical capture and platform limits remain explicit.
