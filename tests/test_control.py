@@ -713,7 +713,16 @@ async def test_async_per_request_none_inherits_the_finite_client_timeout() -> No
 
 
 @pytest.mark.parametrize(
-    "words", ["gentleglow-cedarbloom", "gentleglow-cedarbloom-riverglen"]
+    "words",
+    [
+        "gentleglow-cedarbloom",
+        "gentleglow-cedarbloom-riverglen",
+        "owl-sun",
+        "owl-sun-elm",
+        "rice-river",
+        "silly-mountain",
+        "lemon-corpus",
+    ],
 )
 def test_words_require_original_credential_and_opaque_code_stays_out_of_url(
     words: str,
@@ -756,7 +765,16 @@ def test_words_require_original_credential_and_opaque_code_stays_out_of_url(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "words", ["gentleglow-cedarbloom", "gentleglow-cedarbloom-riverglen"]
+    "words",
+    [
+        "gentleglow-cedarbloom",
+        "gentleglow-cedarbloom-riverglen",
+        "owl-sun",
+        "owl-sun-elm",
+        "rice-river",
+        "silly-mountain",
+        "lemon-corpus",
+    ],
 )
 async def test_async_words_require_identical_delegated_authority(words: str) -> None:
     requests: list[httpx.Request] = []
@@ -894,3 +912,48 @@ async def test_untrusted_response_diagnostics_never_expose_new_credentials(
     assert failure.value.__context__ is None
     if malformation == "http_status":
         assert failure.value.status_code == 500
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "ab-river",
+        "rice-ab",
+        "rice-river-ab",
+        "a" * 25 + "-river",
+        "rice/river",
+        "rice-river-extra-word",
+    ],
+)
+def test_short_word_syntax_rejects_malformed_navigation_before_http(words: str) -> None:
+    from pocketstation.control import InvitationAlias
+
+    with pytest.raises(ValueError):
+        InvitationAlias(words)
+
+
+@pytest.mark.parametrize(
+    "words", ["owl-sun", "owl-sun-elm", "rice-river", "silly-mountain", "lemon-corpus"]
+)
+def test_short_words_in_created_invitation_response_preserve_authority(
+    words: str,
+) -> None:
+    visibility = "public" if len(words.split("-")) == 2 else "private"
+    payload = {
+        **PRIVATE_INVITATION_RESPONSE,
+        "share_alias": words,
+        "share_url": f"https://receiver.example/{words}#join={JOIN_CODE}",
+        "visibility": visibility,
+    }
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(201, json=payload))
+    ) as transport:
+        client = ControlClient("https://control.example", http_client=transport)
+        invitation = client.create_invitation(
+            "session_123",
+            SecretToken("source-capability"),
+            bus_id="application",
+            visibility=visibility,
+        )
+        assert invitation.share_alias == words
+        assert JOIN_CODE not in repr(invitation)

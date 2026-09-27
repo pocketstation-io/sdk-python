@@ -382,3 +382,17 @@ five cases including normal traceback, cause/context and status preservation.
 95 focused control/Relay tests, strict mypy63 modules and Ruff pass. Production
 and conformance payloads will reuse their exact native binaries; no media/native
 behavior changes. Staff review: PASS for targeted correction, no scaffold.
+
+### Relay short-word navigation compatibility
+
+Real Relay service integration exposed the legacy minimum-four-letter parser.
+InvitationAlias now accepts 3–24 lowercase ASCII letters, preserving frozen
+legacy compound compatibility without copying Relay vocabulary or changing
+opaque-code authority. Sync and async callers share this validation.
+
+92 control tests pass: short-word response decoding and both caller modes retain
+code/body/redaction behavior, requested natural examples and legacy names work,
+malformed lengths/separators/counts reject. Ruff formatting/lint pass. No native,
+API, dependency or version change, and no product scaffold; existing HTTP test
+doubles remain MOCKED. Exact repacked production wheel and real-service Lab
+proof are separate gates. Decision SAFE-TO-TEST until those complete.

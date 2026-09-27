@@ -83,3 +83,9 @@ can report received and jitter-buffered samples.
 Those observations do not prove which sample a loudspeaker played. End-to-end
 audible cancellation requires a receiver capability that clears playout and
 acknowledges the last rendered sample.
+
+Readable names such as `owl-sun`, `rice-river`, `silly-mountain` and
+`lemon-corpus` are navigation only. Use the complete generated share URL or
+matching opaque join code. The client accepts short words and retained legacy
+compound syntax; Relay owns the vocabulary and never exposes a grammar prefix
+in the readable path.
