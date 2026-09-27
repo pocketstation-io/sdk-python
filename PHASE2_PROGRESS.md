@@ -478,3 +478,33 @@ model calls and zero frame/route drops. These model callbacks are MOCKED;
 retained-speech semantic/latency qualification follows before product acceptance.
 Ruff and strict mypy pass. No runtime scaffold, native model dependency or Core
 provider integration; progress is SAFE-TO-TEST pending real-model/installed gates.
+## W21 Session owner renewal — iteration129
+
+Sync and async ControlClient expose typed renew_session over the existing
+Relay-owned renewal endpoint. RelaySession.create now bootstraps owner expiry,
+replaces immutable credentials after renewal, and renews halfway through the
+remaining lifetime. Existing callers can explicitly manage lifetime with
+maintain_owner=False; low-level creation remains manual. No new signing or
+credential policy is implemented in Python.
+
+Transient transport/408/429/5xx failures have at most three attempts constrained
+by the known expiry. Permanent failure is retained as a sanitized renewal_error;
+public operations and close report it. Close stops and waits for renewal before
+DELETE with the latest credential. Sync/async shutdown deadlines report an
+uncooperative HTTP transport explicitly, leave deletion unattempted while it is
+still active, and allow cleanup retry after it unblocks. Immediate async close,
+expired bootstrap and in-flight rotation/deletion ordering are regression-tested.
+
+Validation: 216 focused tests, full production-native Python suite767 passed
+with34 existing conditional skips, strict mypy4 changed public modules, Ruff
+and format pass. The native library used here is the previously qualified1.1.12
+binary: these are Python control regressions, not qualification of the new Core
+capture fix or Python native model worker. Combined rebuilt-package and actual
+short-TTL service evidence remain required. HTTP fault peers are test doubles;
+no product scaffold, release, managed database or physical-platform claim.
+
+Owner renewal does not mutate credentials already embedded in a native media
+publisher or provide transparent media reconnect after its admission capability
+expires. Established-media semantics remain service-owned. Documentation states
+this remaining limitation instead of claiming uninterrupted recovery. Inventory
+n/a; SAFE-TO-TEST pending combined installed proof and independent review.

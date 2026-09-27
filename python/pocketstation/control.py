@@ -199,6 +199,14 @@ class SessionCredentials:
 
 
 @dataclass(frozen=True, slots=True)
+class SessionRenewal:
+    """Replacement owner capability and its server-declared expiry."""
+
+    source_token: SecretToken
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class BusState:
     bus_id: str
     role: str
@@ -317,6 +325,24 @@ class ControlClient:
             json_body={"required_buses": list(required_buses)},
         )
         return _decode_response(_session_credentials, payload)
+
+    def renew_session(
+        self,
+        session_id: str | SessionId,
+        source_token: SecretToken,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> SessionRenewal:
+        """Renew Session lifetime and replace its owner capability."""
+        identifier = SessionId(str(session_id))
+        payload = self._json_request(
+            "POST",
+            f"v1/sessions/{quote(identifier, safe='')}/renew",
+            expected_status=200,
+            timeout_seconds=timeout_seconds,
+            authorization=source_token,
+        )
+        return _decode_response(_session_renewal, payload)
 
     def session(
         self,
@@ -721,6 +747,13 @@ def _session_credentials(payload: dict[str, Any]) -> SessionCredentials:
         whip_url=_optional_string(payload, "whip_url"),
         whep_url=_optional_string(payload, "whep_url"),
         ice_servers=_ice_servers(payload),
+    )
+
+
+def _session_renewal(payload: dict[str, Any]) -> SessionRenewal:
+    return SessionRenewal(
+        source_token=SecretToken(_required(payload, "source_token", str)),
+        expires_at=_timestamp(payload, "expires_at"),
     )
 
 
@@ -1141,6 +1174,7 @@ __all__ = [
     "SecretToken",
     "SessionCredentials",
     "SessionId",
+    "SessionRenewal",
     "SessionSnapshot",
     "SubscriberCredentials",
     "SubscriptionState",

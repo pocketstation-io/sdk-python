@@ -23,6 +23,7 @@ from ..control import (
     SecretToken,
     SessionCredentials,
     SessionId,
+    SessionRenewal,
     SessionSnapshot,
     SubscriberCredentials,
     _bus_id,
@@ -39,6 +40,7 @@ from ..control import (
     _redemption_join_code,
     _resolve_timeout,
     _session_credentials,
+    _session_renewal,
     _session_snapshot,
     _subscriber_credentials,
     _validate_timeout,
@@ -76,6 +78,24 @@ class ControlClient:
             json_body={"required_buses": list(required_buses)},
         )
         return _decode_response(_session_credentials, payload)
+
+    async def renew_session(
+        self,
+        session_id: str | SessionId,
+        source_token: SecretToken,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> SessionRenewal:
+        """Renew Session lifetime and replace its owner capability."""
+        identifier = SessionId(str(session_id))
+        payload = await self._json_request(
+            "POST",
+            f"v1/sessions/{quote(identifier, safe='')}/renew",
+            expected_status=200,
+            timeout_seconds=timeout_seconds,
+            authorization=source_token,
+        )
+        return _decode_response(_session_renewal, payload)
 
     async def session(
         self,

@@ -34,6 +34,7 @@ INVITATION_RESPONSE = {
 async def test_async_relay_session_rejects_unbounded_request_timeout() -> None:
     with pytest.raises((TypeError, ValueError)):
         await RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             relay_url="https://relay.example",
             request_timeout_seconds=None,
@@ -73,6 +74,7 @@ async def test_async_relay_composes_native_routes_and_real_readiness(
             http_client=control_http,
         )
         remote = await RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             control_client=control,
         )
@@ -133,6 +135,7 @@ async def test_async_relay_rejects_invalid_minimum_receiver_count() -> None:
     ) as control_http:
         control = ControlClient("https://control.example", http_client=control_http)
         remote = await RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             control_client=control,
         )
@@ -164,6 +167,7 @@ async def test_async_relay_forwards_stun_servers_to_native_publisher() -> None:
     ) as control_http:
         control = ControlClient("https://control.example", http_client=control_http)
         remote = await RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             control_client=control,
         )
@@ -224,6 +228,7 @@ async def test_async_relay_rejects_unsupported_ice_and_deletes_remote_session() 
         control = ControlClient("https://control.example", http_client=control_http)
         with pytest.raises(RelayError) as unsupported:
             await RelaySession.create(
+                maintain_owner=False,
                 control_plane_url="https://control.example",
                 control_client=control,
             )
@@ -256,6 +261,7 @@ async def test_async_relay_wait_retries_transient_control_transport_failure() ->
     ) as control_http:
         control = ControlClient("https://control.example", http_client=control_http)
         remote = await RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             relay_url="https://relay.example",
             control_client=control,
@@ -298,6 +304,7 @@ async def test_async_relay_endpoint_mismatch_deletes_created_remote_session() ->
         )
         with pytest.raises(RelayError) as mismatch:
             await RelaySession.create(
+                maintain_owner=False,
                 control_plane_url="https://control.example",
                 control_client=control,
             )

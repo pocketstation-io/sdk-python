@@ -35,6 +35,7 @@ def test_relay_integration_is_bounded_secret_safe_and_idempotently_closed() -> N
     with httpx.Client(transport=httpx.MockTransport(control_handler)) as http:
         control = ControlClient("https://control.example", http_client=http)
         remote = RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             request_timeout_seconds=1.0,
             control_client=control,
@@ -60,6 +61,7 @@ def test_relay_integration_rejects_unbounded_request_deadlines(
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
         RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             request_timeout_seconds=cast(Any, timeout),
         )
