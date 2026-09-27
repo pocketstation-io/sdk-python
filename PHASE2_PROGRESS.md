@@ -566,3 +566,33 @@ changed. Focused pytest2/2 and Ruff pass. Only tests and this progress file
 changed; Python/native trees and final production wheel remain byte-identical.
 This is MOCKED model callback and LOOPBACK-ONLY native PCM, not model quality
 or current physical-device qualification.
+
+
+## C130 — bounded parallel model workers and explicit vocabulary context
+
+Optional inference_concurrency1..8 keeps default1 and assigns each source to
+a stable inference worker. cpu_threads is the total model CPU budget; parallel
+mode requires num_workers1 and splits remainder threads across initial workers.
+Each worker owns its model, increasing model memory explicitly. A typed MANY
+transcript forwarding Operator preserves source/time lineage through Core's
+existing bounded queues, without another scheduler or audio engine. Optional
+initial_prompt is non-empty, NUL-free and bounded to2048 UTF-8 bytes. The demo
+CLI exposes these general options; no fixture-specific vocabulary is embedded.
+
+Native mock tests prove simultaneous callbacks,5-thread budget split2+3, stable
+source affinity, outer/payload identity, recording completeness and joined
+stop/cancel. Python still cannot forcibly preempt arbitrary callbacks; bounded
+finite callbacks are released during the abort test, with no work after return.
+Full production suite784PASS/34 existing conditional skips; final focused
+parallel+CLI suite29PASS includes one subsequently added CLI option test
+(785 unique non-skipped assertions across these runs). Strict mypy65modules,
+Ruff and formatting pass. The native/Core trees and qualified macOS binary stay
+unchanged; pure-Python wheel overlay with regenerated RECORD follows.
+
+Original45s no-hint ComfyUI quality FAIL remains. These MOCKED callback and
+LOOPBACK-ONLY native PCM gates establish resource/lifecycle behavior, not
+transcription quality or a physical-device/full-parity claim. Exact live model
+quality acceptance remains Lab-owned. No new live scaffold; test doubles are
+explicit. CODE_PROTOCOL: provider remains outsideCore, existing Session/Operator
+authority, bounded queues and units, source identity, types and diff check PASS.
+Staff decision SAFE-TO-TEST pending final installed consumer and realmodelLab.

@@ -63,6 +63,7 @@ class WhisperModel(Protocol):
         beam_size: int,
         language: str | None,
         vad_filter: bool,
+        initial_prompt: str | None = None,
     ) -> tuple[Iterable[WhisperSegment], WhisperInfo]: ...
 
 
@@ -75,6 +76,8 @@ class FasterWhisperConfiguration:
     device: str = "auto"
     compute_type: str = "default"
     cpu_threads: int = 4
+    inference_concurrency: int = 1
+    initial_prompt: str | None = None
     num_workers: int = 1
     allow_model_download: bool = True
     language: str | None = None
@@ -105,13 +108,14 @@ class FasterWhisperConfiguration:
             raise ValueError("model_revision must be None or non-empty ASCII")
         for name, integer_value in (
             ("cpu_threads", self.cpu_threads),
+            ("inference_concurrency", self.inference_concurrency),
             ("num_workers", self.num_workers),
             ("beam_size", self.beam_size),
             ("queue_capacity_signals", self.queue_capacity_signals),
             ("maximum_sources", self.maximum_sources),
             ("maximum_output_bytes", self.maximum_output_bytes),
         ):
-            if isinstance(integer_value, bool):
+            if isinstance(integer_value, bool) or not isinstance(integer_value, int):
                 raise TypeError(f"{name} must be an integer")
         for name, seconds_value in (
             ("window_seconds", self.window_seconds),
@@ -122,6 +126,22 @@ class FasterWhisperConfiguration:
                 raise TypeError(f"{name} must be a number of seconds")
         if not 1 <= self.cpu_threads <= 64:
             raise ValueError("cpu_threads must be between 1 and 64")
+        if not 1 <= self.inference_concurrency <= 8:
+            raise ValueError("inference_concurrency must be between 1 and 8")
+        if self.inference_concurrency > self.cpu_threads:
+            raise ValueError("inference_concurrency exceeds cpu_threads budget")
+        if self.inference_concurrency > 1 and self.num_workers != 1:
+            raise ValueError("parallel inference requires num_workers=1")
+        if self.initial_prompt is not None and (
+            not isinstance(self.initial_prompt, str)
+            or not self.initial_prompt.strip()
+            or "\0" in self.initial_prompt
+            or len(self.initial_prompt.encode("utf-8")) > 2048
+        ):
+            raise ValueError(
+                "initial_prompt must be non-empty text of at most 2048 UTF-8 bytes "
+                "without NUL"
+            )
         if not 1 <= self.num_workers <= 16:
             raise ValueError("num_workers must be between 1 and 16")
         if not 1 <= self.beam_size <= 32:
@@ -282,12 +302,21 @@ def _transcribe_window(
     completed: tuple[WhisperSegment, ...] = ()
     if not too_short:
         samples = audio_converter(window) if prepared_audio is None else prepared_audio
-        segments, info = model.transcribe(
-            samples,
-            beam_size=configuration.beam_size,
-            language=configuration.language,
-            vad_filter=configuration.vad_filter,
-        )
+        if configuration.initial_prompt is None:
+            segments, info = model.transcribe(
+                samples,
+                beam_size=configuration.beam_size,
+                language=configuration.language,
+                vad_filter=configuration.vad_filter,
+            )
+        else:
+            segments, info = model.transcribe(
+                samples,
+                beam_size=configuration.beam_size,
+                language=configuration.language,
+                vad_filter=configuration.vad_filter,
+                initial_prompt=configuration.initial_prompt,
+            )
         completed = tuple(segments)
         language = info.language
         language_probability = info.language_probability
