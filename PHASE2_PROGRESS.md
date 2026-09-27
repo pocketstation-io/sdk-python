@@ -21,6 +21,14 @@ installed CPython consumers remain required. Package publication
 requires a separate exact-version release task after successful qualification.
 
 
+Source CI 36291261583 exposed a synchronization error in the source-truth test:
+the first aggregate audio frame can be from the application before the independent
+microphone has delivered. The test now waits within the original one-second
+budget for both per-source activity and signal observations, then retains every
+native-format, microphone-signal and recovery assertion. Missing microphone data
+still fails the deadline; no fixed delay, retry of a failed test or runtime change.
+The failed log is preserved and fresh exact-source CI/qualification is required.
+
 ## W21 installed Python real-path entry point
 
 - The installed `pocketstation-demo` command now accepts explicit application,
