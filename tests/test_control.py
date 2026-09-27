@@ -820,3 +820,26 @@ async def test_redemption_never_follows_redirect_with_credential(
                 sync_client.redeem_invitation(SecretToken(JOIN_CODE))
     assert len(requests) == 1
     assert requests[0].url.host == "control.example"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_malformed_redemption_body_does_not_retain_raw_error_cause(
+    asynchronous: bool,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=(JOIN_CODE + "not json").encode())
+
+    if asynchronous:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            client = AsyncControlClient("https://control.example", http_client=http)
+            with pytest.raises(ControlPlaneError) as raised:
+                await client.redeem_invitation(SecretToken(JOIN_CODE))
+    else:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as sync_http:
+            sync = ControlClient("https://control.example", http_client=sync_http)
+            with pytest.raises(ControlPlaneError) as raised:
+                sync.redeem_invitation(SecretToken(JOIN_CODE))
+    assert JOIN_CODE not in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__ is True

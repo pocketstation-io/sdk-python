@@ -348,3 +348,10 @@ existing exact-bus browser joining, no new authorization model or capture path.
 Unit HTTP fixtures are MOCKED and make no new real-media claim. No live scaffold
 introduced; inventory n/a. CODE_PROTOCOL whitespace/type/test gates passed.
 Decision: SAFE-TO-TEST pending exact packaged live integration. No release.
+
+### Follow-up: malformed response diagnostic redaction
+
+Suppress raw JSON decoder causes in both clients so malformed redemption bodies
+cannot appear in ordinary chained tracebacks. Two regression cases pass with
+85 focused tests, strict mypy and Ruff. No native or wire changes; final wheel
+is a separate immutable follow-up artifact. Staff review: PASS, no scaffold.
