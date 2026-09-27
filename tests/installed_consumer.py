@@ -466,13 +466,9 @@ def _exercise_invitation_lifecycle() -> None:
                 201,
                 json={
                     "join_code": join_code,
-                    "join_url": (
-                        f"https://receiver.example/join#join={join_code}"
-                    ),
+                    "join_url": (f"https://receiver.example/join#join={join_code}"),
                     "share_alias": alias,
-                    "share_url": (
-                        f"https://receiver.example/{alias}#join={join_code}"
-                    ),
+                    "share_url": (f"https://receiver.example/{alias}#join={join_code}"),
                     "visibility": "private",
                     "expires_at": "2026-09-26T18:15:00Z",
                 },

@@ -508,3 +508,21 @@ publisher or provide transparent media reconnect after its admission capability
 expires. Established-media semantics remain service-owned. Documentation states
 this remaining limitation instead of claiming uninterrupted recovery. Inventory
 n/a; SAFE-TO-TEST pending combined installed proof and independent review.
+
+
+### Combined C129 qualification
+
+Owner renewal6cb047d is integrated with native/model fixes. Full production-native
+suite774PASS with34 existing conditional skips; strict mypy72files and Ruff pass.
+Normalize two pre-existing installed-consumer formatting wraps to satisfy the
+repository formatter. The original2s real faster-whisper test that previously
+lost the word country now passes unchanged semantic assertions in13.03s.
+
+A separately declared5s CPU2 retained-WAV proof has0model/route drops, complete
+11s/4s coverage, application WER4.55% and microphone WER0% against the same-engine
+offline reference, workloadRTF0.145, first application output5.918s and finalization
+0.838s. A4s microphone is shorter than its5s window and emits its tail only at
+whole-Session finalization; no7s both-stem first-result claim is made by this
+finite input diagnostic. Longer equal-duration Lab replay must qualify that.
+These are LOOPBACK-ONLY actual native/model recordings, not new physical capture.
+Final Rust all-feature/conformance and exact wheel consumer gates follow.
