@@ -1441,6 +1441,7 @@ dependencies = [
  "pocketstation-relay",
  "pyo3",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

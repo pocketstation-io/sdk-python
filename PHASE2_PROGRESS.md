@@ -437,3 +437,24 @@ Ruff and formatting pass. Exact wheel projection retains the qualified native
 binary; no Rust changes, rebuild, release or physical-media claim. HTTP fixtures
 remain MOCKED, with installed real-service evidence delegated to Lab. No new
 runtime scaffold; inventory n/a; SAFE-TO-TEST pending exact installed proof.
+
+
+## W21 authored callback isolation and signal drain — iteration129
+
+Real paced-WAV transcription isolated a Python host defect: invoking a blocking
+Python Operator directly in an async node stalled other Operators on Core's
+shared runtime. Each node now owns a serialized capacity-one callback mailbox
+and worker thread; async replies yield the runtime. Prepare also acquires the
+GIL on that worker. Normal close joins. Non-preemptible callbacks can outlive a
+failed timeout, but retain their resource permit until actual thread exit; the
+process-wide cap64 prevents unbounded thread growth. No capture callback or
+realtime partition behavior changes.
+
+Native subscriptions now retain their existing bounded receiver through Session
+finalization so accepted final flush signals remain readable until natural EOF.
+Explicit subscription close still discards. Isolation, timeout/no-overlap,
+after-stop drain and explicit-close native regressions pass on rebuilt Core
+8aa471c7. The independent staged two-stem tail test also passes (model step
+follows). Required full native/source gates and final installed qualification
+remain pending; SAFE-TO-TEST, not physical or model-quality acceptance.
+No production mock/scaffold added; tests use named deterministic callbacks.

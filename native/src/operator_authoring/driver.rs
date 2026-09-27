@@ -11,6 +11,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+use super::callback_worker::CallbackWorker;
 use super::values::{PythonOperatorEmission, PythonOperatorManifest, PythonOperatorPayload};
 use crate::errors::coded_reason;
 use crate::graph::{PythonMediaCaps, PythonRouteSettings, PythonSignalSpec};
@@ -129,7 +130,7 @@ impl AsyncOperatorFactory for PythonOperatorFactory {
                 .map_err(node_process_error)?
                 .unbind();
             Ok(Box::new(PythonOperatorNode {
-                node,
+                callback_worker: CallbackWorker::new(node)?,
                 operator_id: self.manifest.operator_id().clone(),
                 revision: self.manifest.revision(),
                 generation: self.manifest.generation(),
@@ -141,7 +142,7 @@ impl AsyncOperatorFactory for PythonOperatorFactory {
 }
 
 struct PythonOperatorNode {
-    node: Py<PyAny>,
+    callback_worker: CallbackWorker,
     operator_id: OperatorId,
     revision: u32,
     generation: u32,
@@ -219,15 +220,21 @@ impl AsyncNode for PythonOperatorNode {
         &'a mut self,
         context: &'a AsyncOperatorPrepareContext,
     ) -> AsyncNodeFuture<'a, Result<(), NodeError>> {
+        let context = context.clone();
         Box::pin(async move {
-            Python::attach(|py| {
-                let context = python_prepare_context(py, context).map_err(node_prepare_error)?;
-                self.node
-                    .bind(py)
-                    .call_method1("prepare", (context,))
-                    .map(|_| ())
-                    .map_err(node_prepare_error)
-            })
+            self.callback_worker
+                .call(Box::new(move |node| {
+                    Python::attach(|py| {
+                        let prepared =
+                            python_prepare_context(py, &context).map_err(node_prepare_error)?;
+                        node.bind(py)
+                            .call_method1("prepare", (prepared,))
+                            .map(|_| Vec::new())
+                            .map_err(node_prepare_error)
+                    })
+                }))
+                .await
+                .map(|_| ())
         })
     }
 
@@ -249,26 +256,34 @@ impl AsyncNode for PythonOperatorNode {
                 .ok_or_else(|| NodeError::Process("operator input has no lineage".to_owned()))?;
             let timing = input.timing();
             self.last_input = Some((lineage, timing));
-            let emissions = Python::attach(|py| {
-                let input = Py::new(py, python_envelope(py, copy_envelope(&input))?)?;
-                let output = self
-                    .node
-                    .bind(py)
-                    .call_method1("process", (input_port, input))?;
-                extract_emissions(&output)
-            })
-            .map_err(node_process_error)?;
+            let input_port = input_port.to_owned();
+            let emissions = self
+                .callback_worker
+                .call(Box::new(move |node| {
+                    Python::attach(|py| {
+                        let input = Py::new(py, python_envelope(py, copy_envelope(&input))?)?;
+                        let output = node.bind(py).call_method1("process", (input_port, input))?;
+                        extract_emissions(&output)
+                    })
+                    .map_err(node_process_error)
+                }))
+                .await?;
             self.build_outputs(emissions, lineage, timing)
         })
     }
 
     fn flush<'a>(&'a mut self) -> AsyncNodeFuture<'a, Result<Vec<SignalEnvelope>, NodeError>> {
         Box::pin(async move {
-            let emissions = Python::attach(|py| {
-                let output = self.node.bind(py).call_method0("flush")?;
-                extract_emissions(&output)
-            })
-            .map_err(node_process_error)?;
+            let emissions = self
+                .callback_worker
+                .call(Box::new(|node| {
+                    Python::attach(|py| {
+                        let output = node.bind(py).call_method0("flush")?;
+                        extract_emissions(&output)
+                    })
+                    .map_err(node_process_error)
+                }))
+                .await?;
             if emissions.is_empty() {
                 return Ok(Vec::new());
             }
@@ -281,26 +296,22 @@ impl AsyncNode for PythonOperatorNode {
 
     fn cancel<'a>(&'a mut self) -> AsyncNodeFuture<'a, Result<(), NodeError>> {
         Box::pin(async move {
-            Python::attach(|py| {
-                self.node
-                    .bind(py)
-                    .call_method0("cancel")
-                    .map(|_| ())
-                    .map_err(node_process_error)
-            })
+            self.callback_worker
+                .call(Box::new(|node| {
+                    Python::attach(|py| {
+                        node.bind(py)
+                            .call_method0("cancel")
+                            .map(|_| Vec::new())
+                            .map_err(node_process_error)
+                    })
+                }))
+                .await
+                .map(|_| ())
         })
     }
 
     fn close<'a>(&'a mut self) -> AsyncNodeFuture<'a, Result<(), NodeError>> {
-        Box::pin(async move {
-            Python::attach(|py| {
-                self.node
-                    .bind(py)
-                    .call_method0("close")
-                    .map(|_| ())
-                    .map_err(node_process_error)
-            })
-        })
+        Box::pin(async move { self.callback_worker.close().await })
     }
 }
 
@@ -519,7 +530,7 @@ fn node_prepare_error(error: PyErr) -> NodeError {
     NodeError::Prepare(python_error_message(error))
 }
 
-fn node_process_error(error: PyErr) -> NodeError {
+pub(super) fn node_process_error(error: PyErr) -> NodeError {
     NodeError::Process(python_error_message(error))
 }
 
