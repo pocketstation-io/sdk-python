@@ -458,3 +458,23 @@ after-stop drain and explicit-close native regressions pass on rebuilt Core
 follows). Required full native/source gates and final installed qualification
 remain pending; SAFE-TO-TEST, not physical or model-quality acceptance.
 No production mock/scaffold added; tests use named deterministic callbacks.
+
+
+## W21 bounded live model window pipeline — iteration129
+
+The ordinary attach/attach_many path now assembles finite windows independently
+per stem, then feeds one shared inference Operator over Core typed edges. The
+PCM16 boundary carries exact decimal source/time identities with a 1 MiB bound.
+Sub-500ms partial windows (or smaller configured windows) emit explicit skipped
+metadata instead of triggering a gap/short-inference feedback loop. Transcript
+values expose processing outcome, duration and inference duration. Low-level
+provider methods remain direct adapters and are documented separately.
+
+Validation on the new native Core8aa bridge: full production suite759PASS with
+34 existing conditional skips; focused native/codec/two-stem model8PASS plus
+one optional realmodel skip. The paced slow-model test accounts for both1200ms
+stems, all six outputs including EOF tails, outer/payload source identity, four
+model calls and zero frame/route drops. These model callbacks are MOCKED;
+retained-speech semantic/latency qualification follows before product acceptance.
+Ruff and strict mypy pass. No runtime scaffold, native model dependency or Core
+provider integration; progress is SAFE-TO-TEST pending real-model/installed gates.

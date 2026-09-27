@@ -41,6 +41,7 @@ from .audio_windows import (
     mono_16khz,
 )
 from .transcript import TRANSCRIPT_SIGNAL, Transcript
+from .window_pipeline import attach_window_pipeline
 
 
 class WhisperSegment(Protocol):
@@ -269,25 +270,37 @@ def _transcribe_window(
     model: WhisperModel,
     audio_converter: AudioConverter,
     window: AudioWindow,
+    *,
+    prepared_audio: object | None = None,
+    duration_ms: int | None = None,
 ) -> OperatorEmission:
     inference_started_ns = monotonic_ns()
-    samples = audio_converter(window)
-    segments, info = model.transcribe(
-        samples,
-        beam_size=configuration.beam_size,
-        language=configuration.language,
-        vad_filter=configuration.vad_filter,
-    )
-    completed = tuple(segments)
+    duration = window.duration_ms if duration_ms is None else duration_ms
+    too_short = duration < min(0.5, configuration.window_seconds) * 1_000
+    language = configuration.language or "unknown"
+    language_probability = 0.0
+    completed: tuple[WhisperSegment, ...] = ()
+    if not too_short:
+        samples = audio_converter(window) if prepared_audio is None else prepared_audio
+        segments, info = model.transcribe(
+            samples,
+            beam_size=configuration.beam_size,
+            language=configuration.language,
+            vad_filter=configuration.vad_filter,
+        )
+        completed = tuple(segments)
+        language = info.language
+        language_probability = info.language_probability
     result = {
+        "processing_outcome": "skipped-short-window" if too_short else "transcribed",
         "channel_count": window.channel_count,
         "clock_id": window.clock_id,
         "discontinuity_epoch": str(window.discontinuity_epoch),
         "discontinuity_reasons": list(window.discontinuity_reasons),
-        "duration_ms": window.duration_ms,
+        "duration_ms": window.duration_ms if duration_ms is None else duration_ms,
         "inference_duration_ns": str(monotonic_ns() - inference_started_ns),
-        "language": info.language,
-        "language_probability": info.language_probability,
+        "language": language,
+        "language_probability": language_probability,
         "policy_epoch": str(window.policy_epoch),
         "sample_rate_hz": window.sample_rate_hz,
         "session_id": str(window.session_id),
@@ -416,31 +429,20 @@ class FasterWhisper:
         stream: Stem | SourceOutput | DerivedStream,
     ) -> BusSubscription[str]:
         """Attach transcription to any Session-owned PCM stream in two lines."""
-        operator = session.register_operator(self.sync_provider()).declare()
-        stream.connect(operator.input("audio"))
-        return session.subscribe(
-            operator.output("transcript"),
-            signal=TRANSCRIPT_SIGNAL,
-        )
+        return self.attach_many(session, (stream,))
 
     def attach_many(
         self,
         session: AsyncSession,
         streams: Iterable[Stem | SourceOutput | DerivedStream],
     ) -> BusSubscription[str]:
-        """Share one model across finite source-aware Session inputs."""
-        operator = session.register_operator(self.sync_provider()).declare()
-        input_port = operator.input("audio")
-        attached = 0
-        for stream in streams:
-            stream.connect(input_port)
-            attached += 1
-        if attached == 0:
-            raise ValueError("transcription requires at least one input stream")
-        return session.subscribe(
-            operator.output("transcript"),
-            signal=TRANSCRIPT_SIGNAL,
-        )
+        """Drain audio independently of one bounded, shared inference worker.
+
+        PCM16 mono 16 kHz windows cross a Core-owned eight-window route. Slow
+        inference can drop complete windows, visible in Operator metrics, but
+        cannot stall the frame reader or independent recording/Relay routes.
+        """
+        return attach_window_pipeline(self, session, streams)
 
     def transcribe(self, capture: Capture) -> AsyncIterator[Transcript]:
         """Attach to every selected stem and return typed transcript results."""
