@@ -466,6 +466,7 @@ def test_sync_transport_failure_redacts_the_authorization_secret() -> None:
             client.session("session_123", secret)
     assert failure.value.code == "control.request"
     assert "source-secret" not in str(failure.value)
+    assert failure.value.__context__ is None
     assert "[redacted]" in str(failure.value)
     assert failure.value.__cause__ is None
 
@@ -486,6 +487,7 @@ async def test_async_transport_failure_redacts_the_authorization_secret() -> Non
             await client.session("session_123", secret)
     assert failure.value.code == "control.request"
     assert "source-secret" not in str(failure.value)
+    assert failure.value.__context__ is None
     assert "[redacted]" in str(failure.value)
     assert failure.value.__cause__ is None
 
@@ -842,4 +844,4 @@ async def test_malformed_redemption_body_does_not_retain_raw_error_cause(
                 sync.redeem_invitation(SecretToken(JOIN_CODE))
     assert JOIN_CODE not in str(raised.value)
     assert raised.value.__cause__ is None
-    assert raised.value.__suppress_context__ is True
+    assert raised.value.__context__ is None
