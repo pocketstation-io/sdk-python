@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import replace
+from datetime import datetime
 from time import monotonic
 from types import TracebackType
 from typing import TYPE_CHECKING
@@ -25,9 +27,12 @@ from ..relay import (
     RelayTimeoutError,
     _bounded_request_timeout,
     _normalize_relay_url,
+    _owner_deadline,
+    _owner_failure,
     _receiver_invitation,
     _relay_publisher_ice_servers,
     _resolve_relay_url,
+    _transient_owner_error,
     _validate_minimum_receivers,
     _validate_request_timeout,
     _validate_wait,
@@ -61,6 +66,11 @@ class RelaySession:
         self._invitation: ReceiverInvitation | None = None
         self._receiver_activation: ReceiverActivation | None = None
         self._closed = False
+        self._cleanup_complete = False
+        self._renewal_task: asyncio.Task[None] | None = None
+        self._renewal_error: RelayError | None = None
+        self._owner_expires_at: datetime | None = None
+        self._owner_deadline = 0.0
 
     @classmethod
     async def create(
@@ -71,8 +81,11 @@ class RelaySession:
         request_timeout_seconds: float = 10.0,
         required_buses: tuple[str, ...] = ("application", "microphone"),
         control_client: ControlClient | None = None,
+        maintain_owner: bool = True,
     ) -> RelaySession:
         request_timeout_seconds = _validate_request_timeout(request_timeout_seconds)
+        if type(maintain_owner) is not bool:
+            raise TypeError("maintain_owner must be a boolean")
         requested_relay_url = (
             None if relay_url is None else _normalize_relay_url(relay_url)
         )
@@ -92,6 +105,31 @@ class RelaySession:
                 requested_relay_url,
             )
             ice_servers = _relay_publisher_ice_servers(credentials.ice_servers)
+            remote = cls(
+                relay_url=normalized_relay_url,
+                credentials=credentials,
+                control=control,
+                owns_control=owns_control,
+                request_timeout_seconds=request_timeout_seconds,
+                ice_servers=ice_servers,
+            )
+            if maintain_owner:
+                renewed = await asyncio.wait_for(
+                    control.renew_session(
+                        credentials.session_id,
+                        credentials.source_token,
+                        timeout_seconds=request_timeout_seconds,
+                    ),
+                    timeout=request_timeout_seconds,
+                )
+                deadline = _owner_deadline(renewed.expires_at)
+                credentials = replace(credentials, source_token=renewed.source_token)
+                remote.credentials = credentials
+                remote._owner_deadline = deadline
+                remote._owner_expires_at = renewed.expires_at
+                remote._renewal_task = asyncio.create_task(
+                    remote._renew_owner(), name="pocketstation-owner-renewal"
+                )
         except BaseException as error:
             if credentials is not None:
                 try:
@@ -114,14 +152,7 @@ class RelaySession:
             if owns_control:
                 await control.aclose()
             raise
-        return cls(
-            relay_url=normalized_relay_url,
-            credentials=credentials,
-            control=control,
-            owns_control=owns_control,
-            request_timeout_seconds=request_timeout_seconds,
-            ice_servers=ice_servers,
-        )
+        return remote
 
     @property
     def session_id(self) -> SessionId:
@@ -244,10 +275,76 @@ class RelaySession:
         self._receiver_activation = activation
         return activation
 
+    @property
+    def owner_expires_at(self) -> datetime | None:
+        """Current owner expiry; None when lifetime is managed by the caller."""
+        return self._owner_expires_at
+
+    @property
+    def renewal_error(self) -> RelayError | None:
+        """Terminal owner-renewal failure, without credential diagnostics."""
+        return self._renewal_error
+
+    async def _renew_owner(self) -> None:
+        try:
+            while not self._closed:
+                await asyncio.sleep(max(0.0, (self._owner_deadline - monotonic()) / 2))
+                for attempt in range(3):
+                    remaining = self._owner_deadline - monotonic()
+                    if remaining <= 0:
+                        self._renewal_error = _owner_failure()
+                        return
+                    request_timeout = min(self._request_timeout_seconds, remaining)
+                    try:
+                        renewed = await asyncio.wait_for(
+                            self._control.renew_session(
+                                self.session_id,
+                                self.credentials.source_token,
+                                timeout_seconds=request_timeout,
+                            ),
+                            timeout=request_timeout,
+                        )
+                        deadline = _owner_deadline(renewed.expires_at)
+                        self.credentials = replace(
+                            self.credentials, source_token=renewed.source_token
+                        )
+                        self._owner_expires_at = renewed.expires_at
+                        self._owner_deadline = deadline
+                        break
+                    except Exception as error:
+                        transient = _transient_owner_error(error) or isinstance(
+                            error, TimeoutError
+                        )
+                    if not transient or attempt == 2:
+                        self._renewal_error = _owner_failure()
+                        return
+                    await asyncio.sleep(
+                        min(
+                            0.1 * (2**attempt),
+                            max(0.0, self._owner_deadline - monotonic()),
+                        )
+                    )
+        except asyncio.CancelledError:
+            return
+
     async def aclose(self, *, delete_remote_session: bool = True) -> None:
-        if self._closed:
+        if self._cleanup_complete:
+            if self._renewal_error is not None:
+                raise self._renewal_error
             return
         self._closed = True
+        if self._renewal_task is not None:
+            self._renewal_task.cancel()
+            done, _ = await asyncio.wait(
+                {self._renewal_task}, timeout=self._request_timeout_seconds + 1
+            )
+            if not done:
+                self._renewal_error = RelayError(
+                    "owner renewal did not stop before the shutdown deadline",
+                    "relay.owner_shutdown_timeout",
+                )
+                raise self._renewal_error
+            await asyncio.gather(self._renewal_task, return_exceptions=True)
         try:
             if delete_remote_session:
                 await self._control.delete_session(
@@ -258,6 +355,9 @@ class RelaySession:
         finally:
             if self._owns_control:
                 await self._control.aclose()
+        self._cleanup_complete = True
+        if self._renewal_error is not None:
+            raise self._renewal_error
 
     async def __aenter__(self) -> RelaySession:
         self._require_open()
@@ -290,6 +390,7 @@ class RelaySession:
         _validate_wait(timeout_seconds, poll_interval_seconds)
         deadline = monotonic() + timeout_seconds
         while True:
+            self._require_open()
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise RelayTimeoutError(timeout_message, timeout_code)
@@ -316,6 +417,8 @@ class RelaySession:
             )
 
     def _require_open(self) -> None:
+        if self._renewal_error is not None:
+            raise self._renewal_error
         if self._closed:
             raise RelayError("RelaySession has closed", "relay.closed")
 

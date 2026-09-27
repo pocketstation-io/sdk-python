@@ -41,6 +41,7 @@ INVITATION_RESPONSE = {
 def test_relay_session_rejects_unbounded_request_timeout() -> None:
     with pytest.raises((TypeError, ValueError)):
         RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             relay_url="https://relay.example",
             request_timeout_seconds=None,
@@ -77,6 +78,7 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness(
             http_client=control_http,
         )
         remote = RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             control_client=control,
         )
@@ -157,6 +159,7 @@ def test_relay_forwards_control_plane_stun_servers_to_native_publisher() -> None
     with httpx.Client(transport=httpx.MockTransport(control_handler)) as control_http:
         control = ControlClient("https://control.example", http_client=control_http)
         remote = RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             control_client=control,
         )
@@ -222,6 +225,7 @@ def test_relay_rejects_unsupported_ice_and_deletes_remote_session(
         control = ControlClient("https://control.example", http_client=control_http)
         with pytest.raises(RelayError) as unsupported:
             RelaySession.create(
+                maintain_owner=False,
                 control_plane_url="https://control.example",
                 control_client=control,
             )
@@ -275,6 +279,7 @@ def test_relay_wait_uses_a_single_bounded_deadline() -> None:
             http_client=control_http,
         )
         remote = RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             relay_url="https://relay.example",
             control_client=control,
@@ -305,6 +310,7 @@ def test_relay_wait_retries_transient_control_transport_failure() -> None:
     with httpx.Client(transport=httpx.MockTransport(control_handler)) as control_http:
         control = ControlClient("https://control.example", http_client=control_http)
         remote = RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             relay_url="https://relay.example",
             control_client=control,
@@ -364,6 +370,7 @@ def test_relay_rejects_unsafe_or_mismatched_invitations(join_url: str) -> None:
             http_client=control_http,
         )
         remote = RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             relay_url="https://relay.example",
             control_client=control,
@@ -398,6 +405,7 @@ def test_invalid_relay_origin_fails_before_remote_session_creation() -> None:
         )
         with pytest.raises(ValueError, match="must not include a path"):
             RelaySession.create(
+                maintain_owner=False,
                 control_plane_url="https://control.example",
                 relay_url="https://relay.example/not-an-origin",
                 control_client=control,
@@ -412,6 +420,7 @@ def test_relay_origin_rejects_query_and_fragment_before_creation() -> None:
     ):
         with pytest.raises(ValueError, match="must not include"):
             RelaySession.create(
+                maintain_owner=False,
                 control_plane_url="https://control.example",
                 relay_url=relay_url,
             )
@@ -440,6 +449,7 @@ def test_relay_origin_is_canonicalized_like_a_web_url() -> None:
             http_client=http_client,
         )
         remote = RelaySession.create(
+            maintain_owner=False,
             control_plane_url="https://control.example",
             relay_url="HTTPS://Relay.Example:443/",
             control_client=control,
@@ -472,6 +482,7 @@ def test_relay_endpoint_mismatch_deletes_created_remote_session() -> None:
         )
         with pytest.raises(RelayError) as mismatch:
             RelaySession.create(
+                maintain_owner=False,
                 control_plane_url="https://control.example",
                 control_client=control,
             )

@@ -94,3 +94,35 @@ Readable names such as `owl-sun`, `rice-river`, `silly-mountain` and
 matching opaque join code. The client accepts short words and retained legacy
 compound syntax; Relay owns the vocabulary and never exposes a grammar prefix
 in the readable address.
+
+### Keeping a Session open
+
+`RelaySession.create(...)` and its asyncio equivalent renew the Session owner
+credential automatically. Creation first requests a renewal to learn the
+server's expiry; later renewals run halfway through the remaining lifetime.
+The current immutable `credentials` value is replaced after a successful
+renewal. Temporary transport failures, HTTP 408/429 and server errors get at
+most three attempts before expiry. Other errors stop renewal immediately.
+
+Inspect `owner_expires_at` and `renewal_error` for the current outcome. A renewal
+failure makes subsequent RelaySession operations fail explicitly, and close
+also reports that failure after attempting remote cleanup. Closing stops and
+waits for renewal before deleting the Session with its latest credential.
+Always close the owner or use its context manager. HTTP transports must honor
+request timeouts and cancellation. If an in-flight request cannot stop by the
+finite shutdown deadline, close reports `relay.owner_shutdown_timeout` and does
+not race it with deletion or claim that the worker was stopped. Close can be
+retried after that transport unblocks; the original renewal error stays visible.
+
+For applications that manage the owner lifetime themselves, pass
+`maintain_owner=False`, or use `ControlClient.create_session()` followed by
+`renew_session(session_id, source_token)`. Low-level creation does not start a
+background worker. Renewal returns a redacted `source_token` and `expires_at`;
+store the returned credential for subsequent authenticated operations.
+
+Owner renewal keeps management operations usable. It does not restart a native
+publisher or replace a credential already embedded in that publisher. An
+established media connection keeps the service's existing admission semantics;
+a new connection after its original credential expires needs a newly created
+publisher using the current owner credential. This client does not promise
+transparent media reconnection across expiry, process exit or service restart.

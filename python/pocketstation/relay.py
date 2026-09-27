@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from math import isfinite
+from threading import Event, Thread
 from time import monotonic, sleep
 from types import TracebackType
 from typing import TYPE_CHECKING
@@ -146,6 +147,12 @@ class RelaySession:
         self._invitation: ReceiverInvitation | None = None
         self._receiver_activation: ReceiverActivation | None = None
         self._closed = False
+        self._cleanup_complete = False
+        self._renewal_stop = Event()
+        self._renewal_thread: Thread | None = None
+        self._renewal_error: RelayError | None = None
+        self._owner_expires_at: datetime | None = None
+        self._owner_deadline = 0.0
 
     @classmethod
     def create(
@@ -156,8 +163,11 @@ class RelaySession:
         request_timeout_seconds: float = 10.0,
         required_buses: tuple[str, ...] = ("application", "microphone"),
         control_client: ControlClient | None = None,
+        maintain_owner: bool = True,
     ) -> RelaySession:
         request_timeout_seconds = _validate_request_timeout(request_timeout_seconds)
+        if type(maintain_owner) is not bool:
+            raise TypeError("maintain_owner must be a boolean")
         requested_relay_url = (
             None if relay_url is None else _normalize_relay_url(relay_url)
         )
@@ -177,6 +187,31 @@ class RelaySession:
                 requested_relay_url,
             )
             ice_servers = _relay_publisher_ice_servers(credentials.ice_servers)
+            remote = cls(
+                relay_url=normalized_relay_url,
+                credentials=credentials,
+                control=control,
+                owns_control=owns_control,
+                request_timeout_seconds=request_timeout_seconds,
+                ice_servers=ice_servers,
+            )
+            if maintain_owner:
+                renewed = control.renew_session(
+                    credentials.session_id,
+                    credentials.source_token,
+                    timeout_seconds=request_timeout_seconds,
+                )
+                deadline = _owner_deadline(renewed.expires_at)
+                credentials = replace(credentials, source_token=renewed.source_token)
+                remote.credentials = credentials
+                remote._owner_deadline = deadline
+                remote._owner_expires_at = renewed.expires_at
+                remote._renewal_thread = Thread(
+                    target=remote._renew_owner,
+                    name="pocketstation-owner-renewal",
+                    daemon=True,
+                )
+                remote._renewal_thread.start()
         except Exception as error:
             if credentials is not None:
                 try:
@@ -199,14 +234,7 @@ class RelaySession:
             if owns_control:
                 control.close()
             raise
-        return cls(
-            relay_url=normalized_relay_url,
-            credentials=credentials,
-            control=control,
-            owns_control=owns_control,
-            request_timeout_seconds=request_timeout_seconds,
-            ice_servers=ice_servers,
-        )
+        return remote
 
     @property
     def session_id(self) -> SessionId:
@@ -332,10 +360,69 @@ class RelaySession:
         self._receiver_activation = activation
         return activation
 
+    @property
+    def owner_expires_at(self) -> datetime | None:
+        """Current owner expiry; None when lifetime is managed by the caller."""
+        return self._owner_expires_at
+
+    @property
+    def renewal_error(self) -> RelayError | None:
+        """Terminal owner-renewal failure, without credential diagnostics."""
+        return self._renewal_error
+
+    def _renew_owner(self) -> None:
+        while not self._renewal_stop.wait(
+            max(0.0, (self._owner_deadline - monotonic()) / 2)
+        ):
+            for attempt in range(3):
+                if self._renewal_stop.is_set():
+                    return
+                remaining = self._owner_deadline - monotonic()
+                if remaining <= 0:
+                    self._renewal_error = _owner_failure()
+                    return
+                try:
+                    renewed = self._control.renew_session(
+                        self.session_id,
+                        self.credentials.source_token,
+                        timeout_seconds=min(self._request_timeout_seconds, remaining),
+                    )
+                    deadline = _owner_deadline(renewed.expires_at)
+                    self.credentials = replace(
+                        self.credentials, source_token=renewed.source_token
+                    )
+                    self._owner_expires_at = renewed.expires_at
+                    self._owner_deadline = deadline
+                    break
+                except Exception as error:
+                    transient = _transient_owner_error(error)
+                if not transient or attempt == 2:
+                    self._renewal_error = _owner_failure()
+                    return
+                if self._renewal_stop.wait(
+                    min(
+                        0.1 * (2**attempt), max(0.0, self._owner_deadline - monotonic())
+                    )
+                ):
+                    return
+            if self._renewal_stop.is_set():
+                return
+
     def close(self, *, delete_remote_session: bool = True) -> None:
-        if self._closed:
+        if self._cleanup_complete:
+            if self._renewal_error is not None:
+                raise self._renewal_error
             return
         self._closed = True
+        self._renewal_stop.set()
+        if self._renewal_thread is not None:
+            self._renewal_thread.join(timeout=self._request_timeout_seconds * 5 + 1)
+            if self._renewal_thread.is_alive():
+                self._renewal_error = RelayError(
+                    "owner renewal did not stop before the shutdown deadline",
+                    "relay.owner_shutdown_timeout",
+                )
+                raise self._renewal_error
         try:
             if delete_remote_session:
                 self._control.delete_session(
@@ -346,6 +433,9 @@ class RelaySession:
         finally:
             if self._owns_control:
                 self._control.close()
+        self._cleanup_complete = True
+        if self._renewal_error is not None:
+            raise self._renewal_error
 
     def __enter__(self) -> RelaySession:
         self._require_open()
@@ -378,6 +468,7 @@ class RelaySession:
         _validate_wait(timeout_seconds, poll_interval_seconds)
         deadline = monotonic() + timeout_seconds
         while True:
+            self._require_open()
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise RelayTimeoutError(timeout_message, timeout_code)
@@ -401,8 +492,29 @@ class RelaySession:
             sleep(min(poll_interval_seconds, max(0.0, deadline - monotonic())))
 
     def _require_open(self) -> None:
+        if self._renewal_error is not None:
+            raise self._renewal_error
         if self._closed:
             raise RelayError("RelaySession has closed", "relay.closed")
+
+
+def _owner_failure() -> RelayError:
+    return RelayError("Session owner renewal failed", "relay.owner_renewal_failed")
+
+
+def _owner_deadline(expires_at: datetime) -> float:
+    remaining = (expires_at - datetime.now(UTC)).total_seconds()
+    if not isfinite(remaining) or remaining <= 0:
+        raise _owner_failure()
+    return monotonic() + remaining
+
+
+def _transient_owner_error(error: Exception) -> bool:
+    return isinstance(error, ControlPlaneError) and (
+        error.code == "control.request"
+        or error.status_code in {408, 429}
+        or (error.status_code is not None and 500 <= error.status_code < 600)
+    )
 
 
 def _normalize_relay_url(value: str) -> str:
