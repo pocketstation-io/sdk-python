@@ -161,3 +161,84 @@ async def test_real_faster_whisper_transcribes_two_upstream_fixtures(
     assert str(microphone["text"]).strip()
     assert int(str(application["inference_duration_ns"])) > 0
     assert int(str(microphone["inference_duration_ns"])) > 0
+
+
+@pytest.mark.asyncio
+async def test_slow_inference_drains_both_eof_tails_without_lineage_or_frame_loss(
+    tmp_path,
+):
+    import time
+
+    class SlowModel(_SourceModel):
+        def transcribe(self, audio, **options):
+            time.sleep(0.2)
+            return super().transcribe(audio, **options)
+
+    model = SlowModel()
+    transcriber = FasterWhisper(
+        FasterWhisperConfiguration(
+            model="test-model",
+            window_seconds=0.5,
+            maximum_sources=2,
+        ),
+        model_factory=lambda _: model,
+        _audio_converter=lambda window: list(window.samples),
+    )
+    session = pks_aio.Session(recording_root=tmp_path)
+    inputs = [
+        session.audio_input(name, capacity_frames=32, frame_samples_per_channel=960)
+        for name in ("application", "microphone")
+    ]
+    subscription = transcriber.attach_many(
+        session, tuple(source.output for source in inputs)
+    )
+    for source, name in zip(inputs, ("application", "microphone"), strict=True):
+        source.output.record(name)
+    running = await session.start()
+    events = []
+
+    async def collect():
+        stream = running.signals(subscription)
+        while True:
+            envelope = await stream.read(timeout_s=1)
+            if isinstance(envelope, pocketstation.EndOfStream):
+                return
+            if envelope is None:
+                continue
+            payload = json.loads(str(envelope.payload))
+            assert str(envelope.lineage.source_id) == payload["source_id"]
+            events.append(payload)
+
+    collector = asyncio.create_task(collect())
+    try:
+        for _ in range(60):
+            for index, source in enumerate(inputs):
+                await source.write(array("f", [0.1 if index == 0 else -0.1] * 960))
+            await asyncio.sleep(0.02)
+    finally:
+        for source in inputs:
+            await source.close()
+        outcome = await running.stop()
+        await collector
+    assert outcome.success
+    assert outcome.recording is not None and outcome.recording.complete
+    assert model.calls == 4
+    assert len(events) == 6
+    assert (
+        sum(event["processing_outcome"] == "skipped-short-window" for event in events)
+        == 2
+    )
+    for source in inputs:
+        assert (
+            sum(
+                event["duration_ms"]
+                for event in events
+                if event["source_id"] == str(source.source_id)
+            )
+            == 1200
+        )
+    for operator in outcome.metrics.operators:
+        assert operator.input_delivery.frames_dropped_total == 0
+        assert operator.worker.output_dropped_total == 0
+    for route in outcome.metrics.routes:
+        assert route.delivery.frames_dropped_total == 0

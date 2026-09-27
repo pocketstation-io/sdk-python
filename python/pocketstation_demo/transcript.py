@@ -25,6 +25,9 @@ class Transcript:
     timestamp_start_ns: int
     timestamp_end_ns: int
     discontinuity_reasons: tuple[str, ...]
+    processing_outcome: str | None = None
+    duration_ms: int | None = None
+    inference_duration_ns: int | None = None
 
     @classmethod
     def from_json(cls, payload: str) -> Transcript:
@@ -32,6 +35,15 @@ class Transcript:
         if not isinstance(value, dict):
             raise TypeError("transcript payload must be a JSON object")
         return cls(
+            processing_outcome=None
+            if "processing_outcome" not in value
+            else _string(value, "processing_outcome"),
+            duration_ms=None
+            if "duration_ms" not in value
+            else _integer(value, "duration_ms"),
+            inference_duration_ns=None
+            if "inference_duration_ns" not in value
+            else _integer(value, "inference_duration_ns"),
             source_id=_integer(value, "source_id"),
             text=_string(value, "text"),
             language=_string(value, "language"),

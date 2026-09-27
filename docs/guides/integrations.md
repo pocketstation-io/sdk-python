@@ -172,3 +172,30 @@ Build and install the distribution into a clean environment. Run the provider
 through a normal Session, cause saturation and cancellation, and verify joined
 shutdown. A mock proves only the adapter calls; a network integration needs
 provider and receiver evidence.
+
+
+## Live transcription scheduling
+
+`FasterWhisper.attach_many` gives each selected stem one window assembler and
+feeds complete windows to one shared inference Operator. The private boundary
+contains mono 16 kHz PCM16, original source/time metadata, and a 1 MiB byte bound.
+Core's audio input edges hold eight frames; typed window edges hold eight windows
+per producer. The authoring `queue_capacity_signals` does not enlarge compiled
+audio edges. Overload remains visible in route metrics and is independent of
+recording and Relay.
+
+Windows shorter than 500 ms (or a smaller configured window) emit
+`processing_outcome="skipped-short-window"` without inference. Their duration is
+accounted separately from transcribed coverage. Keep draining transcripts through
+EOF during graceful `stop()` to receive each source's final partial window.
+Direct `provider()` and `sync_provider()` are lower-level single-Operator adapters;
+use `attach`/`attach_many` for the independently drained live pipeline.
+
+Python-authored Operator callbacks run serially on one owned worker thread per
+node, with a capacity-one command mailbox. They do not block Core's shared async
+runtime. A process-wide maximum of 64 callback workers rejects excess admission.
+Successful shutdown joins the worker. Python cannot safely interrupt an arbitrary
+blocked callback: timeout makes finalization fail, retains the worker's capacity
+permit, and closes the node only after that callback returns. Repeated timed-out
+callbacks cannot create unlimited workers. This thread boundary does not make a
+Python callback realtime-safe and does not change the audio callback contract.
