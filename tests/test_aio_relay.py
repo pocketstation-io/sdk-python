@@ -18,10 +18,10 @@ CREATE_RESPONSE = {
 JOIN_CODE = "4a54c6b9-fdc2-4e0c-a740-715efdcf03de"
 INVITATION_RESPONSE = {
     "join_code": JOIN_CODE,
-    "join_url": f"https://receiver.example/join/{JOIN_CODE}#secret=share-secret",
+    "join_url": f"https://receiver.example/join#join={JOIN_CODE}",
     "share_alias": "gentleglow-cedarbloom-riverglen",
     "share_url": (
-        "https://receiver.example/gentleglow-cedarbloom-riverglen#secret=share-secret"
+        f"https://receiver.example/gentleglow-cedarbloom-riverglen#join={JOIN_CODE}"
     ),
     "visibility": "private",
     "expires_at": "2026-09-26T18:15:00Z",
@@ -90,10 +90,10 @@ async def test_async_relay_composes_native_routes_and_real_readiness() -> None:
         )
 
         assert app_route.route_id != mic_route.route_id
-        assert invitation.join_code == JOIN_CODE
+        assert invitation.join_code.expose_secret() == JOIN_CODE
         assert invitation.share_alias == "gentleglow-cedarbloom-riverglen"
         assert "share-secret" not in repr(invitation)
-        assert invitation.expose_url().endswith("#secret=share-secret")
+        assert invitation.expose_url().endswith(f"#join={JOIN_CODE}")
         assert receiver.snapshot.subscription_count == 2
         assert "source-secret" not in repr(remote)
 

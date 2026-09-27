@@ -29,30 +29,31 @@ async with remote, live:
 Declare every bus before starting the Session. Create an invitation only after
 publisher readiness succeeds, and delete the remote Session during shutdown.
 
-Private invitations are the default. Their readable three-word URL contains an
-independent secret in the URL fragment. `str()`, `repr()`, and ordinary JSON
-serialization redact that URL; `expose_url()` is the explicit call for
-displaying, copying, or opening it. Use
-`visibility=InvitationVisibility.PUBLIC` only when possession of the
-two-word alias itself should grant access.
+Readable words are navigation labels. Every link carries the original opaque
+join credential in `#join=…`; possession of words alone never grants access.
+`visibility` is deprecated and only selects two-word (`PUBLIC`) or default
+three-word (`PRIVATE`) formatting. Both formats redact their credential and
+URL in `str()`, `repr()`, and ordinary JSON serialization. Use `expose_url()`
+only when intentionally displaying, copying, or opening the complete link.
 
-The lower-level `ControlClient` also exposes the complete single-use lifecycle:
+The lower-level `ControlClient` uses the existing single-use join flow:
 
 ```python
 metadata = await control.inspect_invitation(invitation.share_alias)
-secret = invitation.share_link.expose_secret()
 access = await control.redeem_invitation(
     invitation.share_alias,
-    secret=secret,
+    join_code=invitation.join_code,
 )
 print(metadata.expires_at, access.bus_id)
 ```
 
-Inspection uses `GET` and never consumes access. Redemption always uses
-`POST /v1/invitations/{locator}/redeem`; it returns one subscriber capability
-for the exact selected AudioBus. Invalid, expired, revoked, and already-used
-invitations all raise `InvitationUnavailableError` without revealing which
-condition occurred.
+Inspection accepts readable labels, uses `GET`, and never consumes access.
+Redemption uses `POST /v1/join/{words}` with `join_code` in the JSON body.
+Passing the opaque `SecretToken` directly uses `POST /v1/join`, keeping the
+credential out of HTTP URLs. Both return the same exact-bus subscriber access;
+invalid, expired, revoked, and already-used credentials raise
+`InvitationUnavailableError`. The deprecated `secret` argument and
+`expose_secret()` link method alias this same credential, never a separate factor.
 
 ## Use the shared demo service for a quick test
 

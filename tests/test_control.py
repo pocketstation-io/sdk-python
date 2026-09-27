@@ -42,23 +42,22 @@ PUBLISH_RESPONSE = {
 }
 
 JOIN_CODE = "4a54c6b9-fdc2-4e0c-a740-715efdcf03de"
-PRIVATE_SECRET = "private-fragment-secret"
+PRIVATE_SECRET = JOIN_CODE
 PRIVATE_INVITATION_RESPONSE = {
     "join_code": JOIN_CODE,
-    "join_url": f"https://receiver.example/join/{JOIN_CODE}#secret={PRIVATE_SECRET}",
+    "join_url": f"https://receiver.example/join#join={JOIN_CODE}",
     "share_alias": "gentleglow-cedarbloom-riverglen",
     "share_url": (
-        "https://receiver.example/gentleglow-cedarbloom-riverglen"
-        f"#secret={PRIVATE_SECRET}"
+        f"https://receiver.example/gentleglow-cedarbloom-riverglen#join={JOIN_CODE}"
     ),
     "visibility": "private",
     "expires_at": "2026-09-26T18:15:00Z",
 }
 PUBLIC_INVITATION_RESPONSE = {
     "join_code": JOIN_CODE,
-    "join_url": f"https://receiver.example/join/{JOIN_CODE}",
+    "join_url": f"https://receiver.example/join#join={JOIN_CODE}",
     "share_alias": "gentleglow-cedarbloom",
-    "share_url": "https://receiver.example/gentleglow-cedarbloom",
+    "share_url": f"https://receiver.example/gentleglow-cedarbloom#join={JOIN_CODE}",
     "visibility": "public",
     "expires_at": "2026-09-26T18:15:00Z",
 }
@@ -153,7 +152,7 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
     assert snapshot.buses[0].source_generation == 1
     assert subscriber.subscriber_token.expose_secret() == "next-subscriber-secret"
     assert subscriber.bus_id == "mix"
-    assert invitation.join_code == JOIN_CODE
+    assert invitation.join_code.expose_secret() == JOIN_CODE
     assert invitation.share_alias == "gentleglow-cedarbloom-riverglen"
     assert invitation.visibility is InvitationVisibility.PRIVATE
     assert invitation.expires_at == datetime(2026, 9, 26, 18, 15, tzinfo=UTC)
@@ -162,7 +161,7 @@ def test_sync_client_maps_the_exact_session_contract_and_redacts_tokens() -> Non
     assert PRIVATE_SECRET not in repr(invitation)
     assert PRIVATE_SECRET not in repr(asdict(invitation))
     assert PRIVATE_SECRET not in json.dumps(asdict(invitation), default=str)
-    assert invitation.share_url.expose_url().endswith(f"#secret={PRIVATE_SECRET}")
+    assert invitation.share_url.expose_url().endswith(f"#join={JOIN_CODE}")
     assert [(request.method, request.url.path) for request in requests] == [
         ("POST", "/base/v1/sessions"),
         ("GET", "/base/v1/sessions/session_123"),
@@ -247,7 +246,7 @@ def test_sync_invitation_lifecycle_is_nonconsuming_until_post_redeem() -> None:
                     "expires_at": "2026-09-26T18:15:00Z",
                 },
             )
-        if request.method == "POST" and request.url.path.endswith("/redeem"):
+        if request.method == "POST" and request.url.path.startswith("/v1/join/"):
             if redeemed:
                 return httpx.Response(404, json={"error": "invitation_not_found"})
             redeemed = True
@@ -268,12 +267,12 @@ def test_sync_invitation_lifecycle_is_nonconsuming_until_post_redeem() -> None:
         assert private_secret is not None
         access = client.redeem_invitation(
             created.share_alias,
-            secret=private_secret,
+            join_code=private_secret,
         )
         with pytest.raises(InvitationUnavailableError) as replay:
             client.redeem_invitation(
                 created.share_alias,
-                secret=private_secret,
+                join_code=private_secret,
             )
 
     assert inspected.share_alias == created.share_alias
@@ -292,10 +291,8 @@ def test_sync_invitation_lifecycle_is_nonconsuming_until_post_redeem() -> None:
         "/v1/invitations/gentleglow-cedarbloom-riverglen"
     )
     assert requests[2].method == "POST"
-    assert requests[2].url.path.endswith(
-        "/v1/invitations/gentleglow-cedarbloom-riverglen/redeem"
-    )
-    assert json.loads(requests[2].content) == {"secret": PRIVATE_SECRET}
+    assert requests[2].url.path.endswith("/v1/join/gentleglow-cedarbloom-riverglen")
+    assert json.loads(requests[2].content) == {"join_code": JOIN_CODE}
 
 
 @pytest.mark.asyncio
@@ -329,19 +326,21 @@ async def test_async_public_invitation_lifecycle_matches_sync() -> None:
             visibility=InvitationVisibility.PUBLIC,
         )
         inspected = await client.inspect_invitation(created.share_alias)
-        access = await client.redeem_invitation(created.share_alias)
+        access = await client.redeem_invitation(
+            created.share_alias, join_code=created.join_code
+        )
 
     assert created.visibility is InvitationVisibility.PUBLIC
     assert created.share_url is not None
-    assert str(created.share_url) == created.share_url.expose_url()
-    assert created.share_url.expose_secret() is None
+    assert str(created.share_url) == "[redacted]"
+    assert created.share_url.expose_join_code().expose_secret() == JOIN_CODE
     assert inspected.visibility is InvitationVisibility.PUBLIC
     assert access.bus_id == "application"
     assert json.loads(requests[0].content) == {
         "bus_id": "application",
         "visibility": "public",
     }
-    assert json.loads(requests[2].content) == {}
+    assert json.loads(requests[2].content) == {"join_code": JOIN_CODE}
 
 
 @pytest.mark.parametrize("operation", ["inspect", "redeem"])
@@ -705,3 +704,119 @@ async def test_async_per_request_none_inherits_the_finite_client_timeout() -> No
         await client.create_session(timeout_seconds=None)
 
     assert observed == [7.0]
+
+
+@pytest.mark.parametrize(
+    "words", ["gentleglow-cedarbloom", "gentleglow-cedarbloom-riverglen"]
+)
+def test_words_require_original_credential_and_opaque_code_stays_out_of_url(
+    words: str,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=REDEEM_RESPONSE)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = ControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(InvitationUnavailableError):
+            client.redeem_invitation(words)
+        assert requests == []
+        client.redeem_invitation(words, join_code=SecretToken(JOIN_CODE))
+        client.redeem_invitation(SecretToken(JOIN_CODE))
+        client.redeem_invitation(words, secret=SecretToken(JOIN_CODE))
+        with pytest.raises(ValueError, match="opaque delegated credential"):
+            client.redeem_invitation(
+                words, secret=SecretToken("abcdefghijklmnopqrstuv")
+            )
+        with pytest.raises(ValueError, match="disagree"):
+            client.redeem_invitation(
+                words,
+                join_code=SecretToken(JOIN_CODE),
+                secret=SecretToken("00000000-0000-4000-8000-000000000000"),
+            )
+        with pytest.raises(ValueError, match="readable navigation alias"):
+            client.inspect_invitation(SecretToken(JOIN_CODE))
+    assert [r.url.path for r in requests] == [
+        f"/v1/join/{words}",
+        "/v1/join",
+        f"/v1/join/{words}",
+    ]
+    for request in requests:
+        assert JOIN_CODE not in str(request.url)
+        assert json.loads(request.content) == {"join_code": JOIN_CODE}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "words", ["gentleglow-cedarbloom", "gentleglow-cedarbloom-riverglen"]
+)
+async def test_async_words_require_identical_delegated_authority(words: str) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=REDEEM_RESPONSE)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = AsyncControlClient("https://control.example", http_client=http_client)
+        with pytest.raises(InvitationUnavailableError):
+            await client.redeem_invitation(words)
+        assert requests == []
+        await client.redeem_invitation(words, join_code=SecretToken(JOIN_CODE))
+        await client.redeem_invitation(SecretToken(JOIN_CODE))
+        await client.redeem_invitation(words, secret=SecretToken(JOIN_CODE))
+        with pytest.raises(ValueError, match="opaque delegated credential"):
+            await client.redeem_invitation(
+                words, secret=SecretToken("abcdefghijklmnopqrstuv")
+            )
+        with pytest.raises(ValueError, match="disagree"):
+            await client.redeem_invitation(
+                words,
+                join_code=SecretToken(JOIN_CODE),
+                secret=SecretToken("00000000-0000-4000-8000-000000000000"),
+            )
+        with pytest.raises(ValueError, match="readable navigation alias"):
+            await client.inspect_invitation(SecretToken(JOIN_CODE))
+    assert [r.url.path for r in requests] == [
+        f"/v1/join/{words}",
+        "/v1/join",
+        f"/v1/join/{words}",
+    ]
+    for request in requests:
+        assert JOIN_CODE not in str(request.url)
+        assert json.loads(request.content) == {"join_code": JOIN_CODE}
+
+
+@pytest.mark.parametrize("async_client", [False, True])
+@pytest.mark.asyncio
+async def test_redemption_never_follows_redirect_with_credential(
+    async_client: bool,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(307, headers={"location": "https://other.example/stolen"})
+
+    if async_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), follow_redirects=True
+        ) as http_client:
+            client = AsyncControlClient(
+                "https://control.example", http_client=http_client
+            )
+            with pytest.raises(ControlPlaneError):
+                await client.redeem_invitation(SecretToken(JOIN_CODE))
+    else:
+        with httpx.Client(
+            transport=httpx.MockTransport(handler), follow_redirects=True
+        ) as sync_http:
+            sync_client = ControlClient(
+                "https://control.example", http_client=sync_http
+            )
+            with pytest.raises(ControlPlaneError):
+                sync_client.redeem_invitation(SecretToken(JOIN_CODE))
+    assert len(requests) == 1
+    assert requests[0].url.host == "control.example"
