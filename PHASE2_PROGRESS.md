@@ -355,3 +355,10 @@ Suppress raw JSON decoder causes in both clients so malformed redemption bodies
 cannot appear in ordinary chained tracebacks. Two regression cases pass with
 85 focused tests, strict mypy and Ruff. No native or wire changes; final wheel
 is a separate immutable follow-up artifact. Staff review: PASS, no scaffold.
+
+### Follow-up: detach sensitive exception objects
+
+Raise sanitized transport and decode failures outside exception handlers, so
+both `__cause__` and `__context__` are absent instead of merely hidden in normal
+tracebacks. Sync/async regression assertions, 85 focused tests, Ruff and strict
+mypy pass. No wire/native changes; installed artifact revision remains explicit.

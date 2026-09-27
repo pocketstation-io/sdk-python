@@ -535,6 +535,7 @@ class ControlClient:
             headers["Authorization"] = f"Bearer {exposed}"
             redacted_values = (*redacted_values, exposed)
         timeout = _resolve_timeout(self._timeout_seconds, timeout_seconds)
+        transport_failure: ControlPlaneError | None = None
         try:
             with self._http_client.stream(
                 method,
@@ -561,17 +562,22 @@ class ControlClient:
             raise
         except httpx.HTTPError as error:
             detail = _redact(str(error), redacted_values)
-            raise ControlPlaneError(
+            transport_failure = ControlPlaneError(
                 f"control-plane request failed: {detail}",
                 "control.request",
-            ) from None
+            )
+        if transport_failure is not None:
+            raise transport_failure
+        decode_failed = False
         try:
             payload = json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError):
+            decode_failed = True
+        if decode_failed:
             raise ControlPlaneError(
                 "control-plane response could not be decoded",
                 "control.response_decode",
-            ) from None
+            )
         if not isinstance(payload, dict):
             raise ControlPlaneError(
                 "control-plane response must be a JSON object",
