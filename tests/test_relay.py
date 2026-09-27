@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from pocketstation import _native
@@ -45,7 +47,10 @@ def test_relay_session_rejects_unbounded_request_timeout() -> None:
         )
 
 
-def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
+@pytest.mark.parametrize("word_count", [None, 3])
+def test_relay_composes_two_native_buses_with_authoritative_readiness(
+    word_count: int | None,
+) -> None:
     control_requests: list[httpx.Request] = []
     snapshots = iter(
         [
@@ -91,7 +96,7 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
             timeout_seconds=0.1,
             poll_interval_seconds=0.001,
         )
-        invitation = remote.create_receiver_invitation()
+        invitation = remote.create_receiver_invitation(word_count=word_count)
         receiver_ready = remote.wait_for_receiver(
             minimum_receivers=2,
             timeout_seconds=0.1,
@@ -126,7 +131,10 @@ def test_relay_composes_two_native_buses_with_authoritative_readiness() -> None:
         ("GET", "/v1/sessions/session_123"),
         ("DELETE", "/v1/sessions/session_123"),
     ]
-    assert control_requests[2].content == b'{"bus_id":"mix","visibility":"private"}'
+    expected = {"bus_id": "mix"}
+    if word_count is not None:
+        expected["word_count"] = word_count
+    assert json.loads(control_requests[2].content) == expected
 
 
 def test_relay_forwards_control_plane_stun_servers_to_native_publisher() -> None:

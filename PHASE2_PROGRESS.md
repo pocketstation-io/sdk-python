@@ -396,3 +396,21 @@ malformed lengths/separators/counts reject. Ruff formatting/lint pass. No native
 API, dependency or version change, and no product scaffold; existing HTTP test
 doubles remain MOCKED. Exact repacked production wheel and real-service Lab
 proof are separate gates. Decision SAFE-TO-TEST until those complete.
+
+## W21 configured readable-name defaults — cleanup127
+
+Synchronous and asyncio control clients now omit absent formatting preferences,
+so the Relay service selects its configured default. RelaySession invitation
+helpers preserve that omission. Explicit `word_count=2` or `word_count=3` is
+forwarded; booleans, unsupported counts and conflicts with deprecated visibility
+are rejected before HTTP. Explicit public/private formatting remains compatible.
+Response visibility and alias length are still validated; no client dictionary,
+allocation policy or authorization rule is introduced.
+
+Validation: 142 focused control/Relay cases, 693 full production-native tests
+with 34 existing conditional skips, strict mypy for four changed public modules,
+and Ruff pass. The pure-Python candidate wheel reuses the previously qualified
+Core 1.1.12 native payload and regenerates RECORD; it is not a rebuilt native
+or release artifact. Unit HTTP peers are MOCKED; exact installed service proof
+belongs to Lab. No runtime scaffold added; inventory n/a. Review SAFE-TO-TEST
+pending installed candidate validation. No publication or native code change.

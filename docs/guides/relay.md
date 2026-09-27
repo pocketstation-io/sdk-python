@@ -8,7 +8,6 @@ shared Rust Connector handles WebRTC publication.
 
 ```python
 import pocketstation.aio as pks
-from pocketstation.control import InvitationVisibility
 
 remote = await pks.RelaySession.create(
     control_plane_url="https://control.example.com",
@@ -31,12 +30,14 @@ publisher readiness succeeds, and delete the remote Session during shutdown.
 
 Readable words are navigation labels. Every link carries the original opaque
 join credential in `#join=…`; possession of words alone never grants access.
-`visibility` is deprecated and only selects two-word (`PUBLIC`) or default
-three-word (`PRIVATE`) formatting. Both formats redact their credential and
+Omit formatting options to use the Relay service setting: its default tries
+two words, then three when names collide. Set `word_count=2` or `word_count=3`
+for an explicit length. `visibility` remains a deprecated two-word (`PUBLIC`)
+or three-word (`PRIVATE`) compatibility option; conflicting options fail. Both formats redact their credential and
 URL in `str()`, `repr()`, and ordinary JSON serialization. Use `expose_url()`
 only when intentionally displaying, copying, or opening the complete link.
 
-The lower-level `ControlClient` uses the existing single-use join flow:
+The lower-level `ControlClient` uses the existing single-use join requests:
 
 ```python
 metadata = await control.inspect_invitation(invitation.share_alias)
@@ -88,4 +89,4 @@ Readable names such as `owl-sun`, `rice-river`, `silly-mountain` and
 `lemon-corpus` are navigation only. Use the complete generated share URL or
 matching opaque join code. The client accepts short words and retained legacy
 compound syntax; Relay owns the vocabulary and never exposes a grammar prefix
-in the readable path.
+in the readable address.
