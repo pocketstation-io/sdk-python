@@ -596,3 +596,21 @@ quality acceptance remains Lab-owned. No new live scaffold; test doubles are
 explicit. CODE_PROTOCOL: provider remains outsideCore, existing Session/Operator
 authority, bounded queues and units, source identity, types and diff check PASS.
 Staff decision SAFE-TO-TEST pending final installed consumer and realmodelLab.
+
+## C130 — reject mixed invitation formatting selectors
+
+The shared synchronous/asyncio request builder now rejects every simultaneous
+`word_count` and deprecated `visibility`, including matching two/public and
+three/private pairs. Relay and JavaScript already reject mixed selectors;
+Python previously forwarded the matching pairs and let the service reject them.
+The guide describes this rule without adding a client allocation/security policy.
+
+Four new sync/async regression cases fail against the old implementation because
+they reach HTTP, then pass with the correction. All 205 focused control/Relay
+tests pass; scoped Ruff, formatting, strict MyPy for both control modules and
+diff checks pass. An initial test command named a nonexistent async test file;
+its exit4/no-tests log is retained separately from the corrected passing run.
+HTTP peers are MOCKED; no new media/model, native, physical, or release claim.
+Purpose and boundary: fail-fast SDK projection of the existing service contract.
+No scaffold introduced; inventory n/a. Staff review SAFE-TO-TEST pending the exact
+pure-Python wheel projection and installed standalone-service qualification.
