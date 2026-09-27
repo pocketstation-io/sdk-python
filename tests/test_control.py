@@ -1035,6 +1035,8 @@ async def test_explicit_word_count_is_forwarded_without_legacy_visibility(
         (15, "private"),
         (2.0, None),
         ("2", None),
+        (2, "public"),
+        (3, "private"),
         (2, "private"),
         (3, "public"),
     ],

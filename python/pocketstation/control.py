@@ -924,10 +924,8 @@ def _invitation_request(
         body["word_count"] = word_count
     if visibility is not None:
         selected = _invitation_visibility(visibility)
-        if word_count is not None and word_count != (
-            2 if selected is InvitationVisibility.PUBLIC else 3
-        ):
-            raise ValueError("word_count conflicts with visibility")
+        if word_count is not None:
+            raise ValueError("word_count and visibility cannot be combined")
         body["visibility"] = selected.value
     return body
 

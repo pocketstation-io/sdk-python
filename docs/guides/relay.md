@@ -36,8 +36,10 @@ Omission or Python `None` keeps the service default; booleans and fractions
 are rejected. The returned invitation exposes its validated `word_count`.
 New long-name responses must declare that count and fit within 134 ASCII bytes.
 Older two/three-word responses remain supported without the count field.
-An explicit requested count must match the returned name. `visibility` remains a deprecated two-word (`PUBLIC`)
-or three-word (`PRIVATE`) compatibility option; conflicting options fail. Both formats redact their credential and
+An explicit requested count must match the returned name. `visibility` remains
+a deprecated two-word (`PUBLIC`) or three-word (`PRIVATE`) compatibility option.
+Do not combine it with `word_count`, even when their lengths match.
+Both formats redact their credential and
 URL in `str()`, `repr()`, and ordinary JSON serialization. Use `expose_url()`
 only when intentionally displaying, copying, or opening the complete link.
 
