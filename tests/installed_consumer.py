@@ -457,7 +457,6 @@ def _exercise_operator_pcm_reentry() -> None:
 def _exercise_invitation_lifecycle() -> None:
     join_code = "4a54c6b9-fdc2-4e0c-a740-715efdcf03de"
     alias = "gentleglow-cedarbloom-riverglen"
-    private_secret = "installed-private-secret"
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -468,12 +467,11 @@ def _exercise_invitation_lifecycle() -> None:
                 json={
                     "join_code": join_code,
                     "join_url": (
-                        f"https://receiver.example/join/{join_code}"
-                        f"#secret={private_secret}"
+                        f"https://receiver.example/join#join={join_code}"
                     ),
                     "share_alias": alias,
                     "share_url": (
-                        f"https://receiver.example/{alias}#secret={private_secret}"
+                        f"https://receiver.example/{alias}#join={join_code}"
                     ),
                     "visibility": "private",
                     "expires_at": "2026-09-26T18:15:00Z",
@@ -514,18 +512,30 @@ def _exercise_invitation_lifecycle() -> None:
         metadata = client.inspect_invitation(invitation.share_alias)
         if invitation.share_url is None:
             raise RuntimeError("installed invitation omitted its share URL")
-        private_token = invitation.share_url.expose_secret()
+        join_token = invitation.share_url.expose_join_code()
+        try:
+            client.redeem_invitation(invitation.share_alias)
+        except pocketstation.InvitationUnavailableError:
+            pass
+        else:
+            raise RuntimeError("readable words authorized without a credential")
         access = client.redeem_invitation(
             invitation.share_alias,
-            secret=private_token,
+            join_code=join_token,
         )
 
-    if private_secret in repr(invitation) or str(invitation.share_url) != "[redacted]":
-        raise RuntimeError("installed invitation exposed its private fragment")
+    if join_code in repr(invitation) or str(invitation.share_url) != "[redacted]":
+        raise RuntimeError("installed invitation exposed its delegated join credential")
     if metadata.share_alias != alias or access.bus_id != "application":
         raise RuntimeError("installed invitation lost alias or exact-bus scope")
     if [request.method for request in requests] != ["POST", "GET", "POST"]:
         raise RuntimeError("installed invitation used the wrong HTTP lifecycle")
+    if requests[-1].url.path != f"/v1/join/{alias}":
+        raise RuntimeError("installed invitation used the wrong join endpoint")
+    if json.loads(requests[-1].content) != {"join_code": join_code}:
+        raise RuntimeError("installed invitation changed delegated authority")
+    if any(join_code in str(request.url) for request in requests):
+        raise RuntimeError("installed invitation put its credential in a request URL")
 
 
 def main() -> None:

@@ -362,3 +362,11 @@ Raise sanitized transport and decode failures outside exception handlers, so
 both `__cause__` and `__context__` are absent instead of merely hidden in normal
 tracebacks. Sync/async regression assertions, 85 focused tests, Ruff and strict
 mypy pass. No wire/native changes; installed artifact revision remains explicit.
+
+### Qualification fixture correction
+
+Update installed_consumer's retained invitation fixture to the canonical
+`#join` URL and `join_code` body; assert words alone cannot authorize and no
+join credential enters HTTP URLs. The complete installed consumer passes with
+the unchanged final production wheel. This modifies qualification tests only;
+package bytes and runtime source remain those of b8fdd14. Ruff passes.
