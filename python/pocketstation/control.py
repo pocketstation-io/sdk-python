@@ -90,7 +90,7 @@ class SecretToken:
 
 
 class InvitationVisibility(StrEnum):
-    """Whether an invitation locator alone is sufficient to redeem it."""
+    """Deprecated two-/three-word formatting choice, never authorization."""
 
     PUBLIC = "public"
     PRIVATE = "private"
@@ -133,7 +133,7 @@ class InvitationLocator(str):
 
 
 class InvitationLink:
-    """Receiver URL that redacts a private fragment until explicitly exposed."""
+    """Receiver URL carrying the original delegated join code; always redacted."""
 
     __slots__ = ("_url", "visibility")
 
@@ -146,35 +146,38 @@ class InvitationLink:
             or parsed.password is not None
         ):
             raise ValueError("invitation URL must be an absolute HTTP or HTTPS URL")
-        secret = _fragment_secret(parsed.fragment)
-        if visibility is InvitationVisibility.PRIVATE and secret is None:
-            raise ValueError("private invitation URL must contain a fragment secret")
-        if visibility is InvitationVisibility.PUBLIC and parsed.fragment:
-            raise ValueError("public invitation URL must not contain a fragment")
+        if _fragment_join_code(parsed.fragment) is None:
+            raise ValueError(
+                "invitation URL must contain its delegated join credential"
+            )
         self._url = url
         self.visibility = visibility
 
     @property
     def is_private(self) -> bool:
-        return self.visibility is InvitationVisibility.PRIVATE
+        """Deprecated sensitivity alias: every link contains private authority."""
+        return True
 
     def expose_url(self) -> str:
-        """Return the complete URL, including a private fragment secret."""
-
+        """Explicitly reveal the complete URL and delegated join credential."""
         return self._url
 
-    def expose_secret(self) -> SecretToken | None:
-        """Return the private fragment secret, if this is a private link."""
+    def expose_join_code(self) -> SecretToken:
+        """Return the original opaque delegated join credential."""
+        value = _fragment_join_code(urlparse(self._url).fragment)
+        if value is None:
+            raise ValueError("invitation URL has no join credential")
+        return SecretToken(value)
 
-        secret = _fragment_secret(urlparse(self._url).fragment)
-        return None if secret is None else SecretToken(secret)
+    def expose_secret(self) -> SecretToken:
+        """Deprecated alias of expose_join_code; no separate secret exists."""
+        return self.expose_join_code()
 
     def __str__(self) -> str:
-        return "[redacted]" if self.is_private else self._url
+        return "[redacted]"
 
     def __repr__(self) -> str:
-        value = "[redacted]" if self.is_private else self._url
-        return f"InvitationLink({value!r}, visibility={self.visibility.value!r})"
+        return f"InvitationLink('[redacted]', visibility={self.visibility.value!r})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,7 +228,7 @@ class SessionSnapshot:
 @dataclass(frozen=True, slots=True)
 class Invitation:
     session_id: SessionId
-    join_code: InvitationLocator
+    join_code: SecretToken
     share_alias: InvitationAlias
     visibility: InvitationVisibility
     expires_at: datetime
@@ -387,13 +390,15 @@ class ControlClient:
 
     def inspect_invitation(
         self,
-        locator: str | InvitationLocator,
+        locator: str | InvitationLocator | SecretToken,
         *,
         timeout_seconds: float | None = None,
     ) -> InvitationMetadata:
         """Inspect an invitation without consuming its single-use access."""
 
-        identifier = InvitationLocator(str(locator))
+        identifier = _invitation_locator(locator)
+        if _is_opaque_invitation_code(identifier):
+            raise ValueError("Inspection requires a readable navigation alias")
         try:
             payload = self._json_request(
                 "GET",
@@ -409,23 +414,41 @@ class ControlClient:
 
     def redeem_invitation(
         self,
-        locator: str | InvitationLocator,
+        locator: str | InvitationLocator | SecretToken,
         *,
+        join_code: SecretToken | None = None,
         secret: SecretToken | None = None,
         timeout_seconds: float | None = None,
     ) -> ReceiverAccess:
-        """Consume an invitation once and return exact-bus receiver access."""
+        """Redeem with the original opaque credential, never readable words alone.
 
-        identifier = InvitationLocator(str(locator))
-        json_body = {} if secret is None else {"secret": secret.expose_secret()}
+        ``secret`` is a deprecated alias of ``join_code``, not a second factor.
+        """
+
+        identifier = _invitation_locator(locator)
+        credential = _redemption_join_code(join_code, secret)
+        if not _is_opaque_invitation_code(identifier) and credential is None:
+            raise InvitationUnavailableError()
+        if _is_opaque_invitation_code(identifier) and credential not in {
+            None,
+            identifier,
+        }:
+            raise InvitationUnavailableError()
+        opaque_locator = _is_opaque_invitation_code(identifier)
+        credential = identifier if opaque_locator else credential
+        json_body = {"join_code": credential}
         try:
             payload = self._json_request(
                 "POST",
-                f"v1/invitations/{quote(identifier, safe='')}/redeem",
+                "v1/join"
+                if opaque_locator
+                else f"v1/join/{quote(identifier, safe='')}",
                 expected_status=200,
                 timeout_seconds=timeout_seconds,
                 json_body=json_body,
-                redacted_values=(() if secret is None else (secret.expose_secret(),)),
+                redacted_values=(identifier,)
+                if credential is None
+                else (identifier, credential),
             )
         except ControlPlaneError as error:
             if error.status_code == 404:
@@ -519,6 +542,7 @@ class ControlClient:
                 headers=headers,
                 json=json_body,
                 timeout=timeout,
+                follow_redirects=False,
             ) as response:
                 if response.status_code != expected_status:
                     body = _read_bounded(response.iter_bytes(), _MAX_ERROR_BODY_BYTES)
@@ -741,7 +765,10 @@ def _invitation(payload: dict[str, Any], session_id: SessionId) -> Invitation:
                 f"{visibility.value} invitation alias must contain "
                 f"{expected_words} words"
             )
-        join_code = InvitationLocator(_required(payload, "join_code", str))
+        join_value = _required(payload, "join_code", str)
+        if not _is_opaque_invitation_code(join_value):
+            raise ValueError("join_code must be an opaque delegated credential")
+        join_code = SecretToken(join_value)
         join_url = _optional_invitation_link(payload, "join_url", visibility)
         share_url = _optional_invitation_link(payload, "share_url", visibility)
         _validate_invitation_links(
@@ -838,48 +865,66 @@ def _optional_invitation_link(
     return InvitationLink(value, visibility)
 
 
-def _fragment_secret(fragment: str) -> str | None:
+def _fragment_join_code(fragment: str) -> str | None:
     if not fragment:
         return None
-    values = parse_qs(fragment, keep_blank_values=True, strict_parsing=True)
-    if set(values) != {"secret"} or len(values["secret"]) != 1:
-        raise ValueError("private invitation fragment must contain only one secret")
-    secret = values["secret"][0]
-    if not secret:
-        raise ValueError("private invitation fragment secret must not be empty")
-    return secret
+    try:
+        values = parse_qs(fragment, keep_blank_values=True, strict_parsing=True)
+    except ValueError:
+        raise ValueError("invalid invitation fragment") from None
+    if set(values) != {"join"} or len(values["join"]) != 1:
+        raise ValueError("invitation fragment must contain only one join credential")
+    value = values["join"][0]
+    if not _is_opaque_invitation_code(value):
+        raise ValueError("invitation fragment must contain an opaque join credential")
+    return value
+
+
+def _invitation_locator(
+    value: str | InvitationLocator | SecretToken,
+) -> InvitationLocator:
+    return InvitationLocator(
+        value.expose_secret() if isinstance(value, SecretToken) else str(value)
+    )
+
+
+def _redemption_join_code(
+    join_code: SecretToken | None, secret: SecretToken | None
+) -> str | None:
+    """The deprecated secret argument aliases the same join code."""
+    for token in (join_code, secret):
+        if token is not None and not isinstance(token, SecretToken):
+            raise TypeError("join_code must be a SecretToken")
+    primary = None if join_code is None else join_code.expose_secret()
+    compatibility = None if secret is None else secret.expose_secret()
+    if primary is not None and compatibility is not None and primary != compatibility:
+        raise ValueError("join_code and deprecated secret alias disagree")
+    value = primary if primary is not None else compatibility
+    if value is not None and not _is_opaque_invitation_code(value):
+        raise ValueError("join_code must be an opaque delegated credential")
+    return value
 
 
 def _validate_invitation_links(
-    join_code: InvitationLocator,
+    join_code: SecretToken,
     share_alias: InvitationAlias,
     join_url: InvitationLink | None,
     share_url: InvitationLink | None,
 ) -> None:
-    parsed_links: list[tuple[InvitationLink, Any]] = []
-    for link, expected_path in (
-        (join_url, f"/join/{join_code}"),
-        (share_url, f"/{share_alias}"),
-    ):
+    origins = set()
+    for link, expected_path in ((join_url, "/join"), (share_url, f"/{share_alias}")):
         if link is None:
             continue
         parsed = urlparse(link.expose_url())
         if parsed.path != expected_path or parsed.params or parsed.query:
             raise ValueError("invitation URL does not match its locator")
-        parsed_links.append((link, parsed))
-    if len(parsed_links) == 2:
-        first_link, first = parsed_links[0]
-        second_link, second = parsed_links[1]
-        if (first.scheme, first.netloc) != (second.scheme, second.netloc):
-            raise ValueError("invitation URLs must use one receiver origin")
-        first_secret = first_link.expose_secret()
-        second_secret = second_link.expose_secret()
-        if (
-            first_secret is not None
-            and second_secret is not None
-            and first_secret.expose_secret() != second_secret.expose_secret()
-        ):
-            raise ValueError("private invitation URLs must carry the same secret")
+        if link.expose_join_code().expose_secret() != join_code.expose_secret():
+            raise ValueError(
+                "invitation URL does not carry its delegated join credential"
+            )
+        origins.add((parsed.scheme, parsed.netloc))
+    if len(origins) > 1:
+        raise ValueError("invitation URLs must use one receiver origin")
 
 
 def _is_opaque_invitation_code(value: str) -> bool:

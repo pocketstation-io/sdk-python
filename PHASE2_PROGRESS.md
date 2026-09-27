@@ -329,3 +329,22 @@ license, distribution byte, release tag, runtime code or product claim changes.
 The local old/new container differential passes; protected PR integration and
 hosted verification-only execution are the remaining gates before retrying
 publication of the already accepted files. No scaffold is introduced.
+
+
+## 2026-09-27 — Readable navigation preserves existing join authority
+
+Words now navigate into the original opaque join-code capability flow. Two- and
+three-word visibility is deprecated formatting only. Both URL formats carry
+`#join=…` and always redact credentials. New clients POST opaque codes in the
+body to `/v1/join`; readable paths require the matching body `join_code`.
+Deprecated secret options alias that same code and reject obsolete separate
+secrets. Redirects never forward credentials. Regression cases cover words
+alone, conflicting credentials, wire equivalence, redaction and opaque URLs.
+
+Validation: 634 tests passed / 34 existing conditional skips; focused control/Relay 83 passed; strict mypy 63 modules and scoped Ruff passed. Native payload unchanged; installed
+archive / real service gates are recorded separately by the integrated Lab.
+Staff review: purpose/API boundary is SDK control-client compatibility; enables
+existing exact-bus browser joining, no new authorization model or capture path.
+Unit HTTP fixtures are MOCKED and make no new real-media claim. No live scaffold
+introduced; inventory n/a. CODE_PROTOCOL whitespace/type/test gates passed.
+Decision: SAFE-TO-TEST pending exact packaged live integration. No release.

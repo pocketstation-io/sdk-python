@@ -18,8 +18,8 @@ from .control import (
     IceServer,
     InvitationAlias,
     InvitationLink,
-    InvitationLocator,
     InvitationVisibility,
+    SecretToken,
     SessionCredentials,
     SessionId,
     SessionSnapshot,
@@ -69,7 +69,7 @@ class ReceiverInvitation:
     """Readable, exact-bus receiver invitation containing no access token."""
 
     session_id: SessionId
-    join_code: InvitationLocator
+    join_code: SecretToken
     share_alias: InvitationAlias
     visibility: InvitationVisibility
     expires_at: datetime
@@ -569,7 +569,7 @@ def _receiver_invitation(
             "relay.response_identity",
         )
     for link, expected_path in (
-        (created.join_url, f"/join/{created.join_code}"),
+        (created.join_url, "/join"),
         (created.share_url, f"/{created.share_alias}"),
     ):
         if link is None:

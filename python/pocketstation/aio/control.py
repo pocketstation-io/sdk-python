@@ -28,12 +28,15 @@ from ..control import (
     _bus_id,
     _bus_ids,
     _invitation,
+    _invitation_locator,
     _invitation_metadata,
     _invitation_visibility,
+    _is_opaque_invitation_code,
     _normalize_base_url,
     _publisher_credentials,
     _receiver_access,
     _redact,
+    _redemption_join_code,
     _resolve_timeout,
     _session_credentials,
     _session_snapshot,
@@ -157,13 +160,15 @@ class ControlClient:
 
     async def inspect_invitation(
         self,
-        locator: str | InvitationLocator,
+        locator: str | InvitationLocator | SecretToken,
         *,
         timeout_seconds: float | None = None,
     ) -> InvitationMetadata:
         """Inspect an invitation without consuming its single-use access."""
 
-        identifier = InvitationLocator(str(locator))
+        identifier = _invitation_locator(locator)
+        if _is_opaque_invitation_code(identifier):
+            raise ValueError("Inspection requires a readable navigation alias")
         try:
             payload = await self._json_request(
                 "GET",
@@ -179,23 +184,41 @@ class ControlClient:
 
     async def redeem_invitation(
         self,
-        locator: str | InvitationLocator,
+        locator: str | InvitationLocator | SecretToken,
         *,
+        join_code: SecretToken | None = None,
         secret: SecretToken | None = None,
         timeout_seconds: float | None = None,
     ) -> ReceiverAccess:
-        """Consume an invitation once and return exact-bus receiver access."""
+        """Redeem with the original opaque credential, never readable words alone.
 
-        identifier = InvitationLocator(str(locator))
-        json_body = {} if secret is None else {"secret": secret.expose_secret()}
+        ``secret`` is a deprecated alias of ``join_code``, not a second factor.
+        """
+
+        identifier = _invitation_locator(locator)
+        credential = _redemption_join_code(join_code, secret)
+        if not _is_opaque_invitation_code(identifier) and credential is None:
+            raise InvitationUnavailableError()
+        if _is_opaque_invitation_code(identifier) and credential not in {
+            None,
+            identifier,
+        }:
+            raise InvitationUnavailableError()
+        opaque_locator = _is_opaque_invitation_code(identifier)
+        credential = identifier if opaque_locator else credential
+        json_body = {"join_code": credential}
         try:
             payload = await self._json_request(
                 "POST",
-                f"v1/invitations/{quote(identifier, safe='')}/redeem",
+                "v1/join"
+                if opaque_locator
+                else f"v1/join/{quote(identifier, safe='')}",
                 expected_status=200,
                 timeout_seconds=timeout_seconds,
                 json_body=json_body,
-                redacted_values=(() if secret is None else (secret.expose_secret(),)),
+                redacted_values=(identifier,)
+                if credential is None
+                else (identifier, credential),
             )
         except ControlPlaneError as error:
             if error.status_code == 404:
@@ -289,6 +312,7 @@ class ControlClient:
                 headers=headers,
                 json=json_body,
                 timeout=timeout,
+                follow_redirects=False,
             ) as response:
                 if response.status_code != expected_status:
                     body = await _read_bounded(
