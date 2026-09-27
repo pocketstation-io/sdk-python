@@ -343,11 +343,11 @@ class ControlClient:
             ) from None
         try:
             payload = json.loads(body)
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        except (UnicodeDecodeError, json.JSONDecodeError):
             raise ControlPlaneError(
-                f"control-plane response could not be decoded: {error}",
+                "control-plane response could not be decoded",
                 "control.response_decode",
-            ) from error
+            ) from None
         if not isinstance(payload, dict):
             raise ControlPlaneError(
                 "control-plane response must be a JSON object",
