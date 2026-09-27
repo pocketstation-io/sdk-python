@@ -91,20 +91,20 @@ class SecretToken:
 
 
 class InvitationVisibility(StrEnum):
-    """Deprecated two-/three-word formatting choice, never authorization."""
+    """Deprecated legacy formatting selector, never authorization."""
 
     PUBLIC = "public"
     PRIVATE = "private"
 
 
 class InvitationAlias(str):
-    """Validated two- or three-word readable invitation locator."""
+    """Validated readable invitation locator with 2 to 15 words."""
 
     def __new__(cls, value: str) -> InvitationAlias:
         words = value.split("-")
         if (
-            not 7 <= len(value) <= 128
-            or len(words) not in {2, 3}
+            not 7 <= len(value) <= 134
+            or not 2 <= len(words) <= 15
             or any(
                 not 3 <= len(word) <= 24
                 or not all("a" <= character <= "z" for character in word)
@@ -112,7 +112,7 @@ class InvitationAlias(str):
             )
         ):
             raise ValueError(
-                "invitation alias must contain two or three lowercase ASCII "
+                "invitation alias must contain 2 to 15 lowercase ASCII "
                 "words of 3 to 24 letters separated by '-'"
             )
         return str.__new__(cls, value)
@@ -236,6 +236,11 @@ class Invitation:
     join_url: InvitationLink | None
     share_url: InvitationLink | None
 
+    @property
+    def word_count(self) -> int:
+        """Number of words in the validated readable name."""
+        return len(self.share_alias.split("-"))
+
 
 @dataclass(frozen=True, slots=True)
 class InvitationMetadata:
@@ -244,6 +249,11 @@ class InvitationMetadata:
     share_alias: InvitationAlias
     visibility: InvitationVisibility
     expires_at: datetime
+
+    @property
+    def word_count(self) -> int:
+        """Number of words in the validated readable name."""
+        return len(self.share_alias.split("-"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,7 +398,7 @@ class ControlClient:
             authorization=source_token,
             json_body=body,
         )
-        return _decode_response(_invitation, payload, identifier)
+        return _decode_response(_invitation, payload, identifier, body)
 
     def inspect_invitation(
         self,
@@ -768,16 +778,24 @@ def _publisher_credentials(payload: dict[str, Any]) -> PublisherCredentials:
         raise ControlPlaneError(str(error), "control.response_decode") from error
 
 
-def _invitation(payload: dict[str, Any], session_id: SessionId) -> Invitation:
+def _invitation(
+    payload: dict[str, Any],
+    session_id: SessionId,
+    request_body: dict[str, Any] | None = None,
+) -> Invitation:
     try:
         visibility = _invitation_visibility(_required(payload, "visibility", str))
         alias = InvitationAlias(_required(payload, "share_alias", str))
-        expected_words = 2 if visibility is InvitationVisibility.PUBLIC else 3
-        if len(alias.split("-")) != expected_words:
-            raise ValueError(
-                f"{visibility.value} invitation alias must contain "
-                f"{expected_words} words"
-            )
+        _validate_invitation_word_count(payload, alias, visibility)
+        requested = None if request_body is None else request_body.get("word_count")
+        if (
+            requested is None
+            and request_body is not None
+            and "visibility" in request_body
+        ):
+            requested = 2 if request_body["visibility"] == "public" else 3
+        if requested is not None and len(alias.split("-")) != requested:
+            raise ValueError("invitation response does not match the requested count")
         join_value = _required(payload, "join_code", str)
         if not _is_opaque_invitation_code(join_value):
             raise ValueError("join_code must be an opaque delegated credential")
@@ -807,12 +825,7 @@ def _invitation_metadata(payload: dict[str, Any]) -> InvitationMetadata:
     try:
         visibility = _invitation_visibility(_required(payload, "visibility", str))
         alias = InvitationAlias(_required(payload, "share_alias", str))
-        expected_words = 2 if visibility is InvitationVisibility.PUBLIC else 3
-        if len(alias.split("-")) != expected_words:
-            raise ValueError(
-                f"{visibility.value} invitation alias must contain "
-                f"{expected_words} words"
-            )
+        _validate_invitation_word_count(payload, alias, visibility)
         return InvitationMetadata(
             share_alias=alias,
             visibility=visibility,
@@ -847,6 +860,25 @@ def _receiver_access(payload: dict[str, Any]) -> ReceiverAccess:
         raise ControlPlaneError(str(error), "control.response_decode") from error
 
 
+def _validate_invitation_word_count(
+    payload: dict[str, Any],
+    alias: InvitationAlias,
+    visibility: InvitationVisibility,
+) -> None:
+    actual = len(alias.split("-"))
+    if "word_count" in payload:
+        declared = payload["word_count"]
+        if type(declared) is not int or not 2 <= declared <= 15:
+            raise ValueError("invalid invitation word count")
+    else:
+        # Old services described only the original two/three-word formats.
+        declared = 2 if visibility is InvitationVisibility.PUBLIC else 3
+    if actual != declared:
+        raise ValueError("invitation word count does not match its readable name")
+    if (visibility is InvitationVisibility.PUBLIC) != (declared == 2):
+        raise ValueError("invitation compatibility format does not match its count")
+
+
 def _invitation_request(
     bus_id: str,
     visibility: InvitationVisibility | str | None,
@@ -854,8 +886,8 @@ def _invitation_request(
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"bus_id": bus_id}
     if word_count is not None:
-        if type(word_count) is not int or word_count not in (2, 3):
-            raise ValueError("word_count must be 2 or 3")
+        if type(word_count) is not int or not 2 <= word_count <= 15:
+            raise ValueError("word_count must be an integer from 2 to 15")
         body["word_count"] = word_count
     if visibility is not None:
         selected = _invitation_visibility(visibility)

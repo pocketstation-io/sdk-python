@@ -77,6 +77,11 @@ class ReceiverInvitation:
     share_link: InvitationLink | None
 
     @property
+    def word_count(self) -> int:
+        """Number of words selected by the Relay service."""
+        return len(self.share_alias.split("-"))
+
+    @property
     def join_url(self) -> InvitationLink | None:
         return self.join_link
 
