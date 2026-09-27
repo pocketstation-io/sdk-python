@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pocketstation.aio.session import Session as AsyncSession
 from pocketstation.graph import (
     DerivedStream,
     Multiplicity,
+    OperatorConfiguration,
     PortSpec,
     SourceOutput,
     Stem,
@@ -41,6 +43,23 @@ class _NodeFactory:
 
     def create(self, _configuration: Mapping[str, str]) -> OperatorNode:
         return self._create()
+
+
+class _ConfiguredNodeFactory:
+    def __init__(self, create: Callable[[Mapping[str, str]], OperatorNode]) -> None:
+        self._create = create
+
+    def create(self, configuration: Mapping[str, str]) -> OperatorNode:
+        return self._create(configuration)
+
+
+class _TranscriptMergeNode(OperatorNode):
+    def process(
+        self, input_port: str, envelope: SignalEnvelope[object]
+    ) -> tuple[OperatorEmission, ...]:
+        if input_port != "transcript" or not isinstance(envelope.payload, str):
+            raise ValueError("expected transcript text")
+        return (OperatorEmission.text(envelope.payload, signal=TRANSCRIPT_SIGNAL),)
 
 
 class _WindowNode(OperatorNode):
@@ -153,19 +172,69 @@ def attach_window_pipeline(
         drain_queued=False,
         terminal_roles=transcriber.manifest.terminal_roles,
     )
-    inference = session.register_operator(
+    configuration = transcriber.configuration
+    worker_count = min(configuration.inference_concurrency, len(selected))
+    quotient, remainder = divmod(configuration.cpu_threads, worker_count)
+    configurations = tuple(
+        replace(
+            configuration,
+            inference_concurrency=1,
+            cpu_threads=quotient + (1 if index < remainder else 0),
+        )
+        for index in range(worker_count)
+    )
+
+    def create_inference(values: Mapping[str, str]) -> OperatorNode:
+        worker_index = int(values["worker_index"])
+        if not 0 <= worker_index < worker_count:
+            raise ValueError("invalid inference worker index")
+        worker_configuration = configurations[worker_index]
+        return _WindowInferenceNode(
+            worker_configuration,
+            transcriber._model_factory(worker_configuration),
+            transcriber._audio_converter is _numpy_audio,
+        )
+
+    inference_registration = session.register_operator(
         OperatorProvider.with_node(
             inference_manifest,
-            _NodeFactory(
-                lambda: _WindowInferenceNode(
-                    transcriber.configuration,
-                    transcriber._model_factory(transcriber.configuration),
-                    transcriber._audio_converter is _numpy_audio,
-                )
+            _ConfiguredNodeFactory(create_inference),
+        )
+    )
+    inference = tuple(
+        inference_registration.declare(
+            OperatorConfiguration({"worker_index": str(index)})
+        )
+        for index in range(worker_count)
+    )
+    for index, (stream, windows) in enumerate(
+        zip(selected, windows_by_stream, strict=True)
+    ):
+        stream.connect(windows.input("audio"))
+        windows.output("window").connect(
+            inference[index % worker_count].input("window")
+        )
+    if worker_count == 1:
+        return session.subscribe(
+            inference[0].output("transcript"), signal=TRANSCRIPT_SIGNAL
+        )
+    merge = session.register_operator(
+        OperatorProvider.with_node(
+            OperatorManifest(
+                "community.faster-whisper.transcripts.v1",
+                inputs=(
+                    PortSpec.input(
+                        "transcript", TRANSCRIPT_SIGNAL, multiplicity=Multiplicity.MANY
+                    ),
+                ),
+                outputs=transcriber.manifest.outputs,
+                queue_capacity_signals=8,
+                drain_queued=False,
+                terminal_roles=transcriber.manifest.terminal_roles,
             ),
+            _NodeFactory(_TranscriptMergeNode),
         )
     ).declare()
-    for stream, windows in zip(selected, windows_by_stream, strict=True):
-        stream.connect(windows.input("audio"))
-        windows.output("window").connect(inference.input("window"))
-    return session.subscribe(inference.output("transcript"), signal=TRANSCRIPT_SIGNAL)
+    for worker in inference:
+        worker.output("transcript").connect(merge.input("transcript"))
+    return session.subscribe(merge.output("transcript"), signal=TRANSCRIPT_SIGNAL)

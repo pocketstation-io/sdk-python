@@ -33,6 +33,9 @@ class DemoOptions:
     allow_model_download: bool
     no_browser: bool
     output_format: str
+    cpu_threads: int = 4
+    inference_concurrency: int = 1
+    initial_prompt: str | None = None
 
 
 async def run_demo(options: DemoOptions) -> None:
@@ -64,6 +67,9 @@ async def run_demo(options: DemoOptions) -> None:
             FasterWhisperConfiguration(
                 model=options.model,
                 allow_model_download=options.allow_model_download,
+                cpu_threads=options.cpu_threads,
+                inference_concurrency=options.inference_concurrency,
+                initial_prompt=options.initial_prompt,
             )
         ).transcribe(live)
         async with live:
@@ -120,6 +126,25 @@ def _parser() -> argparse.ArgumentParser:
             "Capture one desktop application and one microphone as separate "
             "Relay and recording stems."
         ),
+    )
+    parser.add_argument(
+        "--cpu-threads",
+        type=int,
+        choices=range(1, 65),
+        default=4,
+        help="total model CPU thread budget",
+    )
+    parser.add_argument(
+        "--inference-concurrency",
+        type=int,
+        choices=range(1, 9),
+        default=1,
+        help="maximum source-affine model workers",
+    )
+    parser.add_argument(
+        "--initial-prompt",
+        type=_nonempty_text,
+        help="optional application vocabulary/context (2048 UTF-8 bytes maximum)",
     )
     parser.add_argument(
         "--application",
@@ -180,6 +205,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def _parse_options(arguments: Sequence[str] | None = None) -> DemoOptions:
     values = _parser().parse_args(arguments)
+    # Validate the model resource policy before starting a Session or a service.
+    FasterWhisperConfiguration(
+        cpu_threads=values.cpu_threads,
+        inference_concurrency=values.inference_concurrency,
+        initial_prompt=values.initial_prompt,
+    )
     return DemoOptions(
         application=values.application,
         microphone_id=values.microphone_id,
@@ -189,6 +220,9 @@ def _parse_options(arguments: Sequence[str] | None = None) -> DemoOptions:
         allow_model_download=values.allow_model_download,
         no_browser=values.no_browser,
         output_format=values.output_format,
+        cpu_threads=values.cpu_threads,
+        inference_concurrency=values.inference_concurrency,
+        initial_prompt=values.initial_prompt,
     )
 
 

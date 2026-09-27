@@ -177,7 +177,7 @@ provider and receiver evidence.
 ## Live transcription scheduling
 
 `FasterWhisper.attach_many` gives each selected stem one window assembler and
-feeds complete windows to one shared inference Operator. The private boundary
+feeds complete windows to one shared inference Operator by default. The private boundary
 contains mono 16 kHz PCM16, original source/time metadata, and a 1 MiB byte bound.
 Core's audio input edges hold eight frames; typed window edges hold eight windows
 per producer. The authoring `queue_capacity_signals` does not enlarge compiled
@@ -199,3 +199,30 @@ blocked callback: timeout makes finalization fail, retains the worker's capacity
 permit, and closes the node only after that callback returns. Repeated timed-out
 callbacks cannot create unlimited workers. This thread boundary does not make a
 Python callback realtime-safe and does not change the audio callback contract.
+
+### Explicit parallel model policy and vocabulary
+
+`FasterWhisperConfiguration(inference_concurrency=2, cpu_threads=4)` uses two
+source-affine inference workers, each with two CPU threads. Concurrency defaults
+to one, is bounded to eight, and cannot exceed the total CPU budget. Actual
+worker count also cannot exceed selected sources. Parallel mode requires
+`num_workers=1` to prevent nested model workers multiplying the CPU budget.
+Remainder threads go to the first workers. Each worker owns a model instance,
+so additional concurrency increases resident model memory. Cross-source result
+order is unspecified; source/time lineage and per-source ordering remain intact.
+A tiny typed MANY-input merge Operator forwards transcripts using existing Core
+queues and lifecycle, without a second scheduler or unbounded queue.
+
+`initial_prompt` optionally supplies application vocabulary/context (at most
+2048 UTF-8 bytes, non-empty and without NUL). It is passed to the underlying
+model without special-case vocabulary. Use identical prompts and decoding
+settings for live/reference comparisons; ASR-generated references are not human
+ground truth. The demo CLI accepts `--cpu-threads`, `--inference-concurrency`
+and `--initial-prompt`. Existing defaults stay unchanged. Direct `provider()`
+and `sync_provider()` remain single-Operator adapters; parallel scheduling is
+provided by `attach`/`attach_many`.
+
+Cancellation joins finite callbacks but cannot forcibly interrupt arbitrary
+Python code. Existing callback deadlines and the process-wide64-worker limit
+still apply. Queue loss is visible and isolated from recording/Relay; this
+configuration by itself is not evidence of latency or transcription quality.
