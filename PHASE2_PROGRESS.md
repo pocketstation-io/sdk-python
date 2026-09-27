@@ -1,5 +1,34 @@
 # Phase 2 progress
 
+## W21 Python Core dependency refresh — Candidate 121
+
+The binding now pins public Core 1.1.12 in production and conformance builds.
+Compatibility facts, archive-validator expectations and synthetic package fixtures
+match. Only the Core version/checksum changes in Cargo.lock; the other 290 locked
+dependency versions and Relay Connector 0.1.5 remain unchanged. Notices are
+regenerated from the complete retained inventory with Core 1.1.12 license texts.
+
+The SDK own version is not changed in this dependency-preparation task; existing
+public Python 0.1.5 artifacts remain immutable and use Core 1.1.11. Release notes
+distinguish the unpublished source candidate. No capture logic is duplicated in
+the wrapper, no new runtime scaffold/mock and no new physical-device claim.
+
+Local acceptance: 55 packaging/notice/release rejection tests pass; Ruff checks
+and formatting pass; strict MyPy passes 70 source files; Rust formatting and
+public-documentation wording checks pass. Only Core changes in the complete
+locked dependency inventory. Exact-source CI and six native wheels with 22
+installed CPython consumers remain required. Package publication
+requires a separate exact-version release task after successful qualification.
+
+
+Source CI 36291261583 exposed a synchronization error in the source-truth test:
+the first aggregate audio frame can be from the application before the independent
+microphone has delivered. The test now waits within the original one-second
+budget for both per-source activity and signal observations, then retains every
+native-format, microphone-signal and recovery assertion. Missing microphone data
+still fails the deadline; no fixed delay, retry of a failed test or runtime change.
+The failed log is preserved and fresh exact-source CI/qualification is required.
+
 ## W21 installed Python real-path entry point
 
 - The installed `pocketstation-demo` command now accepts explicit application,

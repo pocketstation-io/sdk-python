@@ -26,3 +26,7 @@ Version 0.1.5 uses Core 1.1.11 and Relay Connector 0.1.5. Prefer exact version
 pins for reproducible applications; review release notes before upgrading.
 Maintainer support is best effort. There is no paid support or response-time
 commitment attached to this package.
+
+The unreleased source candidate pins Core 1.1.12 for the microphone timestamp
+correction. Published 0.1.5 remains unchanged; consult the Unreleased release
+notes before building this candidate.

@@ -43,8 +43,25 @@ def test_core_source_truth_and_explicit_recovery(tmp_path) -> None:
     session, application, microphone = _declared_session(tmp_path)
     running = session.start()
     try:
-        assert running.audio.read(timeout_s=1.0) is not None
-        metrics = running.metrics()
+        # The application can deliver before the independent microphone starts.
+        # One aggregate audio frame does not establish activity for both stems.
+        deadline_seconds = time.monotonic() + 1.0
+        while True:
+            remaining_seconds = deadline_seconds - time.monotonic()
+            assert remaining_seconds > 0, "both fixture sources must become active"
+            running.audio.read(timeout_s=min(remaining_seconds, 0.05))
+            metrics = running.metrics()
+            if (
+                len(metrics.source_activities) == 2
+                and all(
+                    item.frames_received_total > 0 for item in metrics.source_activities
+                )
+                and len(metrics.source_signals) == 2
+                and all(
+                    item.samples_observed_total > 0 for item in metrics.source_signals
+                )
+            ):
+                break
         assert len(metrics.sources) == 2
         assert len(metrics.source_native_formats) == 2
         assert len(metrics.source_activities) == 2
