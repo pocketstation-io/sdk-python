@@ -370,3 +370,15 @@ Update installed_consumer's retained invitation fixture to the canonical
 join credential enters HTTP URLs. The complete installed consumer passes with
 the unchanged final production wheel. This modifies qualification tests only;
 package bytes and runtime source remain those of b8fdd14. Ruff passes.
+
+### Response diagnostics: generic validation and transport boundary
+
+Independent review found raw typed-field parser causes (enum, timestamp, URL)
+and previously unknown response credentials in HTTP error bodies. Every decoded
+control response now crosses one detached generic validation boundary; non-2xx
+responses preserve status codes while omitting raw body text, and transport
+errors omit arbitrary diagnostic strings. Sync/async regressions exercise all
+five cases including normal traceback, cause/context and status preservation.
+95 focused control/Relay tests, strict mypy63 modules and Ruff pass. Production
+and conformance payloads will reuse their exact native binaries; no media/native
+behavior changes. Staff review: PASS for targeted correction, no scaffold.

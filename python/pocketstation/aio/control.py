@@ -27,6 +27,7 @@ from ..control import (
     SubscriberCredentials,
     _bus_id,
     _bus_ids,
+    _decode_response,
     _invitation,
     _invitation_locator,
     _invitation_metadata,
@@ -35,7 +36,6 @@ from ..control import (
     _normalize_base_url,
     _publisher_credentials,
     _receiver_access,
-    _redact,
     _redemption_join_code,
     _resolve_timeout,
     _session_credentials,
@@ -75,7 +75,7 @@ class ControlClient:
             timeout_seconds=timeout_seconds,
             json_body={"required_buses": list(required_buses)},
         )
-        return _session_credentials(payload)
+        return _decode_response(_session_credentials, payload)
 
     async def session(
         self,
@@ -92,7 +92,7 @@ class ControlClient:
             timeout_seconds=timeout_seconds,
             authorization=source_token,
         )
-        return _session_snapshot(payload)
+        return _decode_response(_session_snapshot, payload)
 
     async def issue_subscriber_credentials(
         self,
@@ -112,7 +112,7 @@ class ControlClient:
             authorization=source_token,
             json_body={"bus_id": bus_id},
         )
-        return _subscriber_credentials(payload)
+        return _decode_response(_subscriber_credentials, payload)
 
     async def issue_publisher_credentials(
         self,
@@ -134,7 +134,7 @@ class ControlClient:
             authorization=source_token,
             json_body={"bus_id": bus_id},
         )
-        return _publisher_credentials(payload)
+        return _decode_response(_publisher_credentials, payload)
 
     async def create_invitation(
         self,
@@ -156,7 +156,7 @@ class ControlClient:
             authorization=source_token,
             json_body={"bus_id": bus_id, "visibility": visibility.value},
         )
-        return _invitation(payload, identifier)
+        return _decode_response(_invitation, payload, identifier)
 
     async def inspect_invitation(
         self,
@@ -180,7 +180,7 @@ class ControlClient:
             if error.status_code == 404:
                 raise InvitationUnavailableError() from None
             raise
-        return _invitation_metadata(payload)
+        return _decode_response(_invitation_metadata, payload)
 
     async def redeem_invitation(
         self,
@@ -224,7 +224,7 @@ class ControlClient:
             if error.status_code == 404:
                 raise InvitationUnavailableError() from None
             raise
-        return _receiver_access(payload)
+        return _decode_response(_receiver_access, payload)
 
     async def delete_session(
         self,
@@ -320,11 +320,8 @@ class ControlClient:
                         response.aiter_bytes(),
                         _MAX_ERROR_BODY_BYTES,
                     )
-                    detail = body.decode("utf-8", errors="replace")
-                    for value in redacted_values:
-                        detail = detail.replace(value, "[redacted]")
                     raise ControlPlaneError(
-                        f"control-plane returned HTTP {response.status_code}: {detail}",
+                        f"control-plane returned HTTP {response.status_code}",
                         "control.http_status",
                         status_code=response.status_code,
                     )
@@ -336,10 +333,9 @@ class ControlClient:
                 )
         except ControlPlaneError:
             raise
-        except httpx.HTTPError as error:
-            detail = _redact(str(error), redacted_values)
+        except httpx.HTTPError:
             transport_failure = ControlPlaneError(
-                f"control-plane request failed: {detail}",
+                "control-plane request failed",
                 "control.request",
             )
         if transport_failure is not None:
