@@ -157,7 +157,7 @@ class ControlClient:
             authorization=source_token,
             json_body=body,
         )
-        return _decode_response(_invitation, payload, identifier)
+        return _decode_response(_invitation, payload, identifier, body)
 
     async def inspect_invitation(
         self,

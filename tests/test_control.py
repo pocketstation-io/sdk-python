@@ -919,7 +919,7 @@ async def test_untrusted_response_diagnostics_never_expose_new_credentials(
         "rice-river-ab",
         "a" * 25 + "-river",
         "rice/river",
-        "rice-river-extra-word",
+        "-".join("aa" + chr(97 + i) for i in range(16)),
     ],
 )
 def test_short_word_syntax_rejects_malformed_navigation_before_http(words: str) -> None:
@@ -987,7 +987,7 @@ async def test_omitted_name_format_uses_validated_server_result(
     assert result.visibility.value == response["visibility"]
 
 
-@pytest.mark.parametrize("word_count", [2, 3])
+@pytest.mark.parametrize("word_count", range(2, 16))
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.asyncio
 async def test_explicit_word_count_is_forwarded_without_legacy_visibility(
@@ -1000,9 +1000,7 @@ async def test_explicit_word_count_is_forwarded_without_legacy_visibility(
         }
         return httpx.Response(
             201,
-            json=PUBLIC_INVITATION_RESPONSE
-            if word_count == 2
-            else PRIVATE_INVITATION_RESPONSE,
+            json=_counted_invitation_response(word_count),
         )
 
     if asynchronous:
@@ -1022,6 +1020,7 @@ async def test_explicit_word_count_is_forwarded_without_legacy_visibility(
                     "session_123", SecretToken("owner"), word_count=word_count
                 )
     assert len(result.share_alias.split("-")) == word_count
+    assert result.word_count == word_count
 
 
 @pytest.mark.parametrize(
@@ -1030,7 +1029,10 @@ async def test_explicit_word_count_is_forwarded_without_legacy_visibility(
         (True, None),
         (False, None),
         (1, None),
-        (4, None),
+        (16, None),
+        (0, None),
+        (-1, None),
+        (15, "private"),
         (2.0, None),
         ("2", None),
         (2, "private"),
@@ -1069,3 +1071,138 @@ async def test_invalid_or_conflicting_word_count_is_rejected_before_http(
                         word_count=word_count,
                         visibility=visibility,
                     )  # type: ignore[arg-type]
+
+
+def _counted_invitation_response(count: int) -> dict[str, object]:
+    alias = "-".join("aaaaaaa" + chr(97 + i) for i in range(count))
+    return {
+        **PRIVATE_INVITATION_RESPONSE,
+        "share_alias": alias,
+        "share_url": f"https://receiver.example/{alias}#join={JOIN_CODE}",
+        "visibility": "public" if count == 2 else "private",
+        "word_count": count,
+    }
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("count", [4, 8, 15])
+@pytest.mark.asyncio
+async def test_long_name_metadata_and_redemption_preserve_exact_locator(
+    asynchronous: bool, count: int
+) -> None:
+    payload = _counted_invitation_response(count)
+    alias = str(payload["share_alias"])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            assert request.url.path.endswith("/" + alias)
+            return httpx.Response(200, json=payload)
+        assert request.url.path.endswith("/" + alias)
+        assert json.loads(request.content) == {"join_code": JOIN_CODE}
+        return httpx.Response(
+            200,
+            json={
+                "session_id": "session_123",
+                "bus_id": "application",
+                "subscriber_token": "scoped-token",
+                "signal_url": "wss://relay.example/v1/signal",
+            },
+        )
+
+    if asynchronous:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            async with AsyncControlClient(
+                "https://control.example", http_client=http
+            ) as client:
+                metadata = await client.inspect_invitation(alias)
+                access = await client.redeem_invitation(
+                    alias, join_code=SecretToken(JOIN_CODE)
+                )
+    else:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as http_sync:
+            with ControlClient(
+                "https://control.example", http_client=http_sync
+            ) as client_sync:
+                metadata = client_sync.inspect_invitation(alias)
+                access = client_sync.redeem_invitation(
+                    alias, join_code=SecretToken(JOIN_CODE)
+                )
+    assert metadata.word_count == count
+    assert access.bus_id == "application"
+    assert JOIN_CODE not in repr(metadata)
+
+
+@pytest.mark.parametrize("declared", [None, True, False, 1, 16, 4.0, "4", 3, "missing"])
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.asyncio
+async def test_long_name_response_rejects_invalid_or_missing_count(
+    declared: object, asynchronous: bool
+) -> None:
+    payload = _counted_invitation_response(4)
+    if declared == "missing":
+        payload.pop("word_count")
+    else:
+        payload["word_count"] = declared
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(201, json=payload)
+
+    if asynchronous:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            async with AsyncControlClient(
+                "https://control.example", http_client=http
+            ) as client:
+                with pytest.raises(ControlPlaneError):
+                    await client.create_invitation("session_123", SecretToken("owner"))
+    else:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as http_sync:
+            with ControlClient(
+                "https://control.example", http_client=http_sync
+            ) as client_sync:
+                with pytest.raises(ControlPlaneError):
+                    client_sync.create_invitation("session_123", SecretToken("owner"))
+
+
+def test_readable_locator_accepts_exact_maximum_and_rejects_next_byte() -> None:
+    from pocketstation.control import InvitationAlias
+
+    alias = str(_counted_invitation_response(15)["share_alias"])
+    assert len(alias) == 134
+    assert InvitationAlias(alias) == alias
+    with pytest.raises(ValueError):
+        InvitationAlias(alias + "a")
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.asyncio
+async def test_explicit_name_request_rejects_different_valid_response_count(
+    asynchronous: bool, legacy: bool
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(201, json=_counted_invitation_response(4))
+
+    if asynchronous:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            async with AsyncControlClient(
+                "https://control.example", http_client=http
+            ) as client:
+                with pytest.raises(ControlPlaneError):
+                    await client.create_invitation(
+                        "session_123",
+                        SecretToken("owner"),
+                        word_count=None if legacy else 15,
+                        visibility=InvitationVisibility.PRIVATE if legacy else None,
+                    )
+    else:
+        with httpx.Client(transport=httpx.MockTransport(handler)) as http_sync:
+            with ControlClient(
+                "https://control.example", http_client=http_sync
+            ) as client_sync:
+                with pytest.raises(ControlPlaneError):
+                    client_sync.create_invitation(
+                        "session_123",
+                        SecretToken("owner"),
+                        word_count=None if legacy else 15,
+                        visibility=InvitationVisibility.PRIVATE if legacy else None,
+                    )

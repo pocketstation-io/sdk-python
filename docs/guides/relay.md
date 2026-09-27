@@ -31,8 +31,12 @@ publisher readiness succeeds, and delete the remote Session during shutdown.
 Readable words are navigation labels. Every link carries the original opaque
 join credential in `#join=…`; possession of words alone never grants access.
 Omit formatting options to use the Relay service setting: its default tries
-two words, then three when names collide. Set `word_count=2` or `word_count=3`
-for an explicit length. `visibility` remains a deprecated two-word (`PUBLIC`)
+two words, then three when names collide. Set `word_count` to an integer from 2 through 15 for an explicit length.
+Omission or Python `None` keeps the service default; booleans and fractions
+are rejected. The returned invitation exposes its validated `word_count`.
+New long-name responses must declare that count and fit within 134 ASCII bytes.
+Older two/three-word responses remain supported without the count field.
+An explicit requested count must match the returned name. `visibility` remains a deprecated two-word (`PUBLIC`)
 or three-word (`PRIVATE`) compatibility option; conflicting options fail. Both formats redact their credential and
 URL in `str()`, `repr()`, and ordinary JSON serialization. Use `expose_url()`
 only when intentionally displaying, copying, or opening the complete link.

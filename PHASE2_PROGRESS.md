@@ -414,3 +414,26 @@ Core 1.1.12 native payload and regenerates RECORD; it is not a rebuilt native
 or release artifact. Unit HTTP peers are MOCKED; exact installed service proof
 belongs to Lab. No runtime scaffold added; inventory n/a. Review SAFE-TO-TEST
 pending installed candidate validation. No publication or native code change.
+
+## W21 developer-selected name lengths — iteration128
+
+Control and Relay callers accept explicit integer word counts from 2 through
+15. Python None still means omission, preserving existing optional-argument
+usage. Booleans, fractions, out-of-range counts and conflicts with an explicit
+legacy visibility are rejected before HTTP. The server continues to own the
+default two-word selection and three-word collision fallback.
+
+Readable locators admit 2–15 ASCII segments within 134 bytes. Newly returned
+long names must carry an integer word_count matching the actual segments;
+legacy missing-count responses remain valid only for two/three-word formats.
+An explicit requested count must match the response. Invitation, metadata and
+Relay invitation objects expose the validated count without changing existing
+dataclass constructor arguments. Credentials, URL matching and response-error
+redaction remain unchanged. No dictionary or allocation algorithm is copied.
+
+Validation: 201 focused control/Relay tests and 752 full production-native tests
+pass, with 34 prior conditional skips. Strict mypy for four public modules,
+Ruff and formatting pass. Exact wheel projection retains the qualified native
+binary; no Rust changes, rebuild, release or physical-media claim. HTTP fixtures
+remain MOCKED, with installed real-service evidence delegated to Lab. No new
+runtime scaffold; inventory n/a; SAFE-TO-TEST pending exact installed proof.
