@@ -103,17 +103,17 @@ class InvitationAlias(str):
     def __new__(cls, value: str) -> InvitationAlias:
         words = value.split("-")
         if (
-            not 9 <= len(value) <= 128
+            not 7 <= len(value) <= 128
             or len(words) not in {2, 3}
             or any(
-                not 4 <= len(word) <= 24
+                not 3 <= len(word) <= 24
                 or not all("a" <= character <= "z" for character in word)
                 for word in words
             )
         ):
             raise ValueError(
                 "invitation alias must contain two or three lowercase ASCII "
-                "words of 4 to 24 letters separated by '-'"
+                "words of 3 to 24 letters separated by '-'"
             )
         return str.__new__(cls, value)
 
