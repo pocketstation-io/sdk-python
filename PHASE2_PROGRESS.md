@@ -614,3 +614,28 @@ HTTP peers are MOCKED; no new media/model, native, physical, or release claim.
 Purpose and boundary: fail-fast SDK projection of the existing service contract.
 No scaffold introduced; inventory n/a. Staff review SAFE-TO-TEST pending the exact
 pure-Python wheel projection and installed standalone-service qualification.
+
+## C130 — explicit responsive CPU profile qualification
+
+The exact selector-fix wheel from 9f2ecfb passes its installed native consumer
+and the separately owned real standalone SQLite domain gate. Its unchanged
+native payload remains Core8aa/macOS arm64; no native rebuild or publication.
+
+One predeclared three-second-window API profile passes the unchanged public
+corpus quality bounds on that installed wheel: first useful output4.909/4.899s
+including1.081s Session startup, WER0.12245/0.14085, all15windows and45s per stem,
+zero model/route/recording loss, exact recorded-PCM reference hashes, all five
+workers joined, finalization0.12093s and workloadRTF0.176996. Whole-process peak
+RSS682,835,968bytes. CPU budget4, two separate models, int8 tiny.en, beam1 and VAD
+were declared before the single run. Model hashes were checked after stop so
+preflight hashing did not warm model pages before the measured Session clock.
+OS caches were not controlled; this is not a cold-machine deadline guarantee.
+
+The earlier five-second deadline failures remain failures. A separate paired
+shared-backend diagnostic was confounded by engine-import time/cache differences;
+no pooling architecture was implemented. The public guide describes the explicit
+three-second API profile and context/latency tradeoff. Defaults and demo CLI are
+unchanged. This commit changes documentation only; packaged Python/native bytes
+remain those of 9f2ecfb. Evidence is LOOPBACK-ONLY real local model/PCM/recording,
+not physical capture or new cross-platform qualification. No scaffold introduced;
+inventory n/a. Documentation/API names, source-tree identity and diff checks PASS.

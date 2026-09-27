@@ -226,3 +226,38 @@ Cancellation joins finite callbacks but cannot forcibly interrupt arbitrary
 Python code. Existing callback deadlines and the process-wide64-worker limit
 still apply. Queue loss is visible and isolated from recording/Relay; this
 configuration by itself is not evidence of latency or transcription quality.
+
+### A responsive two-source CPU profile
+
+For earlier complete-window results, an explicit three-second profile is available
+through the Python API. With an existing local English tiny-model directory in
+`model_path`, configure the adapter as follows:
+
+```python
+from pocketstation_demo import FasterWhisper, FasterWhisperConfiguration
+
+transcriber = FasterWhisper(FasterWhisperConfiguration(
+    model=model_path,
+    allow_model_download=False,
+    device="cpu",
+    compute_type="int8",
+    window_seconds=3,
+    cpu_threads=4,
+    inference_concurrency=2,
+    num_workers=1,
+    beam_size=1,
+    language="en",
+    vad_filter=True,
+))
+```
+
+Use `attach_many` with the two source outputs and keep draining the subscription
+through graceful stop. Shorter windows trade language context for earlier output;
+measure recognition quality with representative speech before choosing them.
+The five-second default and the demo CLI remain unchanged; this is an explicit
+API configuration, not a new CLI option or a default latency guarantee.
+
+This profile passed one local macOS arm64, installed-package replay with two
+45-second stems and independently supplied corpus text. That run includes model
+startup in first-result timing, but does not establish cold-machine timing,
+physical capture, other platforms, or behavior for arbitrary models/languages.
