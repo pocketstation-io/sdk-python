@@ -526,3 +526,22 @@ whole-Session finalization; no7s both-stem first-result claim is made by this
 finite input diagnostic. Longer equal-duration Lab replay must qualify that.
 These are LOOPBACK-ONLY actual native/model recordings, not new physical capture.
 Final Rust all-feature/conformance and exact wheel consumer gates follow.
+
+
+### Final native and installed-wheel gates
+
+Exact Core8aa/macOS arm64 builds pass10 release all-feature native tests,
+strict all-target/all-feature Clippy and formatting. The current conformance
+wheel passes805 tests; three conditional cases are the separately passing real
+model test and Linux/Windows-specific permission contracts. Production wheel
+imports and the full installed consumer pass on local Python3.11.15,3.12.13,
+3.13 and3.14. These exercise real native PCM/Operator/Connector paths; their HTTP
+invitation fixture is MOCKED. Production native is restored after conformance.
+
+Final wheels build product source2da2d4e; this progress-only commit changes no
+packaged Python/native product source. Core is explicitly patched to candidate
+8aa471c7 during qualification; no published Core-version or release claim is
+made. Local real-model proof repairs the earlier country regression. Final
+composed browser/Relay proof remains owned by Lab, and current physical-host
+capture availability is separate. Existing Linux/Windows native evidence is
+prior-revision evidence, not current-native qualification.
