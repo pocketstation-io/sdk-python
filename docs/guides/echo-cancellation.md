@@ -39,8 +39,14 @@ independently usable. Application-only capture still opens no microphone.
 
 Both inputs must belong to the same Session and identify different streams.
 The current processor accepts 48 kHz mono or stereo with 10 ms or 20 ms frames.
-This checkpoint requires both inputs to have the same channel count; a mono
-microphone with a stereo application reference still needs qualification.
+Core negotiates each input's channel count separately: a mono microphone can
+use a stereo application reference, and processed output retains the microphone
+channel count. Native capture declarations retain their own source formats.
+This does not establish acoustic qualification for arbitrary device pairs.
+
+The current `AudioInput` provider still requires its writers within one Session
+to share the same sample rate, channel count and frame size. Passing different `channels`
+values to two `session.audio_input()` calls does not bypass that restriction.
 Preserve reference channel information; do not average opposite-polarity
 stereo into silence. Core owns timing checks and processing. Unrelated device
 clocks and arbitrary reference timing do not become supported merely because
