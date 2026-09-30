@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import platform
 import subprocess
 import sys
@@ -58,6 +59,35 @@ def one(directory: Path, pattern: str) -> Path:
     return matches[0]
 
 
+def validate_aec(result: dict[str, Any]) -> None:
+    observation = result.get("aec")
+    if not isinstance(observation, dict):
+        raise ValueError("installed AEC evidence is missing")
+    echo = observation.get("echo_power_ratio")
+    voice = observation.get("voice_power_ratio")
+    if not (
+        type(observation.get("processed_frames_total")) is int
+        and observation["processed_frames_total"] == 400
+        and type(observation.get("output_frames_total")) is int
+        and observation["output_frames_total"] == 404
+        and type(observation.get("tail_frames_total")) is int
+        and observation["tail_frames_total"] == 4
+        and type(observation.get("tail_padding_samples_total")) is int
+        and observation["tail_padding_samples_total"] == 1920
+        and observation.get("input_provenance_preserved") is True
+        and observation.get("polled_tail_preserved") is True
+        and type(echo) in (int, float)
+        and math.isfinite(echo)
+        and 0 <= echo < 0.5
+        and type(voice) in (int, float)
+        and math.isfinite(voice)
+        and 0.5 < voice < 2.0
+        and observation.get("raw_stem_unchanged") is True
+        and observation.get("terminal_state") == "stopped"
+    ):
+        raise ValueError("installed AEC processing evidence failed")
+
+
 def validate_result(result: dict[str, Any], distribution_format: str) -> None:
     expected_checks = {
         "pip_check",
@@ -82,6 +112,7 @@ def validate_result(result: dict[str, Any], distribution_format: str) -> None:
         raise ValueError("consumer imported outside site-packages")
     if consumer["source_id"] <= 0 or consumer["stream_id"] <= 0:
         raise ValueError("source identity is absent")
+    validate_aec(consumer)
     if result["tools"] != {"mypy_requirement": "mypy==2.3.1", "mypy_version": "2.3.1"}:
         raise ValueError("installed typing tool differs")
     for mode in ("sync", "asyncio"):

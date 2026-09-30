@@ -27,6 +27,8 @@ observations. Both forms use the same Rust engine.
 | Typed signals and subscriptions | `pocketstation.signal` |
 | Source declarations and discovery | `pocketstation.sources` |
 | Application-owned PCM | `pocketstation.audio_input` |
+| Native microphone echo cancellation | `Session.echo_cancel` and `pocketstation.aec` |
+| Processed audio input identity and final padding | `AudioFrame.processing` and `pocketstation.signal.AudioProcessing` |
 | Runtime events, metrics, and outcomes | `pocketstation.observations` |
 | Accepted media and delivery behavior | `pocketstation.graph.RouteSettings` and `DeliveryPolicy` |
 

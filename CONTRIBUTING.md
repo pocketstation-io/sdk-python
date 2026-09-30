@@ -6,7 +6,11 @@ examples or external packages. Rust Core owns capture, timing, routing and
 recording; Python manages the application and provider code.
 
 Use Rust 1.95 and CPython 3.11 or newer. Linux source builds need the ALSA and
-PipeWire development packages. From a checkout:
+PipeWire development packages. The development AEC build also requires a C++
+compiler, libclang, pkg-config, Meson 1.7.2, Ninja 1.11.1.4 and the Rust
+`llvm-tools` component. The bundled native engine invokes POSIX `cp` and `nm`;
+Windows/MSVC support must pass the complete native matrix before publication.
+From a checkout:
 
 ```bash
 uv sync --extra dev

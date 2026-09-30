@@ -51,19 +51,9 @@ use crate::signals::{
 use crate::source_authoring::{register_source, PythonRegisteredSource, PythonSourceManifest};
 use crate::source_truth::{source_replacement, PythonSourceReplacement};
 use crate::sources::{PythonSource, SourceDeclaration};
-use crate::streams::{
-    copy_audio_batch, copy_audio_batch_until, python_audio_batch, request_audio_batch,
-    request_audio_batch_wait, OwnedAudioFrame, PythonAudioBatch,
-};
+use crate::streams::{copy_audio_receipt, python_audio_batch, PythonAudioBatch};
 
 pub(crate) enum SessionCommand {
-    PollAudio {
-        response: SyncSender<Result<Option<Vec<OwnedAudioFrame>>, String>>,
-    },
-    WaitAudio {
-        timeout: Duration,
-        response: SyncSender<Result<Option<Vec<OwnedAudioFrame>>, String>>,
-    },
     LifecycleState {
         response: SyncSender<&'static str>,
     },
@@ -327,6 +317,20 @@ impl PythonSession {
             session
                 .operator(make_operator(operator_id, configuration)?)
                 .map(|handle| PythonOperatorInstance { handle })
+                .map_err(session_error)
+        })
+    }
+
+    fn echo_cancel(
+        &self,
+        microphone: &Bound<'_, PyAny>,
+        reference: &crate::aec::PythonPlaybackReference,
+    ) -> PyResult<crate::aec::PythonEchoCancelledAudio> {
+        let microphone = crate::aec::audio_input(microphone)?;
+        self.with_session(|session| {
+            session
+                .echo_cancel(microphone, reference.value.clone())
+                .map(|value| crate::aec::PythonEchoCancelledAudio { value })
                 .map_err(session_error)
         })
     }
@@ -681,6 +685,7 @@ impl PythonSession {
 #[pyclass(name = "RunningSession")]
 pub(crate) struct PythonRunningSession {
     worker: Mutex<Option<SessionWorker>>,
+    audio_receipt: Mutex<Option<pocketstation::PolledAudioReceipt>>,
     signal_receipts: SignalReceipts,
     session_id: u64,
     terminal_state: Mutex<Option<&'static str>>,
@@ -734,9 +739,7 @@ impl PythonRunningSession {
     }
 
     fn poll_audio(&self, py: Python<'_>) -> PyResult<Option<PythonAudioBatch>> {
-        let commands = self.commands()?;
-        let owned = py.detach(|| request_audio_batch(&commands))?;
-        python_audio_batch(py, owned)
+        self.read_audio(py, Duration::ZERO)
     }
 
     #[pyo3(signature = (timeout_ms=100))]
@@ -747,10 +750,29 @@ impl PythonRunningSession {
                 "timeout_ms must be at most {MAXIMUM_TIMEOUT_MS}"
             )));
         }
-        let commands = self.commands()?;
-        let owned =
-            py.detach(|| request_audio_batch_wait(&commands, Duration::from_millis(timeout_ms)))?;
-        python_audio_batch(py, owned)
+        self.read_audio(py, Duration::from_millis(timeout_ms))
+    }
+
+    #[getter]
+    fn audio_drained(&self) -> PyResult<bool> {
+        let receipt = self.retained_audio_receipt()?;
+        let Some(receipt) = receipt else {
+            return Ok(true);
+        };
+        Ok(self
+            .terminal_state
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("terminal Session state is unavailable"))?
+            .is_some()
+            && receipt.observations().queue_depth_frames == 0)
+    }
+
+    fn discard_audio(&self) -> PyResult<()> {
+        self.audio_receipt
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("Session audio receipt is unavailable"))?
+            .take();
+        Ok(())
     }
 
     fn poll_event(&self, py: Python<'_>) -> PyResult<Option<PythonSessionEvent>> {
@@ -1019,6 +1041,33 @@ fn python_stop_result(py: Python<'_>, owned: OwnedStopResult) -> PyResult<Python
 }
 
 impl PythonRunningSession {
+    fn retained_audio_receipt(&self) -> PyResult<Option<pocketstation::PolledAudioReceipt>> {
+        self.audio_receipt
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("Session audio receipt is unavailable"))
+            .map(|receipt| receipt.clone())
+    }
+
+    fn read_audio(&self, py: Python<'_>, timeout: Duration) -> PyResult<Option<PythonAudioBatch>> {
+        let Some(receipt) = self.retained_audio_receipt()? else {
+            return Ok(None);
+        };
+        let stopped = self
+            .terminal_state
+            .lock()
+            .map_err(|_| PyRuntimeError::new_err("terminal Session state is unavailable"))?
+            .is_some();
+        let timeout = if stopped { Duration::ZERO } else { timeout };
+        let owned = py
+            .detach(|| copy_audio_receipt(&receipt, timeout))
+            .map_err(PyRuntimeError::new_err)?;
+        // Explicit close/cancel may discard while the GIL is released above.
+        if self.retained_audio_receipt()?.is_none() {
+            return Ok(None);
+        }
+        python_audio_batch(py, owned)
+    }
+
     fn request_microphone_replacement(
         &self,
         py: Python<'_>,
@@ -1134,6 +1183,7 @@ impl PythonRunningSession {
     ) -> PyResult<Self> {
         const COMMAND_CAPACITY_COUNT: usize = 8;
         let (commands, receiver) = sync_channel(COMMAND_CAPACITY_COUNT);
+        let audio_receipt = running.audio_receipt();
         let join = thread::Builder::new()
             .name("pocketstation-python-session".to_owned())
             .spawn(move || session_worker(running, receiver, relay))
@@ -1145,6 +1195,7 @@ impl PythonRunningSession {
                 commands,
                 join: Some(join),
             })),
+            audio_receipt: Mutex::new(Some(audio_receipt)),
             signal_receipts,
             session_id,
             terminal_state: Mutex::new(None),
@@ -1230,12 +1281,6 @@ fn session_worker(
 ) {
     while let Ok(command) = receiver.recv() {
         match command {
-            SessionCommand::PollAudio { response } => {
-                let _ = response.send(copy_audio_batch(&running));
-            }
-            SessionCommand::WaitAudio { timeout, response } => {
-                let _ = response.send(copy_audio_batch_until(&running, timeout));
-            }
             SessionCommand::LifecycleState { response } => {
                 let _ = response.send(core_lifecycle_state_name(running.state()));
             }
@@ -1468,7 +1513,7 @@ mod tests {
     use super::{stop_worker, PythonRunningSession};
     use crate::observations::{request_event, request_metrics};
     use crate::signals::new_signal_receipts;
-    use crate::streams::request_audio_batch_wait;
+    use crate::streams::copy_audio_receipt;
 
     #[test]
     fn given_native_python_worker_when_polled_then_batches_preserve_both_stems() {
@@ -1513,6 +1558,7 @@ mod tests {
         let python_running =
             PythonRunningSession::spawn(running, None, new_signal_receipts(), session_id)
                 .expect("Python Session worker");
+        let audio_receipt = python_running.retained_audio_receipt().unwrap().unwrap();
         let worker = python_running
             .worker
             .lock()
@@ -1532,9 +1578,8 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(5);
         let mut stems = BTreeSet::new();
         let metrics = loop {
-            if let Some(batch) =
-                request_audio_batch_wait(&worker.commands, Duration::from_millis(100))
-                    .expect("bounded batch wait")
+            if let Some(batch) = copy_audio_receipt(&audio_receipt, Duration::from_millis(100))
+                .expect("bounded batch wait")
             {
                 stems.extend(batch.into_iter().map(|frame| frame.stem_id));
             }

@@ -36,10 +36,13 @@ class AudioStream:
         poll_batch: Callable[[], Awaitable[AudioBatch | None]],
         wait_batch: Callable[[int], Awaitable[AudioBatch | None]],
         is_closed: Callable[[], bool],
+        is_drained: Callable[[], bool] | None = None,
     ) -> None:
         self._poll_batch = poll_batch
         self._wait_batch = wait_batch
         self._is_closed = is_closed
+        self._is_drained = is_drained or is_closed
+        self._discarded = False
         self._state = _ReaderState()
         self._pending_frames: deque[AudioFrame] = deque()
         self._pending_batches: deque[AudioBatch] = deque(maxlen=1)
@@ -50,7 +53,17 @@ class AudioStream:
 
     @property
     def is_closed(self) -> bool:
-        return self._is_closed()
+        return self._discarded or self._is_closed()
+
+    @property
+    def _at_eof(self) -> bool:
+        return self._discarded or self._is_drained()
+
+    def _discard(self) -> None:
+        """Discard the existing delivery cache after explicit close or cancel."""
+        self._discarded = True
+        self._pending_frames.clear()
+        self._pending_batches.clear()
 
     async def read(
         self,
@@ -71,7 +84,10 @@ class AudioStream:
         try:
             if self._pending_batches:
                 return self._pending_batches.popleft()
-            return None if self.is_closed else await self._poll_batch()
+            if self._at_eof:
+                return None
+            batch = await self._poll_batch()
+            return None if self._discarded else batch
         finally:
             self._state.release(token)
 
@@ -81,10 +97,14 @@ class AudioStream:
         try:
             if self._pending_batches:
                 return self._pending_batches.popleft()
-            if self.is_closed:
+            if self._at_eof:
                 return STREAM_EOF
             batch = await self._poll_batch()
-            return STREAM_EOF if batch is None and self.is_closed else batch
+            return (
+                STREAM_EOF
+                if self._discarded or (batch is None and self._at_eof)
+                else batch
+            )
         finally:
             self._state.release(token)
 
@@ -99,7 +119,10 @@ class AudioStream:
         try:
             if self._pending_batches:
                 return self._pending_batches.popleft()
-            return None if self.is_closed else await self._wait_batch(timeout_ms)
+            if self._at_eof:
+                return None
+            batch = await self._wait_batch(timeout_ms)
+            return None if self._discarded else batch
         finally:
             self._state.release(token)
 
@@ -114,10 +137,14 @@ class AudioStream:
         try:
             if self._pending_batches:
                 return self._pending_batches.popleft()
-            if self.is_closed:
+            if self._at_eof:
                 return STREAM_EOF
             batch = await self._wait_batch(timeout_ms)
-            return STREAM_EOF if batch is None and self.is_closed else batch
+            return (
+                STREAM_EOF
+                if self._discarded or (batch is None and self._at_eof)
+                else batch
+            )
         finally:
             self._state.release(token)
 
@@ -129,7 +156,7 @@ class AudioStream:
         *,
         wait_timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
     ) -> AsyncIterator[AudioFrame]:
-        """Yield frames lazily until the owning Session closes."""
+        """Yield accepted frames lazily, including the final drain after stop."""
         timeout_ms = _iteration_timeout_milliseconds(wait_timeout_s)
 
         async def iterate() -> AsyncIterator[AudioFrame]:
@@ -157,13 +184,13 @@ class AudioStream:
         async def iterate() -> AsyncIterator[AudioBatch]:
             token = self._state.claim("batches")
             try:
-                while self._pending_batches or not self.is_closed:
+                while self._pending_batches or not self._at_eof:
                     batch = (
                         self._pending_batches.popleft()
                         if self._pending_batches
                         else await self._wait_batch(timeout_ms)
                     )
-                    if batch is not None:
+                    if batch is not None and not self._discarded:
                         yield batch
             finally:
                 self._state.release(token)
@@ -173,19 +200,21 @@ class AudioStream:
     async def _read_frame(self, timeout_ms: int) -> AudioReadResult:
         if self._pending_frames:
             return self._pending_frames.popleft()
-        if self.is_closed:
+        if self._at_eof:
             return STREAM_EOF
         batch = await self._wait_batch(timeout_ms)
         if batch is None:
-            return STREAM_EOF if self.is_closed else None
+            return STREAM_EOF if self._at_eof else None
+        if self._discarded:
+            return STREAM_EOF
         self._pending_frames.extend(batch)
         if not self._pending_frames:
-            return STREAM_EOF if self.is_closed else None
+            return STREAM_EOF if self._at_eof else None
         return self._pending_frames.popleft()
 
     def _retain_cancelled_batch(self, batch: AudioBatch | None) -> None:
         """Retain one accepted native batch when its await is cancelled."""
-        if batch is None:
+        if batch is None or self._discarded:
             return
         if self._state.mode in {"read", "frames"}:
             self._pending_frames.extend(batch)

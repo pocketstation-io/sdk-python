@@ -1,5 +1,107 @@
 # Phase 2 progress
 
+## Candidate138 — built-in Session AEC bindings (qualification pending)
+
+The tail/provenance revision is tested against clean Core checkpoint
+`51eef90916a3593b2cb9e78b0237a656c5f29de6`. Ordinary
+AudioFrames now project optional immutable Core `AudioProcessing` metadata,
+retaining the actual input identity while preserving derived output identity.
+Observations include output and tail counts, internal zero-padding, discarded
+generations, the nominal sample delay and bounded drain duration.
+
+The native Session retains Core's existing bounded audio receipt. Audio reads
+use that receipt with the GIL released and the existing one-second maximum;
+they do not depend on a Session worker that has exited after stop. Graceful
+stop retains accepted audio for the current stream to drain before EOF.
+Explicit close/cancel discards receipt ownership and cached frames. No extra
+PCM queue or worker is introduced. Source checks pass MyPy (68 files), Ruff
+(157 formatted files), and 30 installed-evidence rejection cases. The final
+separate conformance wheel passes 876 tests with 3 existing external-model and
+Linux/Windows permission skips. Native conformance passes 10 tests; Clippy
+passes all targets/features with warnings denied. The enlarged off-realtime
+Connector pending enum has one reviewed Clippy expectation: its validated
+maximum 1,024-item batch retains 256 KiB of inline item storage at this layout,
+avoiding one additional heap box per audio frame.
+
+Production wheel04 passes archive/license validation and the isolated installed
+consumer: 400 actual input frames, 404 output frames including four polled tail
+frames, 1,920 internal padding samples, exact raw stem preservation and input
+provenance. Echo power ratio is 0.00677679775; near-end power ratio is 0.89903119.
+The focused real native suite passed 88 tests, with 4 conformance-only skips.
+Dedicated tests cover 10/20 ms mono/stereo metadata, recorded and polled tail,
+adaptation generations, read/stop races, and discard across all stream modes.
+Archive SHA256 is
+`aa4ad431c667287261f59445cf252c456a052aa051c5c389181b9b287f5e9b4c`.
+Source snapshot04 plus its worker expectation update identify the exact local
+Core override and SDK source. This remains a diagnostic Maturin 1.14.1 build;
+production pin, versions and release/physical-platform predicates are unchanged.
+Mixed mono microphone/stereo reference support is a separate Core integration
+requirement; this checkpoint proves the declared same-channel input cases.
+
+The earlier native/wheel results below describe the preceding `a3f5af6`
+checkpoint and remain preserved as history.
+
+The Python SDK exposes Core's built-in `Session.echo_cancel` declaration using
+`PlaybackReference` constructors for selected application, authorized output
+mix, or caller-rendered audio. One shared declaration serves synchronous and
+asyncio Sessions. `EchoCancelledAudio.audio` is the existing routable Stem;
+the original inputs remain accessible. Frozen typed observations retain native
+source identities, processing/reference/cadence counters, interruptions, resets
+and terminal errors after stop. Unknown algorithmic delay remains None.
+
+All native computation, buffers, timing and failure policy stay in Core. Python
+adds no frame pump, DSP engine or callback. New source tests exercise ordinary
+native AudioInput streams; no conformance-only runtime entry point is needed.
+The installed consumer and six-target distribution verifier now require actual
+AEC execution, unchanged raw audio, echo reduction, preserved near-end energy
+and successful stop. Muting, absent AEC evidence, non-finite ratios and an
+unfinished terminal state fail the verifier. This synthetic vector does not
+qualify physical acoustics or double-talk speech intelligibility.
+
+Source checks pass strict MyPy (75 files in the latest command), Ruff,
+formatting, 22 distribution-verifier cases, and retained-notice validation.
+Earlier source-tool failures and their corrections are preserved in candidate
+138 evidence. Exact added Cargo dependencies and bundled WebRTC/Abseil source
+notices are retained with hashes in the generated notice index (300 versions).
+
+Clean Core checkpoint `a3f5af6` produced an actual macOS arm64 abi3 diagnostic
+wheel with Maturin 1.14.1. Its installed focused AEC/public-API suite passed all
+15 tests. The isolated installed consumer processed 400 frames, retained the
+raw application stem unchanged, measured echo power ratio 0.00677679775 and
+near-end power ratio 0.89903119, and stopped successfully. Native conformance
+passed 10 tests, and Clippy passed all targets/features with warnings denied.
+These synthetic measurements establish binding execution, not physical
+acoustic qualification.
+
+A separately built conformance-fixtures wheel passed the complete Python suite:
+839 passed, 3 skipped (external-model Lab transcription and the Linux/Windows
+permission cases). The production wheel remains separately hashed and tested;
+conformance fixtures are never part of its proof. Both wheel identities and
+source snapshot03 are retained in factory candidate138 python-bindings evidence.
+The production wheel also passed dependency-license metadata finalization.
+
+Earlier failed attempts remain visible: tests initially used 2 s where the
+public read API permits at most 1 s; those calls were corrected. An earlier
+full suite against the preceding Core snapshot returned 807 passed, 34 skipped
+and one 20 ms AEC read timeout. Focused rerun passed; assertions now report
+processor observations if a frame is missing. The current full suite and
+installed consumer pass without increasing deadlines or retrying internally.
+
+The repository's published versions, Core registry pin and lockfile remain
+unchanged. The source stage uses an explicit local Core patch and is not a
+publishable distribution. Production remains pinned to Maturin 1.13.0; the
+local 1.14.1 artifact is diagnostic. The exact release build, source rebuild,
+complete six-target/22-runtime platform matrix (including Windows tooling),
+physical-device tests and release authorization remain outstanding. CI adds
+pinned Meson/Ninja and Rust llvm-tools without removing any platform cell.
+
+Staff review: smallest change is a typed PyO3/API adapter; no new direct
+dependency, unsafe code, capture callback behavior or product scaffold. Scope
+is Phase2 audio-quality correction. Remaining risks are full native platform packaging,
+current Core qualification and real-device validation. CODE_PROTOCOL source
+ownership, measurement units, explicit reference choice and typed observations
+reviewed. SAFE-TO-TEST only; no release, parity or physical-device claim.
+
 ## W21 Python Core dependency refresh — Candidate 121
 
 The binding now pins public Core 1.1.12 in production and conformance builds.

@@ -91,3 +91,51 @@ def test_given_missing_installed_gate_when_checked_then_rejected(check: str) -> 
     broken["checks"][check] = False
     with pytest.raises(ValueError, match="installed checks are incomplete"):
         validator.validate_result(broken, "wheel")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("processed_frames_total", 0),
+        ("processed_frames_total", True),
+        ("output_frames_total", 400),
+        ("output_frames_total", True),
+        ("tail_frames_total", 0),
+        ("tail_frames_total", True),
+        ("tail_padding_samples_total", 0),
+        ("tail_padding_samples_total", True),
+        ("input_provenance_preserved", False),
+        ("polled_tail_preserved", False),
+        ("echo_power_ratio", 1.0),
+        ("echo_power_ratio", float("nan")),
+        ("echo_power_ratio", False),
+        ("voice_power_ratio", 0.0),
+        ("voice_power_ratio", float("inf")),
+        ("raw_stem_unchanged", False),
+        ("terminal_state", "processing"),
+    ],
+)
+def test_given_bad_aec_evidence_when_checked_then_rejected(
+    field: str, value: object
+) -> None:
+    aec = {
+        "processed_frames_total": 400,
+        "output_frames_total": 404,
+        "tail_frames_total": 4,
+        "tail_padding_samples_total": 1920,
+        "input_provenance_preserved": True,
+        "polled_tail_preserved": True,
+        "echo_power_ratio": 0.1,
+        "voice_power_ratio": 0.9,
+        "raw_stem_unchanged": True,
+        "terminal_state": "stopped",
+    }
+    validator.validate_aec({"aec": aec})
+    aec[field] = value
+    with pytest.raises(ValueError, match="AEC processing evidence failed"):
+        validator.validate_aec({"aec": aec})
+
+
+def test_given_missing_aec_evidence_when_checked_then_rejected() -> None:
+    with pytest.raises(ValueError, match="AEC evidence is missing"):
+        validator.validate_aec({})

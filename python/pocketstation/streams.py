@@ -103,10 +103,13 @@ class AudioStream:
         poll_batch: Callable[[], AudioBatch | None],
         wait_batch: Callable[[int], AudioBatch | None],
         is_closed: Callable[[], bool],
+        is_drained: Callable[[], bool] | None = None,
     ) -> None:
         self._poll_batch = poll_batch
         self._wait_batch = wait_batch
         self._is_closed = is_closed
+        self._is_drained = is_drained or is_closed
+        self._discarded = False
         self._state = _ReaderState()
         self._pending_frames: deque[AudioFrame] = deque()
 
@@ -117,7 +120,16 @@ class AudioStream:
 
     @property
     def is_closed(self) -> bool:
-        return self._is_closed()
+        return self._discarded or self._is_closed()
+
+    @property
+    def _at_eof(self) -> bool:
+        return self._discarded or self._is_drained()
+
+    def _discard(self) -> None:
+        """Discard the existing delivery cache after explicit close or cancel."""
+        self._discarded = True
+        self._pending_frames.clear()
 
     def read(
         self,
@@ -136,7 +148,10 @@ class AudioStream:
         """Advanced non-blocking batch read using the exclusive batch mode."""
         token = self._state.claim("batches")
         try:
-            return None if self.is_closed else self._poll_batch()
+            if self._at_eof:
+                return None
+            batch = self._poll_batch()
+            return None if self._discarded else batch
         finally:
             self._state.release(token)
 
@@ -144,15 +159,19 @@ class AudioStream:
         """Read immediately with distinct batch, empty, and closed outcomes.
 
         ``None`` means the bounded native receipt is currently empty;
-        ``STREAM_EOF`` means the owning Session has stopped. Native faults are
-        raised as typed PocketStation exceptions.
+        ``STREAM_EOF`` means the owning Session has stopped and accepted audio
+        has drained. Native faults are raised as typed PocketStation exceptions.
         """
         token = self._state.claim("batches")
         try:
-            if self.is_closed:
+            if self._at_eof:
                 return STREAM_EOF
             batch = self._poll_batch()
-            return STREAM_EOF if batch is None and self.is_closed else batch
+            return (
+                STREAM_EOF
+                if self._discarded or (batch is None and self._at_eof)
+                else batch
+            )
         finally:
             self._state.release(token)
 
@@ -165,7 +184,10 @@ class AudioStream:
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("batches")
         try:
-            return None if self.is_closed else self._wait_batch(timeout_ms)
+            if self._at_eof:
+                return None
+            batch = self._wait_batch(timeout_ms)
+            return None if self._discarded else batch
         finally:
             self._state.release(token)
 
@@ -178,10 +200,14 @@ class AudioStream:
         timeout_ms = _timeout_milliseconds(timeout_s)
         token = self._state.claim("batches")
         try:
-            if self.is_closed:
+            if self._at_eof:
                 return STREAM_EOF
             batch = self._wait_batch(timeout_ms)
-            return STREAM_EOF if batch is None and self.is_closed else batch
+            return (
+                STREAM_EOF
+                if self._discarded or (batch is None and self._at_eof)
+                else batch
+            )
         finally:
             self._state.release(token)
 
@@ -193,7 +219,7 @@ class AudioStream:
         *,
         wait_timeout_s: float = _DEFAULT_ITERATION_TIMEOUT_SECONDS,
     ) -> Iterator[AudioFrame]:
-        """Yield frames lazily until the owning Session closes."""
+        """Yield accepted frames lazily, including the final drain after stop."""
         timeout_ms = _iteration_timeout_milliseconds(wait_timeout_s)
 
         def iterate() -> Iterator[AudioFrame]:
@@ -221,9 +247,9 @@ class AudioStream:
         def iterate() -> Iterator[AudioBatch]:
             token = self._state.claim("batches")
             try:
-                while not self.is_closed:
+                while not self._at_eof:
                     batch = self._wait_batch(timeout_ms)
-                    if batch is not None:
+                    if batch is not None and not self._discarded:
                         yield batch
             finally:
                 self._state.release(token)
@@ -233,14 +259,16 @@ class AudioStream:
     def _read_frame(self, timeout_ms: int) -> AudioReadResult:
         if self._pending_frames:
             return self._pending_frames.popleft()
-        if self.is_closed:
+        if self._at_eof:
             return STREAM_EOF
         batch = self._wait_batch(timeout_ms)
         if batch is None:
-            return STREAM_EOF if self.is_closed else None
+            return STREAM_EOF if self._at_eof else None
+        if self._discarded:
+            return STREAM_EOF
         self._pending_frames.extend(batch)
         if not self._pending_frames:
-            return STREAM_EOF if self.is_closed else None
+            return STREAM_EOF if self._at_eof else None
         return self._pending_frames.popleft()
 
 

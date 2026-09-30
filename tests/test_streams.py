@@ -129,6 +129,7 @@ def test_running_session_exposes_the_same_exclusive_stream() -> None:
         def __init__(self) -> None:
             self.batches = [["a"]]
             self.lifecycle_state = "running"
+            self.audio_drained = False
 
         def poll_audio(self):
             return None
@@ -141,6 +142,62 @@ def test_running_session_exposes_the_same_exclusive_stream() -> None:
     assert running.audio.read() == "a"
     with pytest.raises(StreamModeError):
         running.wait_audio()
+
+
+@pytest.mark.parametrize("mode", ["read", "poll", "read_result", "frames", "batches"])
+def test_stopped_producer_retains_bounded_native_batches_until_eof(mode: str) -> None:
+    batches = [["first", "second"], ["tail"]]
+    stream = AudioStream(
+        poll_batch=lambda: batches.pop(0) if batches else None,
+        wait_batch=lambda _timeout_ms: batches.pop(0) if batches else None,
+        is_closed=lambda: True,
+        is_drained=lambda: not batches,
+    )
+    assert stream.is_closed
+    if mode == "read":
+        assert [stream.read(), stream.read(), stream.read()] == [
+            "first",
+            "second",
+            "tail",
+        ]
+        assert stream.read() is STREAM_EOF
+    elif mode in {"poll", "read_result"}:
+        operation = getattr(stream, mode)
+        assert operation() == ["first", "second"]
+        assert operation() == ["tail"]
+        assert operation() is STREAM_EOF
+    elif mode == "frames":
+        assert list(stream.frames()) == ["first", "second", "tail"]
+    else:
+        assert list(stream.batches()) == [["first", "second"], ["tail"]]
+
+
+def test_explicit_discard_drops_cached_frames_before_eof() -> None:
+    stream, _ = _stream_from_batches([["first", "second"]])
+    assert stream.read() == "first"
+    stream._discard()
+    assert stream.read() is STREAM_EOF
+
+
+@pytest.mark.parametrize(
+    "mode", ["read", "poll", "read_result", "poll_batch", "read_batch", "batches"]
+)
+def test_discard_during_native_read_does_not_deliver_a_late_batch(mode: str) -> None:
+    def poll_batch():
+        stream._discard()
+        return ["late"]
+
+    stream = AudioStream(
+        poll_batch=poll_batch,
+        wait_batch=lambda _timeout_ms: poll_batch(),
+        is_closed=lambda: False,
+    )
+    if mode == "batches":
+        assert list(stream.batches()) == []
+    elif mode in {"poll_batch", "read_batch"}:
+        assert getattr(stream, mode)() is None
+    else:
+        assert getattr(stream, mode)() is STREAM_EOF
 
 
 def test_reader_mode_cannot_change_after_first_consumption() -> None:

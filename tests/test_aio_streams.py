@@ -145,6 +145,7 @@ async def test_async_running_session_exposes_the_same_exclusive_stream() -> None
         def __init__(self) -> None:
             self.batches = [["a"]]
             self.lifecycle_state = "running"
+            self.audio_drained = False
 
         def poll_audio(self):
             return None
@@ -224,6 +225,7 @@ async def test_cancelled_native_audio_batch_is_returned_by_the_next_read() -> No
 
     class NativeRunning:
         lifecycle_state = "running"
+        audio_drained = False
 
         def __init__(self) -> None:
             self.waits = 0
@@ -250,6 +252,81 @@ async def test_cancelled_native_audio_batch_is_returned_by_the_next_read() -> No
     assert await running.audio.read() == "first"
     assert await running.audio.read() == "second"
     assert native.waits == 1
+
+
+@pytest.mark.parametrize("mode", ["read", "poll", "read_result", "frames", "batches"])
+async def test_async_stopped_producer_drains_existing_receipt_before_eof(
+    mode: str,
+) -> None:
+    batches = [["first", "second"], ["tail"]]
+
+    async def poll_batch():
+        return batches.pop(0) if batches else None
+
+    async def wait_batch(_timeout_ms):
+        return await poll_batch()
+
+    stream = AudioStream(
+        poll_batch=poll_batch,
+        wait_batch=wait_batch,
+        is_closed=lambda: True,
+        is_drained=lambda: not batches,
+    )
+    assert stream.is_closed
+    if mode == "read":
+        assert [await stream.read(), await stream.read(), await stream.read()] == [
+            "first",
+            "second",
+            "tail",
+        ]
+        assert await stream.read() is STREAM_EOF
+    elif mode in {"poll", "read_result"}:
+        operation = getattr(stream, mode)
+        assert await operation() == ["first", "second"]
+        assert await operation() == ["tail"]
+        assert await operation() is STREAM_EOF
+    elif mode == "frames":
+        assert [frame async for frame in stream.frames()] == ["first", "second", "tail"]
+    else:
+        assert [batch async for batch in stream.batches()] == [
+            ["first", "second"],
+            ["tail"],
+        ]
+
+
+async def test_async_discard_ignores_late_cancelled_batch() -> None:
+    stream, _ = _stream_from_batches([["first", "second"]])
+    assert await stream.read() == "first"
+    stream._discard()
+    stream._retain_cancelled_batch(["late"])  # type: ignore[arg-type]
+    assert await stream.read() is STREAM_EOF
+
+
+@pytest.mark.parametrize(
+    "mode", ["read", "poll", "read_result", "poll_batch", "read_batch", "batches"]
+)
+async def test_async_discard_during_read_does_not_deliver_a_late_batch(
+    mode: str,
+) -> None:
+    async def poll_batch():
+        await asyncio.sleep(0)
+        stream._discard()
+        return ["late"]
+
+    async def wait_batch(_timeout_ms):
+        return await poll_batch()
+
+    stream = AudioStream(
+        poll_batch=poll_batch,
+        wait_batch=wait_batch,
+        is_closed=lambda: False,
+    )
+    if mode == "batches":
+        assert [batch async for batch in stream.batches()] == []
+    elif mode in {"poll_batch", "read_batch"}:
+        assert await getattr(stream, mode)() is None
+    else:
+        assert await getattr(stream, mode)() is STREAM_EOF
 
 
 @pytest.mark.asyncio

@@ -81,6 +81,7 @@ class RunningSession:
             poll_batch=self._poll_audio_native,
             wait_batch=self._wait_audio_native,
             is_closed=lambda: self.is_stopped,
+            is_drained=lambda: self._native.audio_drained,
         )
         self._events = EventStream(
             poll_event=self._poll_event_native,
@@ -248,6 +249,8 @@ class RunningSession:
 
     def cancel(self) -> StopResult:
         """Cancel asynchronous work and sidecars, then join and reap once."""
+        self._audio._discard()
+        _native_call(self._native.discard_audio)
         if self._stop_result is None:
             native = _native_call(self._native.cancel)
             remaining_events = tuple(
@@ -261,8 +264,10 @@ class RunningSession:
         return self._stop_result
 
     def close(self) -> None:
-        """Context-manager compatible alias that deterministically stops."""
+        """Stop deterministically, then discard unread audio from this handle."""
         self.stop()
+        self._audio._discard()
+        _native_call(self._native.discard_audio)
 
     def __enter__(self) -> RunningSession:
         self._require_running()
@@ -281,11 +286,9 @@ class RunningSession:
             raise PocketStationError("Session has stopped", "session.stopped")
 
     def _poll_audio_native(self) -> AudioBatch | None:
-        self._require_running()
         return _native_call(self._native.poll_audio)
 
     def _wait_audio_native(self, timeout_ms: int) -> AudioBatch | None:
-        self._require_running()
         return _native_call(lambda: self._native.wait_audio(timeout_ms))
 
     def _poll_event_native(self) -> SessionEvent | None:
