@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from time import monotonic
 from types import SimpleNamespace
@@ -289,3 +290,96 @@ def test_async_running_session_rejects_a_foreign_subscription_before_cache_looku
         running.signals(foreign)
 
     assert running.signals(local) is local_stream
+
+
+def test_sync_signal_close_discards_a_native_result_returned_during_close() -> None:
+    from pocketstation.streams import SignalStream
+
+    closed = []
+
+    def late_result():
+        stream.close()
+        # This item must be discarded before payload decoding.
+        return SimpleNamespace(status="item", envelope=None)
+
+    stream = SignalStream(
+        poll_signal=late_result,
+        wait_signal=lambda _timeout: late_result(),
+        close_signal=lambda: closed.append(True),
+        signal_metrics=lambda: None,
+    )
+    assert stream.poll() is STREAM_EOF
+    assert closed == [True]
+    assert stream.read() is STREAM_EOF
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("read_method", ["poll", "read", "iterate"])
+async def test_async_signal_close_discards_late_native_results(read_method) -> None:
+    from pocketstation.aio.streams import SignalStream
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    closed = []
+
+    async def native_read():
+        entered.set()
+        await release.wait()
+        return SimpleNamespace(status="item", envelope=None)
+
+    async def native_close():
+        closed.append(True)
+
+    async def unused_metrics():
+        raise AssertionError("metrics not requested")
+
+    stream = SignalStream(
+        poll_signal=native_read,
+        wait_signal=lambda _timeout: native_read(),
+        close_signal=native_close,
+        signal_metrics=unused_metrics,
+    )
+    if read_method == "iterate":
+
+        async def read():
+            return [value async for value in stream]
+    else:
+        read = getattr(stream, read_method)
+    pending = asyncio.create_task(read())
+    await entered.wait()
+    await stream.aclose()
+    release.set()
+    result = await pending
+    assert result == [] if read_method == "iterate" else result is STREAM_EOF
+    assert closed == [True]
+    if read_method == "iterate":
+        assert [value async for value in stream] == []
+    else:
+        assert await stream.poll() is STREAM_EOF
+
+
+@pytest.mark.asyncio
+async def test_async_signal_close_clears_and_rejects_cancelled_read_retention() -> None:
+    from pocketstation.aio.streams import SignalStream
+
+    closed = []
+
+    async def native_close():
+        closed.append(True)
+
+    async def unexpected(*_args):
+        raise AssertionError("closed stream must not call native reads")
+
+    stream = SignalStream(
+        poll_signal=unexpected,
+        wait_signal=unexpected,
+        close_signal=native_close,
+        signal_metrics=unexpected,
+    )
+    item = SimpleNamespace(status="item", envelope=None)
+    stream._retain_cancelled_read(item)
+    await stream.aclose()
+    stream._retain_cancelled_read(item)
+    assert not stream._pending_reads
+    assert await stream.poll() is STREAM_EOF
+    assert closed == [True]

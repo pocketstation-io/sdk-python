@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from pocketstation._api import (
+    STREAM_EOF,
     Connector,
     ConnectorDeliveryOutcome,
     ConnectorManifest,
@@ -33,7 +34,32 @@ from pocketstation.aio._api import (
     RunningSession,
     Session,
 )
-from pocketstation.errors import AudioInputTimeoutError
+from pocketstation.errors import AudioInputTimeoutError, PocketStationError
+
+
+@pytest.mark.asyncio
+async def test_aclose_discards_unread_streams_when_stop_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    native = SimpleNamespace(
+        discard_audio=lambda: calls.append("audio"),
+        discard_signals=lambda: calls.append("signals"),
+    )
+    running = RunningSession(native)
+    failure = PocketStationError("stop failed", "session.worker_failed")
+
+    async def fail_stop():
+        raise failure
+
+    monkeypatch.setattr(running, "stop", fail_stop)
+    with pytest.raises(PocketStationError) as raised:
+        await running.aclose()
+
+    assert raised.value is failure
+    assert calls == ["signals", "audio"]
+    assert running._signals_discarded
+    assert await running.audio.poll() is STREAM_EOF
 
 
 @pytest.mark.parametrize(
@@ -137,9 +163,13 @@ async def test_cancelled_finalization_retains_the_winning_native_outcome(
             self.stop_calls = 0
             self.cancel_calls = 0
             self.discard_calls = 0
+            self.signal_discard_calls = 0
 
         def discard_audio(self) -> None:
             self.discard_calls += 1
+
+        def discard_signals(self) -> None:
+            self.signal_discard_calls += 1
 
         def _finish(self, disposition: str):
             entered.set()
@@ -201,6 +231,7 @@ async def test_cancelled_finalization_retains_the_winning_native_outcome(
     assert native.stop_calls == (1 if winning_operation == "stop" else 0)
     assert native.cancel_calls == (1 if winning_operation == "cancel" else 0)
     assert native.discard_calls == (2 if winning_operation == "cancel" else 1)
+    assert native.signal_discard_calls == native.discard_calls
     assert finish_calls == [(result.terminal_event,)]
     assert await running.events.read() is result.terminal_event
     assert running.events.is_closed

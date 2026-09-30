@@ -89,6 +89,7 @@ class RunningSession:
             is_closed=lambda: self.is_stopped,
         )
         self._signals: dict[int, SignalStream[object]] = {}
+        self._signals_discarded = False
         self._sidecars: dict[int, SidecarConnection] = {}
 
     @property
@@ -145,6 +146,8 @@ class RunningSession:
                 ),
             )
             self._signals[subscription.id] = stream
+            if self._signals_discarded:
+                stream._discard()
         return cast(SignalStream[_PayloadT], stream)
 
     def sidecar(self, handle: SidecarHandle) -> SidecarConnection:
@@ -250,6 +253,7 @@ class RunningSession:
     def cancel(self) -> StopResult:
         """Cancel asynchronous work and sidecars, then join and reap once."""
         self._audio._discard()
+        self._discard_signals()
         _native_call(self._native.discard_audio)
         if self._stop_result is None:
             native = _native_call(self._native.cancel)
@@ -264,10 +268,21 @@ class RunningSession:
         return self._stop_result
 
     def close(self) -> None:
-        """Stop deterministically, then discard unread audio from this handle."""
-        self.stop()
-        self._audio._discard()
-        _native_call(self._native.discard_audio)
+        """Stop deterministically, then discard unread audio and signals."""
+        try:
+            self.stop()
+        finally:
+            self._audio._discard()
+            try:
+                self._discard_signals()
+            finally:
+                _native_call(self._native.discard_audio)
+
+    def _discard_signals(self) -> None:
+        self._signals_discarded = True
+        for stream in self._signals.values():
+            stream._discard()
+        _native_call(self._native.discard_signals)
 
     def __enter__(self) -> RunningSession:
         self._require_running()

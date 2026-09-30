@@ -240,6 +240,7 @@ class SignalStream(Generic[_PayloadT]):
         self._state = _ReaderState()
         self._closed = False
         self._pending_reads: deque[_SignalRead] = deque(maxlen=1)
+        self._discarded = False
 
     @property
     def reader_mode(self) -> str | None:
@@ -295,10 +296,15 @@ class SignalStream(Generic[_PayloadT]):
         return iterate()
 
     async def aclose(self) -> None:
-        if self._closed:
+        if self._discarded:
             return
+        self._discard()
         await self._close_signal()
+
+    def _discard(self) -> None:
+        self._discarded = True
         self._closed = True
+        self._pending_reads.clear()
 
     async def metrics(self) -> SignalSubscriptionMetrics:
         """Snapshot capacity, payload-byte bounds, depth, delivery, and drops."""
@@ -308,6 +314,8 @@ class SignalStream(Generic[_PayloadT]):
         self,
         read: Callable[[], Awaitable[_SignalRead]],
     ) -> SignalReadResult[_PayloadT]:
+        if self._discarded:
+            return STREAM_EOF
         if self._pending_reads:
             return self._decode(self._pending_reads.popleft())
         if self._closed:
@@ -316,9 +324,12 @@ class SignalStream(Generic[_PayloadT]):
 
     def _retain_cancelled_read(self, result: _SignalRead) -> None:
         """Retain one native result accepted before asyncio cancellation."""
-        self._pending_reads.append(result)
+        if not self._discarded:
+            self._pending_reads.append(result)
 
     def _decode(self, result: _SignalRead) -> SignalReadResult[_PayloadT]:
+        if self._discarded:
+            return STREAM_EOF
         if result.status == "item":
             if result.envelope is None:
                 raise StreamError(

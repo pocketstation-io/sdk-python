@@ -24,6 +24,16 @@ from ..source_authoring import SourceDriver as SyncSourceDriver
 from ..source_authoring import SourceProvider as SyncSourceProvider
 
 _Result = TypeVar("_Result")
+_SOURCE_DRAIN_TIMEOUT_SECONDS = 1.0
+
+
+class _SourceInterrupted(Exception):
+    """The wait helper interrupted next at Core's explicit request."""
+
+
+@dataclass(slots=True)
+class _SourceOperation:
+    result: Future[Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +80,14 @@ class SourceDriver:
     async def next(self, cancellation: SourceCancellation) -> SourceEmission | None:
         raise NotImplementedError
 
+    async def drain(self) -> SourceEmission | None:
+        """Return already accepted input on graceful stop, or None when empty.
+
+        Do not acquire live input or advance an iterator. Each wait uses close_s
+        capped at one second; Core limits the complete drain to one second.
+        """
+        return None
+
     async def close(self) -> None:
         """Release provider resources exactly once."""
 
@@ -101,6 +119,13 @@ class _AsyncIteratorDriver(SourceDriver):
         except StopAsyncIteration:
             return None
 
+    async def close(self) -> None:
+        close: Callable[[], Coroutine[Any, Any, None]] | None = getattr(
+            self._iterator, "aclose", None
+        )
+        if close is not None:
+            await close()
+
 
 class _AsyncIterableFactory:
     __slots__ = ("_factory", "_validator")
@@ -122,7 +147,7 @@ class _AsyncIterableFactory:
 
 
 class _DriverAdapter(SyncSourceDriver):
-    __slots__ = ("_deadlines", "_driver", "_loop")
+    __slots__ = ("_deadlines", "_driver", "_loop", "_operation")
 
     def __init__(
         self,
@@ -133,20 +158,39 @@ class _DriverAdapter(SyncSourceDriver):
         self._driver = driver
         self._loop = loop
         self._deadlines = deadlines
+        self._operation = _SourceOperation()
 
     def prepare(self, context: SourcePrepareContext) -> None:
         _wait_for_source(
             self._loop,
             self._driver.prepare(context),
             timeout_s=self._deadlines.prepare_s,
+            active=self._operation,
         )
 
     def next(self, cancellation: SyncSourceCancellation) -> SourceEmission | None:
+        try:
+            return _wait_for_source(
+                self._loop,
+                self._driver.next(SourceCancellation(cancellation)),
+                timeout_s=self._deadlines.next_s,
+                cancellation=cancellation,
+                active=self._operation,
+            )
+        except _SourceInterrupted:
+            return None
+
+    def drain(self) -> SourceEmission | None:
+        drain: Callable[[], Coroutine[Any, Any, SourceEmission | None]] | None = (
+            getattr(self._driver, "drain", None)
+        )
+        if drain is None:
+            return None
         return _wait_for_source(
             self._loop,
-            self._driver.next(SourceCancellation(cancellation)),
-            timeout_s=self._deadlines.next_s,
-            cancellation=cancellation,
+            drain(),
+            timeout_s=min(self._deadlines.close_s, _SOURCE_DRAIN_TIMEOUT_SECONDS),
+            active=self._operation,
         )
 
     def close(self) -> None:
@@ -154,6 +198,7 @@ class _DriverAdapter(SyncSourceDriver):
             self._loop,
             self._driver.close(),
             timeout_s=self._deadlines.close_s,
+            active=self._operation,
         )
 
 
@@ -259,22 +304,51 @@ def _wait_for_source(
     *,
     timeout_s: float,
     cancellation: SyncSourceCancellation | None = None,
+    active: _SourceOperation | None = None,
 ) -> _Result:
+    if active is not None and active.result is not None and not active.result.done():
+        awaitable.close()
+        raise RuntimeError(
+            "asyncio Source callback refused: previous operation cleanup is incomplete"
+        )
+    operation: Future[asyncio.Task[_Result]] = Future()
+
+    async def tracked() -> _Result:
+        task = asyncio.current_task()
+        assert task is not None
+        operation.set_result(task)
+        return await awaitable
+
+    tracked_awaitable = tracked()
     try:
-        future: Future[_Result] = asyncio.run_coroutine_threadsafe(awaitable, loop)
+        future: Future[_Result] = asyncio.run_coroutine_threadsafe(
+            tracked_awaitable, loop
+        )
     except RuntimeError:
+        tracked_awaitable.close()
         awaitable.close()
         raise
+    if active is not None:
+        active.result = future
     deadline = monotonic() + timeout_s
     while True:
+        # Preserve an already completed emission or provider error even if Core
+        # requested stop before this worker observed that completion.
+        if future.done():
+            try:
+                return future.result()
+            except FutureCancelledError as error:
+                raise asyncio.CancelledError(
+                    "asyncio Source operation was cancelled"
+                ) from error
         if cancellation is not None and cancellation.cancelled:
-            future.cancel()
-            raise asyncio.CancelledError("Core cancelled the asyncio Source")
+            return _interrupt_source(loop, operation, future, deadline=deadline)
         remaining = deadline - monotonic()
         if remaining <= 0:
-            future.cancel()
+            _request_source_interruption(loop, operation)
             raise TimeoutError(
-                f"asyncio Source operation exceeded {timeout_s:g} seconds"
+                f"asyncio Source operation exceeded {timeout_s:g} seconds; "
+                "cancellation cleanup may be incomplete"
             )
         try:
             return future.result(min(remaining, 0.05))
@@ -284,6 +358,56 @@ def _wait_for_source(
             raise asyncio.CancelledError(
                 "asyncio Source operation was cancelled"
             ) from error
+
+
+def _interrupt_source(
+    loop: asyncio.AbstractEventLoop,
+    operation: Future[asyncio.Task[_Result]],
+    result: Future[_Result],
+    *,
+    deadline: float,
+) -> _Result:
+    acknowledged = _request_source_interruption(loop, operation)
+    try:
+        interrupted = acknowledged.result(max(0, deadline - monotonic()))
+        try:
+            # Cancelling the concurrent Future would return before task cleanup.
+            # Await the actual task's completion before Core calls drain or close.
+            return result.result(max(0, deadline - monotonic()))
+        except FutureCancelledError as error:
+            if interrupted:
+                raise _SourceInterrupted(
+                    "Core interrupted the asyncio Source"
+                ) from error
+            raise asyncio.CancelledError(
+                "asyncio Source operation was cancelled"
+            ) from error
+    except FutureTimeoutError as error:
+        if result.done():
+            # FutureTimeoutError aliases TimeoutError. Keep a provider's own
+            # completed timeout exception instead of relabelling it as our wait.
+            raise
+        raise TimeoutError(
+            "asyncio Source interruption exceeded the operation deadline; "
+            "cancellation cleanup may be incomplete"
+        ) from error
+
+
+def _request_source_interruption(
+    loop: asyncio.AbstractEventLoop,
+    operation: Future[asyncio.Task[_Result]],
+) -> Future[bool]:
+    async def request_interruption() -> bool:
+        task = await asyncio.wrap_future(operation)
+        # Preserve a provider's own cancellation, including its cleanup error.
+        return task.cancel() if not task.cancelling() else False
+
+    request = request_interruption()
+    try:
+        return asyncio.run_coroutine_threadsafe(request, loop)
+    except RuntimeError:
+        request.close()
+        raise
 
 
 __all__ = [

@@ -43,8 +43,8 @@ use crate::sidecar::{
     PythonSidecarRead, PythonSidecarSnapshot, MAXIMUM_WAIT_MS as MAXIMUM_SIDECAR_WAIT_MS,
 };
 use crate::signals::{
-    close_signal, copy_signal_metrics, new_signal_receipts, poll_signal, subscribe_derived,
-    subscribe_source_output, validate_signal_subscription, wait_signal,
+    close_signal, copy_signal_metrics, discard_signal_receipts, new_signal_receipts, poll_signal,
+    subscribe_derived, subscribe_source_output, validate_signal_subscription, wait_signal,
     OwnedSignalSubscriptionMetrics, PythonBusSubscription, PythonSignalRead,
     PythonSignalSubscriptionMetrics, SignalReceipts,
 };
@@ -775,6 +775,10 @@ impl PythonRunningSession {
         Ok(())
     }
 
+    fn discard_signals(&self) -> PyResult<()> {
+        discard_signal_receipts(&self.signal_receipts)
+    }
+
     fn poll_event(&self, py: Python<'_>) -> PyResult<Option<PythonSessionEvent>> {
         let commands = self.commands()?;
         let event = py.detach(|| crate::observations::request_event(&commands))?;
@@ -956,6 +960,7 @@ impl PythonRunningSession {
     }
 
     fn cancel(&self, py: Python<'_>) -> PyResult<PythonStopResult> {
+        self.discard_signals()?;
         let worker = self
             .worker
             .lock()
