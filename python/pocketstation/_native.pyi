@@ -510,6 +510,32 @@ class ClockDomainDescriptor:
     origin: ClockDomainOrigin
     tick_rate_hz: int | None
 
+class AudioProcessing:
+    @property
+    def input_source_id(self) -> SourceId: ...
+    @property
+    def input_stream_id(self) -> StreamId: ...
+    @property
+    def input_sequence_number(self) -> int: ...
+    @property
+    def input_timestamp_ns(self) -> int: ...
+    @property
+    def input_duration_ns(self) -> int: ...
+    @property
+    def input_source_generation(self) -> int: ...
+    @property
+    def input_discontinuity_epoch(self) -> int: ...
+    @property
+    def generation(self) -> int: ...
+    @property
+    def nominal_delay_samples(self) -> int: ...
+    @property
+    def padding_samples(self) -> int: ...
+    @property
+    def tail_offset_samples(self) -> int: ...
+    @property
+    def is_tail(self) -> bool: ...
+
 class AudioFrame:
     sample_rate_hz: int
     channel_count: int
@@ -533,6 +559,8 @@ class AudioFrame:
     route_received_at_ns: int
     endpoint_enqueued_at_ns: int | None
     polled_at_ns: int | None
+    @property
+    def processing(self) -> AudioProcessing | None: ...
     @property
     def samples(self) -> memoryview: ...
     @property
@@ -1037,6 +1065,53 @@ class _SessionStartCancellation:
     def request(self) -> None: ...
     def is_requested(self) -> bool: ...
 
+class _PlaybackReference:
+    @staticmethod
+    def selected_application(
+        input: Stem | SourceOutput | DerivedStream,
+    ) -> _PlaybackReference: ...
+    @staticmethod
+    def output_mix(
+        input: Stem | SourceOutput | DerivedStream,
+    ) -> _PlaybackReference: ...
+    @staticmethod
+    def rendered_audio(
+        input: Stem | SourceOutput | DerivedStream,
+    ) -> _PlaybackReference: ...
+
+class _EchoCancelledAudio:
+    audio: Stem
+    reference_coverage: str
+    def observations(self) -> _EchoCancellationObservations: ...
+
+class _EchoCancellationObservations:
+    state: str
+    processed_microphone_frames_total: int
+    output_frames_total: int
+    tail_frames_total: int
+    tail_padding_samples_total: int
+    discarded_tail_generations_total: int
+    nominal_delay_samples: int
+    drain_duration_ms: int
+    discarded_microphone_frames_total: int
+    discarded_reference_frames_total: int
+    resets_total: int
+    processing_generation: int
+    microphone_queue_depth_frames: int
+    reference_queue_depth_frames: int
+    queue_capacity_frames: int
+    latest_processing_duration_ns: int
+    maximum_processing_duration_ns: int
+    latest_reference_age_ns: int
+    latest_reference_lead_ns: int
+    maximum_cadence_error_ns: int
+    analyzed_reference_frames_total: int
+    interrupted_requests_total: int
+    reference_source_id: int | None
+    microphone_source_id: int | None
+    qualified_algorithmic_delay_samples: int | None
+    last_error: str | None
+
 class _AudioInputObservations:
     capacity_frames: int
     buffer_slots: int
@@ -1259,6 +1334,11 @@ class Session:
         operator_id: str,
         configuration: list[tuple[str, str, bool]],
     ) -> OperatorInstance: ...
+    def echo_cancel(
+        self,
+        microphone: Stem | SourceOutput | DerivedStream,
+        reference: _PlaybackReference,
+    ) -> _EchoCancelledAudio: ...
     def endpoint(self, descriptor: _EndpointDescriptor) -> Endpoint: ...
     def connector(
         self,
@@ -1337,8 +1417,10 @@ class Session:
 class RunningSession:
     session_id: int
     lifecycle_state: str
+    audio_drained: bool
     def poll_audio(self) -> AudioBatch | None: ...
     def wait_audio(self, timeout_ms: int = 100) -> AudioBatch | None: ...
+    def discard_audio(self) -> None: ...
     def poll_event(self) -> SessionEvent | None: ...
     def wait_event(self, timeout_ms: int = 100) -> SessionEvent | None: ...
     def poll_signal(self, subscription: BusSubscription) -> _SignalRead: ...

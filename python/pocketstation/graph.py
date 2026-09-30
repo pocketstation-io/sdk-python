@@ -34,6 +34,7 @@ from .identity import (
 )
 
 if TYPE_CHECKING:
+    from .aec import EchoAudioInput, EchoCancelledAudio, PlaybackReference
     from .aio.connector import Connector as AsyncConnector
     from .connector import Connector as SyncConnector
     from .relay import RelayPublisher, RelayRoute
@@ -1183,6 +1184,28 @@ class _GraphSessionDeclarations:
                     operator.operator_id,
                     operator.configuration._as_native(),
                 ),
+                self._destination_for_stream,
+            )
+        )
+
+    def echo_cancel(
+        self, microphone: EchoAudioInput, reference: PlaybackReference
+    ) -> EchoCancelledAudio:
+        """Declare native echo cancellation for explicitly selected audio inputs.
+
+        This is an immediate draft operation for both sync and asyncio Sessions.
+        The selected raw audio remains independently routable.
+        """
+        from .aec import EchoCancelledAudio, PlaybackReference, _require_audio
+
+        microphone = _require_audio(microphone)
+        if not isinstance(reference, PlaybackReference):
+            raise TypeError("reference must be a PlaybackReference")
+        return _native_call(
+            lambda: EchoCancelledAudio(
+                self._native.echo_cancel(microphone._native, reference._native),
+                microphone,
+                reference,
                 self._destination_for_stream,
             )
         )

@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Generic, TypeAlias, TypeVar, cast
 
+from ._native import AudioProcessing, ClockDomainDescriptor
 from ._native import BusSubscription as _NativeBusSubscription
-from ._native import ClockDomainDescriptor
 from ._native import _SignalAudioPayload as _NativeSignalAudioPayload
 from ._native import _SignalDerivation as _NativeSignalDerivation
 from ._native import _SignalEnvelope as _NativeSignalEnvelope
@@ -275,6 +275,7 @@ SignalReadResult: TypeAlias = SignalEnvelope[_PayloadT] | EndOfStream | None
 
 __all__ = [
     "STREAM_EOF",
+    "AudioProcessing",
     "BusSubscription",
     "EndOfStream",
     "SignalAudioPayload",

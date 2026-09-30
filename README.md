@@ -142,8 +142,10 @@ Session starts. Generated speech enters the Session through `audio_input()`, so
 it can be recorded, published, observed, or removed from pending local output
 without stopping microphone capture.
 
-This API does not provide model intelligence, acoustic echo cancellation, or a
-hosted inference service. Provider-side cancellation and receiver playout
+This API does not provide model intelligence or a hosted inference service.
+Native echo processing has its own [Session API](docs/guides/echo-cancellation.md)
+in the development candidate; published 0.1.5 wheels do not include it.
+Provider-side cancellation and receiver playout
 remain separate observations; PocketStation does not report that a person
 stopped hearing audio unless the receiver can prove it.
 

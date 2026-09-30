@@ -177,8 +177,9 @@ provider and receiver evidence.
 ## Live transcription scheduling
 
 `FasterWhisper.attach_many` gives each selected stem one window assembler and
-feeds complete windows to one shared inference Operator by default. The private boundary
-contains mono 16 kHz PCM16, original source/time metadata, and a 1 MiB byte bound.
+feeds complete windows to one shared inference Operator by default. Each queued
+window contains mono 16 kHz PCM16 and original source/time metadata, with a
+1 MiB size limit.
 Core's audio input edges hold eight frames; typed window edges hold eight windows
 per producer. The authoring `queue_capacity_signals` does not enlarge compiled
 audio edges. Overload remains visible in route metrics and is independent of
@@ -197,14 +198,15 @@ runtime. A process-wide maximum of 64 callback workers rejects excess admission.
 Successful shutdown joins the worker. Python cannot safely interrupt an arbitrary
 blocked callback: timeout makes finalization fail, retains the worker's capacity
 permit, and closes the node only after that callback returns. Repeated timed-out
-callbacks cannot create unlimited workers. This thread boundary does not make a
-Python callback realtime-safe and does not change the audio callback contract.
+callbacks cannot create unlimited workers. A worker thread does not make Python
+callbacks realtime-safe; audio callbacks still must not allocate, lock, block,
+await, log or panic.
 
 ### Explicit parallel model policy and vocabulary
 
 `FasterWhisperConfiguration(inference_concurrency=2, cpu_threads=4)` uses two
 source-affine inference workers, each with two CPU threads. Concurrency defaults
-to one, is bounded to eight, and cannot exceed the total CPU budget. Actual
+to one, cannot exceed eight, and cannot exceed the total CPU budget. Actual
 worker count also cannot exceed selected sources. Parallel mode requires
 `num_workers=1` to prevent nested model workers multiplying the CPU budget.
 Remainder threads go to the first workers. Each worker owns a model instance,

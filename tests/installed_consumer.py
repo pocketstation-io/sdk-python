@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import math
+import random
 import sys
 from array import array
 from pathlib import Path
@@ -13,6 +15,7 @@ import httpx
 import pocketstation as public_pocketstation
 import pocketstation._api as pocketstation
 import pocketstation._native as native
+from pocketstation.aec import EchoCancellationState, PlaybackReference
 
 _VOICE_FRAME_SAMPLES = 480
 
@@ -248,7 +251,7 @@ def _exercise_complete_provider_path() -> dict[str, object]:
     transformed = running.signals(subscription).read(timeout_s=1.0)
     audio.write(array("f", [0.25, -0.25, 0.5, -0.5]))
     frame = running.audio.read(timeout_s=1.0)
-    if frame is None:
+    if not isinstance(frame, public_pocketstation.AudioFrame):
         raise RuntimeError("installed consumer timed out waiting for audio")
     if not delivered.wait(1.0):
         raise RuntimeError("installed Connector did not receive audio")
@@ -448,7 +451,9 @@ def _exercise_operator_pcm_reentry() -> None:
     source.write(array("f", [0.0]) * _VOICE_FRAME_SAMPLES)
     frame = running.audio.read(timeout_s=1.0)
     result = running.stop()
-    if frame is None or list(frame.samples.cast("f")) != list(emitted):
+    if not isinstance(frame, public_pocketstation.AudioFrame) or list(
+        frame.samples.cast("f")
+    ) != list(emitted):
         raise RuntimeError("installed Python Operator PCM did not reenter Core")
     if not result.success or not closed.wait(1.0):
         raise RuntimeError("installed Python Operator PCM did not finalize")
@@ -534,6 +539,129 @@ def _exercise_invitation_lifecycle() -> None:
         raise RuntimeError("installed invitation put its credential in a request URL")
 
 
+def _exercise_echo_cancellation() -> dict[str, object]:
+    session = public_pocketstation.Session(frame_duration_ms=10)
+    reference = session.audio_input("installed-playback")
+    microphone = session.audio_input("installed-microphone")
+    cleaned = session.echo_cancel(
+        microphone.output, PlaybackReference.rendered_audio(reference.output)
+    )
+    endpoint = session.polled_audio()
+    reference.output.send(endpoint)
+    cleaned.audio.send(endpoint)
+    previous = array("f", [0.0]) * 480
+    rng = random.Random(138)
+    echo_input_power = echo_output_power = voice_input_power = voice_output_power = 0.0
+    with session.start() as running:
+        for index in range(400):
+            playback = array("f", (rng.uniform(-0.1, 0.1) for _ in range(480)))
+            if index < 300:
+                mic = array("f", (value * 0.6 for value in previous))
+            else:
+                playback = array("f", [0.0]) * 480
+                mic = array(
+                    "f",
+                    (0.2 * math.sin(2 * math.pi * 300 * i / 48000) for i in range(480)),
+                )
+            reference.try_write(playback)
+            microphone.try_write(mic)
+            delivered: set[str] = set()
+            for _ in range(2):
+                frame = running.audio.read(timeout_s=1.0)
+                if not isinstance(frame, public_pocketstation.AudioFrame):
+                    raise RuntimeError("installed AEC did not deliver both stems")
+                values = frame.samples.cast("f")
+                if frame.source_id == reference.source_id:
+                    if (
+                        "raw" in delivered
+                        or list(values) != list(playback)
+                        or frame.processing is not None
+                    ):
+                        raise RuntimeError(
+                            "installed AEC altered the raw application stem"
+                        )
+                    delivered.add("raw")
+                else:
+                    if (
+                        "processed" in delivered
+                        or frame.stem_id != cleaned.audio.id
+                        or not all(math.isfinite(value) for value in values)
+                        or len(values) != 480
+                    ):
+                        raise RuntimeError(
+                            "installed AEC output or identity is invalid"
+                        )
+                    metadata = frame.processing
+                    if not (
+                        metadata is not None
+                        and metadata.input_source_id == microphone.source_id
+                        and metadata.input_stream_id == microphone.output.stream_id
+                        and metadata.input_duration_ns == 10_000_000
+                        and frame.source_id != metadata.input_source_id
+                        and metadata.padding_samples == 0
+                        and not metadata.is_tail
+                        and metadata.nominal_delay_samples == 432
+                    ):
+                        raise RuntimeError("installed AEC lost input provenance")
+                    delivered.add("processed")
+                    if 200 <= index < 300:
+                        echo_output_power += sum(value * value for value in values)
+                    elif index >= 350:
+                        voice_output_power += sum(value * value for value in values)
+            if delivered != {"raw", "processed"}:
+                raise RuntimeError("installed AEC lost a branch")
+            if 200 <= index < 300:
+                echo_input_power += sum(value * value for value in mic)
+            elif index >= 350:
+                voice_input_power += sum(value * value for value in mic)
+            previous = playback
+        reference.close()
+        microphone.close()
+        if not running.stop().success:
+            raise RuntimeError("installed AEC Session did not stop successfully")
+        for offset in range(4):
+            tail = running.audio.read(timeout_s=1.0)
+            if not (
+                isinstance(tail, public_pocketstation.AudioFrame)
+                and tail.processing is not None
+                and tail.processing.is_tail
+                and tail.processing.input_source_id == microphone.source_id
+                and tail.processing.padding_samples == 480
+                and tail.processing.tail_offset_samples == offset * 480
+            ):
+                raise RuntimeError("installed AEC lost the final polled tail")
+    observation = cleaned.observations()
+    if not (
+        observation.state is EchoCancellationState.STOPPED
+        and observation.processed_microphone_frames_total == 400
+        and observation.output_frames_total == 404
+        and observation.tail_frames_total == 4
+        and observation.tail_padding_samples_total == 1920
+        and observation.discarded_tail_generations_total == 0
+        and observation.nominal_delay_samples == 432
+        and observation.drain_duration_ms == 40
+        and observation.microphone_source_id == microphone.source_id
+        and observation.reference_source_id == reference.source_id
+        and echo_input_power > 1.0
+        and echo_output_power < echo_input_power * 0.5
+        and 0.5 < voice_output_power / voice_input_power < 2.0
+        and observation.last_error is None
+    ):
+        raise RuntimeError(f"installed AEC processing proof failed: {observation}")
+    return {
+        "processed_frames_total": observation.processed_microphone_frames_total,
+        "output_frames_total": observation.output_frames_total,
+        "tail_frames_total": observation.tail_frames_total,
+        "tail_padding_samples_total": observation.tail_padding_samples_total,
+        "input_provenance_preserved": True,
+        "polled_tail_preserved": True,
+        "echo_power_ratio": echo_output_power / echo_input_power,
+        "voice_power_ratio": voice_output_power / voice_input_power,
+        "raw_stem_unchanged": True,
+        "terminal_state": observation.state.value,
+    }
+
+
 def main() -> None:
     fixture_exports = {
         "ExtensionConformanceReport",
@@ -550,6 +678,7 @@ def main() -> None:
     _exercise_structured_failure()
     _exercise_operator_pcm_reentry()
     _exercise_invitation_lifecycle()
+    aec = _exercise_echo_cancellation()
     package_path = Path(pocketstation.__file__).resolve()
     environment_root = Path(sys.prefix).resolve()
     if not package_path.is_relative_to(environment_root):
@@ -559,6 +688,7 @@ def main() -> None:
             {
                 "package_path": str(package_path),
                 "python": sys.version.split()[0],
+                "aec": aec,
                 **provider,
                 "success": True,
             },

@@ -145,6 +145,27 @@
     {
       "ecosystem": "cargo",
       "license_expression": "MIT OR Apache-2.0",
+      "name": "anyhow",
+      "notice_origins": [
+        {
+          "origin": "crate:anyhow@1.0.104/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "crate:anyhow@1.0.104/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "notices": [
+        "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+      ],
+      "source_url": "https://crates.io/crates/anyhow/1.0.104",
+      "version": "1.0.104"
+    },
+    {
+      "ecosystem": "cargo",
+      "license_expression": "MIT OR Apache-2.0",
       "name": "arrayvec",
       "notice_origins": [
         {
@@ -246,6 +267,22 @@
       ],
       "source_url": "https://crates.io/api/v1/crates/autocfg/1.5.1/download",
       "version": "1.5.1"
+    },
+    {
+      "ecosystem": "cargo",
+      "license_expression": "MIT",
+      "name": "autotools",
+      "notice_origins": [
+        {
+          "origin": "crate:autotools@0.2.7/LICENSE",
+          "sha256": "334c40cc7ab76303a1555e77724200631cf31c2a3846b2602161cf8921210b46"
+        }
+      ],
+      "notices": [
+        "334c40cc7ab76303a1555e77724200631cf31c2a3846b2602161cf8921210b46"
+      ],
+      "source_url": "https://crates.io/crates/autotools/0.2.7",
+      "version": "0.2.7"
     },
     {
       "ecosystem": "cargo",
@@ -3045,6 +3082,27 @@
     {
       "ecosystem": "cargo",
       "license_expression": "MIT OR Apache-2.0",
+      "name": "prettyplease",
+      "notice_origins": [
+        {
+          "origin": "crate:prettyplease@0.2.37/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "crate:prettyplease@0.2.37/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "notices": [
+        "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+        "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+      ],
+      "source_url": "https://crates.io/crates/prettyplease/0.2.37",
+      "version": "0.2.37"
+    },
+    {
+      "ecosystem": "cargo",
+      "license_expression": "MIT OR Apache-2.0",
       "name": "proc-macro-crate",
       "notice_origins": [
         {
@@ -4967,6 +5025,98 @@
       ],
       "source_url": "https://crates.io/api/v1/crates/web-sys/0.3.104/download",
       "version": "0.3.104"
+    },
+    {
+      "ecosystem": "cargo",
+      "license_expression": "BSD-3-Clause",
+      "name": "webrtc-audio-processing",
+      "notice_origins": [
+        {
+          "origin": "crate:webrtc-audio-processing@2.1.0/COPYING",
+          "sha256": "6db9d4840c6ff0fb3c37ace8e32cfd3eb6c6e759c67b4ecbee969cd8d75154a9"
+        }
+      ],
+      "notices": [
+        "6db9d4840c6ff0fb3c37ace8e32cfd3eb6c6e759c67b4ecbee969cd8d75154a9"
+      ],
+      "source_url": "https://crates.io/crates/webrtc-audio-processing/2.1.0",
+      "version": "2.1.0"
+    },
+    {
+      "ecosystem": "cargo",
+      "license_expression": "BSD-3-Clause",
+      "name": "webrtc-audio-processing-config",
+      "notice_origins": [
+        {
+          "origin": "crate:webrtc-audio-processing-config@2.1.0/COPYING",
+          "sha256": "9b79539028e216e813e152d45f5c1ed5fdd0554426ad50270fb03134e7082dac"
+        }
+      ],
+      "notices": [
+        "9b79539028e216e813e152d45f5c1ed5fdd0554426ad50270fb03134e7082dac"
+      ],
+      "source_url": "https://crates.io/crates/webrtc-audio-processing-config/2.1.0",
+      "version": "2.1.0"
+    },
+    {
+      "ecosystem": "cargo",
+      "license_expression": "BSD-3-Clause AND Apache-2.0 AND LicenseRef-WebRTC-Bundled",
+      "name": "webrtc-audio-processing-sys",
+      "notice_origins": [
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/COPYING",
+          "sha256": "9b79539028e216e813e152d45f5c1ed5fdd0554426ad50270fb03134e7082dac"
+        },
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/webrtc-audio-processing/COPYING",
+          "sha256": "9b79539028e216e813e152d45f5c1ed5fdd0554426ad50270fb03134e7082dac"
+        },
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/webrtc-audio-processing/webrtc/LICENSE",
+          "sha256": "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482"
+        },
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/webrtc-audio-processing/webrtc/PATENTS",
+          "sha256": "01462e2068d1a04c2274f3389773014c14ed9bc3446b28303543bd3e3c064145"
+        },
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/webrtc-audio-processing/webrtc/common_audio/third_party/ooura/LICENSE",
+          "sha256": "25b7731b70c77ecd5f3bb19303fbaa99be18860f81d44f71da670fdcd04829db"
+        },
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/webrtc-audio-processing/webrtc/common_audio/third_party/spl_sqrt_floor/LICENSE",
+          "sha256": "41d791701e3e1c1073470403de7e342442d1e6a2af72681023b13a2f45f2125c"
+        },
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/webrtc-audio-processing/webrtc/third_party/pffft/LICENSE",
+          "sha256": "a46200592eb193853527250da098e6bb0c75424e7a2c7db8da526c4f301c3d88"
+        },
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/webrtc-audio-processing/webrtc/third_party/rnnoise/COPYING",
+          "sha256": "e2f59ff41d9d03adc3dcf3deff170f8c8cf4a6eb4a9b174762a7656d23200ffa"
+        },
+        {
+          "origin": "crate:webrtc-audio-processing-sys@2.1.0/webrtc-audio-processing/webrtc/modules/third_party/fft/LICENSE",
+          "sha256": "6fdbabd2c95c5efc6f1e46175278239afb9343120a3022ed0e0cb04267a6aeb3"
+        },
+        {
+          "origin": "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.tar.gz#LICENSE",
+          "sha256": "c79a7fea0e3cac04cd43f20e7b648e5a0ff8fa5344e644b0ee09ca1162b62747"
+        }
+      ],
+      "notices": [
+        "01462e2068d1a04c2274f3389773014c14ed9bc3446b28303543bd3e3c064145",
+        "25b7731b70c77ecd5f3bb19303fbaa99be18860f81d44f71da670fdcd04829db",
+        "41d791701e3e1c1073470403de7e342442d1e6a2af72681023b13a2f45f2125c",
+        "6fdbabd2c95c5efc6f1e46175278239afb9343120a3022ed0e0cb04267a6aeb3",
+        "9b79539028e216e813e152d45f5c1ed5fdd0554426ad50270fb03134e7082dac",
+        "a46200592eb193853527250da098e6bb0c75424e7a2c7db8da526c4f301c3d88",
+        "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482",
+        "c79a7fea0e3cac04cd43f20e7b648e5a0ff8fa5344e644b0ee09ca1162b62747",
+        "e2f59ff41d9d03adc3dcf3deff170f8c8cf4a6eb4a9b174762a7656d23200ffa"
+      ],
+      "source_url": "https://crates.io/crates/webrtc-audio-processing-sys/2.1.0",
+      "version": "2.1.0"
     },
     {
       "ecosystem": "cargo",

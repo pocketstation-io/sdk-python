@@ -1,5 +1,6 @@
 #![allow(clippy::redundant_pub_crate)]
 
+pub(crate) mod aec;
 pub(crate) mod audio_input;
 pub(crate) mod connector;
 pub(crate) mod endpoint_authoring;
@@ -21,6 +22,7 @@ use pyo3::prelude::*;
 
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    aec::register(module)?;
     audio_input::register(module)?;
     connector::register(module)?;
     endpoint_authoring::register(module)?;

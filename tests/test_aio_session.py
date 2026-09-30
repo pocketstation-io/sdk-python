@@ -136,6 +136,10 @@ async def test_cancelled_finalization_retains_the_winning_native_outcome(
         def __init__(self) -> None:
             self.stop_calls = 0
             self.cancel_calls = 0
+            self.discard_calls = 0
+
+        def discard_audio(self) -> None:
+            self.discard_calls += 1
 
         def _finish(self, disposition: str):
             entered.set()
@@ -196,6 +200,7 @@ async def test_cancelled_finalization_retains_the_winning_native_outcome(
     assert result.recording is recording
     assert native.stop_calls == (1 if winning_operation == "stop" else 0)
     assert native.cancel_calls == (1 if winning_operation == "cancel" else 0)
+    assert native.discard_calls == (2 if winning_operation == "cancel" else 1)
     assert finish_calls == [(result.terminal_event,)]
     assert await running.events.read() is result.terminal_event
     assert running.events.is_closed

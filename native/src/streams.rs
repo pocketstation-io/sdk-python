@@ -1,12 +1,8 @@
-use std::sync::mpsc::{sync_channel, SyncSender};
 use std::time::Duration;
 
-use pocketstation::PolledAudioPollError;
-use pyo3::exceptions::{PyIndexError, PyRuntimeError};
+use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyMemoryView};
-
-use crate::session::SessionCommand;
 
 #[derive(Clone, Copy)]
 #[pyclass(name = "ClockDomainDescriptor", frozen)]
@@ -50,6 +46,42 @@ pub(crate) fn clock_domain_descriptor(
         kind,
         origin,
         tick_rate_hz: descriptor.tick_rate_hz(),
+    }
+}
+
+#[derive(Clone, Copy)]
+#[pyclass(name = "AudioProcessing", frozen, get_all)]
+pub(crate) struct PythonAudioProcessing {
+    input_source_id: u64,
+    input_stream_id: u64,
+    input_sequence_number: u64,
+    input_timestamp_ns: u64,
+    input_duration_ns: u64,
+    input_source_generation: u32,
+    input_discontinuity_epoch: u64,
+    generation: u64,
+    nominal_delay_samples: u32,
+    padding_samples: u32,
+    tail_offset_samples: u32,
+    is_tail: bool,
+}
+
+impl From<pocketstation::AudioProcessing> for PythonAudioProcessing {
+    fn from(value: pocketstation::AudioProcessing) -> Self {
+        Self {
+            input_source_id: value.input_source_id.get(),
+            input_stream_id: value.input_stream_id.get(),
+            input_sequence_number: value.input_sequence_number,
+            input_timestamp_ns: value.input_timestamp_ns,
+            input_duration_ns: value.input_duration_ns,
+            input_source_generation: value.input_source_generation,
+            input_discontinuity_epoch: value.input_discontinuity_epoch,
+            generation: value.generation,
+            nominal_delay_samples: value.nominal_delay_samples,
+            padding_samples: value.padding_samples,
+            tail_offset_samples: value.tail_offset_samples,
+            is_tail: value.is_tail(),
+        }
     }
 }
 
@@ -98,6 +130,8 @@ pub(crate) struct PythonAudioFrame {
     endpoint_enqueued_at_ns: Option<u64>,
     #[pyo3(get)]
     polled_at_ns: Option<u64>,
+    #[pyo3(get)]
+    processing: Option<PythonAudioProcessing>,
 }
 
 #[pymethods]
@@ -202,44 +236,7 @@ pub(crate) struct OwnedAudioFrame {
     pub(crate) route_received_at_ns: u64,
     pub(crate) endpoint_enqueued_at_ns: Option<u64>,
     pub(crate) polled_at_ns: Option<u64>,
-}
-
-pub(crate) fn request_audio_batch(
-    commands: &SyncSender<SessionCommand>,
-) -> PyResult<Option<Vec<OwnedAudioFrame>>> {
-    let (response, receiver) = sync_channel(1);
-    commands
-        .send(SessionCommand::PollAudio { response })
-        .map_err(|_| PyRuntimeError::new_err("native Session worker has stopped"))?;
-    receiver
-        .recv()
-        .map_err(|_| PyRuntimeError::new_err("native Session worker did not return audio"))?
-        .map_err(PyRuntimeError::new_err)
-}
-
-pub(crate) fn request_audio_batch_wait(
-    commands: &SyncSender<SessionCommand>,
-    timeout: Duration,
-) -> PyResult<Option<Vec<OwnedAudioFrame>>> {
-    let (response, receiver) = sync_channel(1);
-    commands
-        .send(SessionCommand::WaitAudio { timeout, response })
-        .map_err(|_| PyRuntimeError::new_err("native Session worker has stopped"))?;
-    receiver
-        .recv()
-        .map_err(|_| PyRuntimeError::new_err("native Session worker did not return audio"))?
-        .map_err(PyRuntimeError::new_err)
-}
-
-pub(crate) fn copy_audio_batch(
-    running: &pocketstation::RunningSession,
-) -> Result<Option<Vec<OwnedAudioFrame>>, String> {
-    let batch = match running.try_poll_audio() {
-        Ok(batch) => batch,
-        Err(PolledAudioPollError::Empty) => return Ok(None),
-        Err(error) => return Err(error.to_string()),
-    };
-    copy_polled_audio_batch(batch).map(Some)
+    pub(crate) processing: Option<pocketstation::AudioProcessing>,
 }
 
 fn copy_polled_audio_batch(
@@ -275,17 +272,18 @@ fn copy_polled_audio_batch(
             route_received_at_ns: frame.route_received_at_ns(),
             endpoint_enqueued_at_ns: Some(frame.endpoint_enqueued_at_ns()),
             polled_at_ns: Some(frame.polled_at_ns()),
+            processing: frame.processing(),
         });
     }
     Ok(frames)
 }
 
-pub(crate) fn copy_audio_batch_until(
-    running: &pocketstation::RunningSession,
+pub(crate) fn copy_audio_receipt(
+    receipt: &pocketstation::PolledAudioReceipt,
     timeout: Duration,
 ) -> Result<Option<Vec<OwnedAudioFrame>>, String> {
-    match running
-        .wait_audio(timeout)
+    match receipt
+        .wait_poll(timeout)
         .map_err(|error| error.to_string())?
     {
         Some(batch) => copy_polled_audio_batch(batch).map(Some),
@@ -352,6 +350,7 @@ pub(crate) fn owned_endpoint_audio_frame_for_route(
         route_received_at_ns,
         endpoint_enqueued_at_ns: None,
         polled_at_ns: None,
+        processing: frame.processing(),
     }
 }
 
@@ -380,6 +379,7 @@ pub(crate) fn python_audio_frame(py: Python<'_>, frame: OwnedAudioFrame) -> Pyth
         route_received_at_ns: frame.route_received_at_ns,
         endpoint_enqueued_at_ns: frame.endpoint_enqueued_at_ns,
         polled_at_ns: frame.polled_at_ns,
+        processing: frame.processing.map(PythonAudioProcessing::from),
     }
 }
 
@@ -393,6 +393,7 @@ fn f32_samples_to_le_bytes(samples: &[f32]) -> Vec<u8> {
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PythonClockDomainDescriptor>()?;
+    module.add_class::<PythonAudioProcessing>()?;
     module.add_class::<PythonAudioFrame>()?;
     module.add_class::<PythonAudioBatch>()?;
     Ok(())

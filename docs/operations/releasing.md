@@ -5,6 +5,21 @@ A release uses the exact seven distributions selected by a successful
 The run records 22 installed CPython consumers and one source rebuild. Every
 report identifies the source commit, platform, interpreter and artifact hash.
 
+The AEC candidate adds a mandatory installed native processor exercise. Each
+consumer must deliver 400 processed frames, preserve the application stem,
+reduce synthetic echo, retain near-end signal energy and stop successfully.
+The aggregate verifier rejects missing results and mute-only success. These
+generated PCM checks do not establish physical echo reduction or double-talk
+speech quality. Existing 0.1.5 qualification results predate this requirement.
+
+Build the new native dependency on every declared target. Meson, Ninja,
+libclang, pkg-config, compiler tools and Rust `llvm-tools` must be available.
+The bundled source invokes POSIX tools and searches Unix archive names;
+installing prerequisites alone does not qualify Windows/MSVC. Keep the
+Windows cells and resolve failures before publication. Add the exact wrapper,
+WebRTC and bundled dependency license texts to the reviewed notices before
+finalizing and qualifying release wheels.
+
 ## Prepare
 
 Keep SDK version values consistent. Preserve the exact Core and Relay pins,

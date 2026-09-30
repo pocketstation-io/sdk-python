@@ -128,6 +128,14 @@ struct WorkerInput {
     last_discontinuity_epoch: Option<u64>,
 }
 
+// collect_batch is capped by the validated MAXIMUM_BATCH_ITEMS (1,024).
+// At the current 256-byte layout its item storage is at most 256 KiB, excluding
+// separately owned payloads. Keeping frame provenance inline avoids a heap box
+// for every audio item; this batch is collected outside capture callbacks.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "bounded 1024-item worker batch keeps audio provenance inline without per-frame boxing"
+)]
 enum PendingItem {
     Audio {
         input_index: usize,

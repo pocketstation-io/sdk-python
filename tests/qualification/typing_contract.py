@@ -2,9 +2,16 @@
 
 from typing import assert_type
 
+from pocketstation.aec import (
+    EchoCancellationObservations,
+    EchoCancellationState,
+    EchoCancelledAudio,
+    PlaybackReference,
+)
+from pocketstation.aio import Session as AsyncSession
 from pocketstation.aio.connector import Connector as AsyncConnector
 from pocketstation.connector import Connector
-from pocketstation.graph import SignalSpec, SourceOutput
+from pocketstation.graph import SignalSpec, SourceOutput, Stem
 from pocketstation.identity import (
     ClockDomainId,
     ConnectorId,
@@ -16,7 +23,7 @@ from pocketstation.identity import (
     StreamId,
 )
 from pocketstation.session import RunningSession, Session
-from pocketstation.signal import BusSubscription, SignalAudioPayload
+from pocketstation.signal import AudioProcessing, BusSubscription, SignalAudioPayload
 from pocketstation.streams import AudioFrame
 
 
@@ -51,3 +58,26 @@ def verify_runtime_identities(running: RunningSession, frame: AudioFrame) -> Non
     assert_type(frame.endpoint_id, EndpointId)
     assert_type(frame.connector_id, ConnectorId | None)
     assert_type(frame.route_id, RouteId)
+    assert_type(frame.processing, AudioProcessing | None)
+    if frame.processing is not None:
+        assert_type(frame.processing.input_source_id, SourceId)
+        assert_type(frame.processing.input_stream_id, StreamId)
+        assert_type(frame.processing.is_tail, bool)
+
+
+def verify_echo_types(
+    session: Session | AsyncSession, microphone: Stem, reference: SourceOutput
+) -> None:
+    cleaned = session.echo_cancel(
+        microphone, PlaybackReference.selected_application(reference)
+    )
+    assert_type(cleaned, EchoCancelledAudio)
+    assert_type(cleaned.audio, Stem)
+    assert_type(cleaned.reference, PlaybackReference)
+    observation = cleaned.observations()
+    assert_type(observation, EchoCancellationObservations)
+    assert_type(observation.state, EchoCancellationState)
+    assert_type(observation.qualified_algorithmic_delay_samples, int | None)
+    assert_type(observation.microphone_source_id, SourceId | None)
+    assert_type(observation.tail_padding_samples_total, int)
+    assert_type(observation.nominal_delay_samples, int)
