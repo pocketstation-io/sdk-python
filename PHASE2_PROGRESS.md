@@ -875,3 +875,14 @@ does not establish physical AEC, a platform matrix, publication, or release.
 Versions and published Core pins remain unchanged; Core 5559610 is supplied only
 through the recorded diagnostic source override. Final identities and receipts
 are in `release-preparation-138/python-bindings/final-artifact-identity-09.json`.
+
+## C138 — correct mixed-channel documentation
+
+The AEC guide no longer states that microphone and reference channel counts
+must match. It now describes Core's independent mono/stereo negotiation and
+microphone-layout output, while retaining the actual per-Session AudioInput
+format/frame-size restriction and unqualified physical-device status. This
+documentation-only correction changes no runtime or artifact. Snapshot09 and
+installed wheel evidence remain bound to implementation commit 5008f5b.
+Documentation language and whitespace gates pass; no new scaffold or capability
+claim. Staff review: PASS for consistency with Core 5559610.
