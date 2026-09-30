@@ -20,6 +20,42 @@ owns Session lifecycle, route bounds, lineage, observations, and shutdown.
 Python integrations run off realtime. They must not capture audio again, create
 another Session, or hide an unbounded queue behind a provider callback.
 
+## Finish accepted Source input
+
+A custom `SourceDriver` may implement `drain()` to return one already accepted
+`SourceEmission` at a time when the Session stops gracefully. Stop admitting new
+input before draining, then return `None` when the buffer is empty.
+Core validates and routes these emissions with the same identity and signal
+checks as `next()`. Drivers without this optional method remain supported.
+Iterable Sources never advance during drain. On shutdown they call an optional
+iterator `close()` or await `aclose()`, so a retained generator still releases
+resources from its `finally` block. Cleanup exceptions fail the Session.
+
+Core allows one second for the complete drain. This is a cooperative deadline:
+a blocking synchronous callback cannot be forcibly interrupted. Asyncio drivers
+use `SourceDeadlines.close_s`, capped at one second, for each awaited drain call;
+the Core deadline still bounds the complete sequence of calls. Cancellation
+skips drain, and `close()` runs once after the preceding callback finishes,
+including when that callback fails. A failed drain or close is retained in both
+the stop result and terminal event.
+
+`next()` receives an interruption signal during both graceful stop and cancel.
+The asyncio adapter interrupts its pending await without treating that requested
+interruption as a provider failure. Exceptions raised independently by the
+provider still fail the Source. The adapter waits for cancellation cleanup
+within the original operation deadline. If cleanup remains unfinished, the
+Session fails and subsequent callbacks, including `close()`, are refused until
+it settles. The adapter never runs two callbacks concurrently or claims to
+force-stop an uncooperative coroutine. Providers should release resources in
+their cancellation cleanup. Neither iterable helper advances its iterator
+during drain; a generator must not acquire new live input after stop.
+
+Graceful `RunningSession.stop()` preserves accepted subscription signals until
+the consumer reads them and reaches EOF. `cancel()`, explicit Session close,
+and explicit subscription close discard unread signals. Async reads that
+complete after discard cannot restore a pending result. A subscription first
+accessed after Session cancellation also observes EOF.
+
 ## Choose a Connector for outbound delivery
 
 A Connector sends data from one PocketStation Session to an external system.
@@ -238,19 +274,21 @@ through the Python API. With an existing local English tiny-model directory in
 ```python
 from pocketstation_demo import FasterWhisper, FasterWhisperConfiguration
 
-transcriber = FasterWhisper(FasterWhisperConfiguration(
-    model=model_path,
-    allow_model_download=False,
-    device="cpu",
-    compute_type="int8",
-    window_seconds=3,
-    cpu_threads=4,
-    inference_concurrency=2,
-    num_workers=1,
-    beam_size=1,
-    language="en",
-    vad_filter=True,
-))
+transcriber = FasterWhisper(
+    FasterWhisperConfiguration(
+        model=model_path,
+        allow_model_download=False,
+        device="cpu",
+        compute_type="int8",
+        window_seconds=3,
+        cpu_threads=4,
+        inference_concurrency=2,
+        num_workers=1,
+        beam_size=1,
+        language="en",
+        vad_filter=True,
+    )
+)
 ```
 
 Use `attach_many` with the two source outputs and keep draining the subscription

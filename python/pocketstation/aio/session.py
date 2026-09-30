@@ -121,6 +121,7 @@ class RunningSession:
             is_closed=lambda: self.is_stopped,
         )
         self._signals: dict[int, SignalStream[object]] = {}
+        self._signals_discarded = False
         self._sidecars: dict[int, SidecarConnection] = {}
 
     @property
@@ -188,6 +189,8 @@ class RunningSession:
             )
             stream = signal_stream
             self._signals[subscription.id] = stream
+            if self._signals_discarded:
+                stream._discard()
         return cast(SignalStream[_PayloadT], stream)
 
     def sidecar(self, handle: SidecarHandle) -> SidecarConnection:
@@ -292,6 +295,7 @@ class RunningSession:
     async def cancel(self) -> StopResult:
         """Cancel asynchronous work and sidecars, then join and reap once."""
         self._audio._discard()
+        await self._discard_signals()
         await _native_async(self._native.discard_audio)
         return await self._finish_session(self._native.cancel)
 
@@ -330,10 +334,21 @@ class RunningSession:
             raise
 
     async def aclose(self) -> None:
-        """Stop deterministically, then discard unread audio from this handle."""
-        await self.stop()
-        self._audio._discard()
-        await _native_async(self._native.discard_audio)
+        """Stop deterministically, then discard unread audio and signals."""
+        try:
+            await self.stop()
+        finally:
+            self._audio._discard()
+            try:
+                await self._discard_signals()
+            finally:
+                await _native_async(self._native.discard_audio)
+
+    async def _discard_signals(self) -> None:
+        self._signals_discarded = True
+        for stream in self._signals.values():
+            stream._discard()
+        await _native_async(self._native.discard_signals)
 
     async def __aenter__(self) -> RunningSession:
         self._require_running()

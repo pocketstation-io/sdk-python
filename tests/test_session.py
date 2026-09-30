@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from array import array
+from types import SimpleNamespace
 
 import pytest
 from pocketstation._api import (
+    STREAM_EOF,
     PocketStationError,
+    RunningSession,
     Session,
     SessionLifecycleState,
     Source,
@@ -91,3 +94,27 @@ def test_running_session_projects_native_lifecycle_state() -> None:
     assert running.stop().success
     assert running.state is SessionLifecycleState.STOPPED
     assert running.is_stopped
+
+
+def test_close_discards_unread_streams_when_stop_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    native = SimpleNamespace(
+        discard_audio=lambda: calls.append("audio"),
+        discard_signals=lambda: calls.append("signals"),
+    )
+    running = RunningSession(native)
+    failure = PocketStationError("stop failed", "session.worker_failed")
+
+    def fail_stop():
+        raise failure
+
+    monkeypatch.setattr(running, "stop", fail_stop)
+    with pytest.raises(PocketStationError) as raised:
+        running.close()
+
+    assert raised.value is failure
+    assert calls == ["signals", "audio"]
+    assert running._signals_discarded
+    assert running.audio.poll() is STREAM_EOF

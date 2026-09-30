@@ -768,3 +768,110 @@ model pipeline and documented responsive API profile are on the owning local
 main. No scaffold introduced; inventory n/a. CODE_PROTOCOL boundary, source
 identity, preservation and component checks PASS. Staff decision SAFE-TO-MERGE
 for this local integration; physical capture and platform limits remain explicit.
+
+## C138 — accepted Source input and asyncio interruption
+
+Status: PARTIAL. Sync and asyncio SourceDriver now project Core's optional
+`drain()` hook for input already accepted before graceful stop. Native conversion
+reuses the existing SourceEmission validation and lineage path. Legacy drivers
+without a drain method remain valid; iterable helpers do not advance during
+shutdown. Async drain waits use close_s capped at one second, within Core's
+cooperative one-second cumulative drain deadline. Synchronous callbacks remain
+responsible for returning promptly; this is not forced thread termination.
+
+An installed-wheel diagnostic exposed requested interruption of a pending async
+`next()` being counted as provider failure. The adapter now distinguishes its
+own requested interruption from independently raised CancelledError. The same
+regression succeeds with the corrected Python source overlay and the prior
+wheel04 native binary: stop success, zero failures, close once. This overlay
+result is an intermediate adapter diagnostic, not a final installed-wheel proof.
+Independent provider cancellation remains an error in a regression test.
+
+Three adapter regressions and strict MyPy (67 source files) pass. Added real
+Session regressions cover accepted signal delivery/lineage, graceful stop versus
+cancel, drain/close failure terminal outcomes, and pending async next. These
+new native lifecycle tests await the final Core source snapshot and wheel rebuild.
+The existing ignored source-tree extension is older and cannot import the new
+AudioProcessing type; it is not used for qualification. No version or published
+Core dependency pin changes, new scaffold, physical capture, release, or
+cross-platform claim. Evidence: release-preparation-138/python-bindings.
+
+The follow-up cancellation-cleanup regression first failed because drain began
+before next's asynchronous finally completed. The adapter now requests cancel
+on the actual asyncio Task and waits for its completion within the original
+operation deadline, preserving a completed result or provider cleanup error.
+The barrier-held cleanup test and independent cancellation/error cases pass;
+34 existing/adapter tests, Ruff and strict MyPy pass. Six new Core-dependent
+Session cases still await the final wheel. No Core/runtime acceptance is inferred
+from the source overlay tests.
+
+Deadline review also found that an over-budget cancellation cleanup could
+otherwise overlap close. The adapter now retains the actual callback completion
+Future and refuses subsequent callbacks while it remains unsettled. Two held
+barrier tests cover both an ordinary next deadline and requested interruption
+cleanup exceeding that deadline; close is not invoked concurrently. Completed
+provider TimeoutError remains the provider error. Providers with incomplete
+cleanup fail explicitly; no forced coroutine termination is claimed. The final
+source/adapter subset passes 37 tests, with ten real Core-dependent Session cases
+awaiting the final wheel. Full Ruff, 157-file formatting and strict MyPy on
+73 source/example/qualification files also pass.
+
+Final Core5559610 source was copied and hashed into the diagnostic wheel stage.
+Pinned Maturin1.13.0 is now installed and used for wheel06 and fixture wheel04;
+the earlier1.14.1 diagnostic remains preserved. Native Clippy and ten Rust tests
+pass. Installed source/AEC/API tests pass69; the full installed fixture suite
+passes896 with three conditional skips. The production installed AEC consumer
+retains404 outputs, including four tail frames and1920 padding samples, raw PCM
+and input provenance (echo ratio0.0067768, voice ratio0.899031). The original
+immediate-stop defect passes250 sync plus250 asyncio runs: all500 accepted frames
+are delivered after Drain, maximum stop109.5ms. These results precede the final
+signal-discard correction described below.
+
+Review found the same final-producer EOF race in signal receipts and added the
+required acquire/final-dequeue path using one abandonment snapshot. A real
+installed regression also proved cancel-after-stop could return queued signals.
+The binding now closes every native signal receipt on cancel/Session close,
+marks existing and newly requested readers discarded, and rejects cached or late
+async results. Seven adapter/termination regressions pass; real Session tests
+cover existing and first-access-after-cancel readers in sync and asyncio APIs.
+Final wheel and full suite must be rebuilt for this last correction. No release,
+physical-device, cross-platform, or published-Core parity claim is made.
+
+Final signal correction was built in snapshot08 with pinned Maturin1.13.0:
+911 installed fixture tests pass with three conditional skips, 122 production
+tests pass with four fixture/platform skips, ten native tests and strict Clippy
+pass. Explicit close/aclose now discards unread streams even if stop raises,
+while preserving the original stop error when cleanup succeeds. The production
+wheel's existing license-finalization hook and complete artifact validator pass;
+its installed AEC consumer preserves404 outputs/four tails and the same acoustic
+ratios. Unfinalized Maturin output is preserved separately from the finalized
+wheel. Ruff, formatting, strict MyPy, native formatting and documentation gates
+pass. These results precede the following Python-only iterator cleanup fix.
+
+Independent review found retained iterable generators skipped their finally
+blocks because the adapters inherited an empty close hook. Sync and asyncio
+adapters now call optional iterator close/aclose through the existing Core-owned
+callback, including awaiting async cleanup within the existing deadline. Four
+deterministic early-stop tests fail with installed wheel07 and pass with corrected
+Python code and the same real Core runtime; cleanup runs once without advancing
+the generator, and cleanup exceptions fail both stop and terminal event. The
+initial terminal-metadata test fixture was corrected to hold iteration explicitly;
+its failed attempt is retained. Final wheels must include this last correction.
+
+The final snapshot09 wheels include every correction above. Maturin 1.13.0,
+the repository's normal license-finalization step, and the artifact validator
+pass. The installed production subset passes 126 tests (four fixture/platform
+skips); the installed fixture suite passes 915 tests (three conditional skips).
+The independent production consumer again preserves 404 outputs, four drain
+frames, 1920 padding samples, raw PCM and input provenance, with echo power ratio
+0.0067768 and near-end power ratio 0.899031. All 67 packaged Python modules and
+installed native bytes match the recorded wheel and snapshot09; native and Core
+inputs are identical to the passing Clippy and ten Rust tests. Ruff, formatting,
+strict MyPy and documentation checks pass. Independent JS-owner review passes
+for optional drain, cancellation cleanup serialization, signal discard, and
+iterator finalization. Staff decision: SAFE-TO-MERGE for this local SDK lifecycle
+correction. No scaffold was introduced; explicit PCM and test-provider evidence
+does not establish physical AEC, a platform matrix, publication, or release.
+Versions and published Core pins remain unchanged; Core 5559610 is supplied only
+through the recorded diagnostic source override. Final identities and receipts
+are in `release-preparation-138/python-bindings/final-artifact-identity-09.json`.

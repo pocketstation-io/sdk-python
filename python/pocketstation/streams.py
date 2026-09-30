@@ -357,7 +357,10 @@ class SignalStream(Generic[_PayloadT]):
         """Idempotently close this receipt without stopping its Session."""
         if self._closed:
             return
+        self._closed = True
         self._close_signal()
+
+    def _discard(self) -> None:
         self._closed = True
 
     def metrics(self) -> SignalSubscriptionMetrics:
@@ -365,6 +368,8 @@ class SignalStream(Generic[_PayloadT]):
         return SignalSubscriptionMetrics._from_native(self._signal_metrics())
 
     def _decode(self, result: _SignalRead) -> SignalReadResult[_PayloadT]:
+        if self._closed:
+            return STREAM_EOF
         if result.status == "item":
             if result.envelope is None:
                 raise StreamError(

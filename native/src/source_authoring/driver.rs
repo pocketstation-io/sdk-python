@@ -214,6 +214,26 @@ impl SourceDriver for PythonSourceDriver {
                 .map_err(driver_error)
         })
     }
+
+    fn drain(&mut self) -> Result<Option<SourceEmission>, SourceDriverError> {
+        let emission = Python::attach(|py| {
+            let value = self
+                .driver
+                .bind(py)
+                .call_method0("drain")
+                .map_err(driver_error)?;
+            if value.is_none() {
+                return Ok(None);
+            }
+            value
+                .extract::<PyRef<'_, PythonSourceEmission>>()
+                .map(|value| Some(value.clone()))
+                .map_err(|error| driver_error(error.into()))
+        })?;
+        emission
+            .map(|emission| self.build_core_emission(emission))
+            .transpose()
+    }
 }
 
 impl PythonSourceDriver {

@@ -78,7 +78,15 @@ impl SignalReceipt {
         match &mut *state {
             ReceiptState::Declared => SignalRead::Empty,
             ReceiptState::Active(receiver) => {
-                if let Some(envelope) = receiver.try_recv() {
+                let mut envelope = receiver.try_recv();
+                let abandoned = envelope.is_none() && receiver.is_abandoned();
+                if abandoned {
+                    // rtrb observes abandonment with a relaxed load. Acquire
+                    // its final publication before deciding an empty read is EOF.
+                    std::sync::atomic::fence(Ordering::Acquire);
+                    envelope = receiver.try_recv();
+                }
+                if let Some(envelope) = envelope {
                     if let Err(error) = envelope.validate() {
                         let message = format!(
                             "Python BusSubscription received an invalid signal envelope: {error}"
@@ -90,7 +98,7 @@ impl SignalReceipt {
                     self.received_total.fetch_add(1, Ordering::Relaxed);
                     return SignalRead::Item(Box::new(copy_envelope(&envelope)));
                 }
-                if receiver.is_abandoned() {
+                if abandoned {
                     self.closed.store(true, Ordering::Release);
                     *state = ReceiptState::Closed;
                     SignalRead::Closed
@@ -133,6 +141,16 @@ pub(crate) type SignalReceipts = Arc<Mutex<std::collections::HashMap<u64, Arc<Si
 
 pub(crate) fn new_signal_receipts() -> SignalReceipts {
     Arc::new(Mutex::new(std::collections::HashMap::new()))
+}
+
+pub(crate) fn discard_signal_receipts(receipts: &SignalReceipts) -> PyResult<()> {
+    let receipts = receipts
+        .lock()
+        .map_err(|_| PyRuntimeError::new_err("signal receipt state is unavailable"))?;
+    for receipt in receipts.values() {
+        receipt.close();
+    }
+    Ok(())
 }
 
 struct SubscriptionDefinition {
@@ -243,7 +261,8 @@ impl RunningEndpointDriver for RunningSubscription {
     fn request_stop(&mut self) -> Result<(), EndpointFailure> {
         // Producers are joined before endpoint finalization. Preserve this bounded
         // receipt until the consumer drains the final flush and observes EOF.
-        // Only explicit subscription close discards already accepted signals.
+        // The binding owner discards on explicit subscription/Session close or
+        // cancellation; graceful stop preserves already accepted signals.
         Ok(())
     }
 

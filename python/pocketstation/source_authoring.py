@@ -182,6 +182,15 @@ class SourceDriver:
     def next(self, cancellation: SourceCancellation) -> SourceEmission | None:
         raise NotImplementedError
 
+    def drain(self) -> SourceEmission | None:
+        """Return already accepted input on graceful stop, or None when empty.
+
+        Stop accepting new input first. Do not advance a live iterator here.
+        Core allows one second for the complete drain and validates each result.
+        Cancellation skips this method; close still runs.
+        """
+        return None
+
     def close(self) -> None:
         """Release provider resources exactly once."""
 
@@ -209,6 +218,11 @@ class _IterableDriver(SourceDriver):
         if cancellation.cancelled:
             return None
         return next(self._iterator, None)
+
+    def close(self) -> None:
+        close: Callable[[], None] | None = getattr(self._iterator, "close", None)
+        if close is not None:
+            close()
 
 
 class _IterableFactory:
@@ -271,6 +285,13 @@ class _NativeDriverAdapter:
 
     def close(self) -> None:
         self._driver.close()
+
+    def drain(self) -> _NativeSourceEmission | None:
+        drain: Callable[[], SourceEmission | None] | None = getattr(
+            self._driver, "drain", None
+        )
+        emission = None if drain is None else drain()
+        return None if emission is None else emission._native
 
 
 class _NativeFactoryAdapter:
