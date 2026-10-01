@@ -34,6 +34,7 @@ class EchoCancellationObservations:
     state: EchoCancellationState
     processed_microphone_frames_total: int
     output_frames_total: int
+    discarded_output_frames_total: int
     tail_frames_total: int
     tail_padding_samples_total: int
     discarded_tail_generations_total: int
@@ -64,6 +65,7 @@ class EchoCancellationObservations:
             state=EchoCancellationState(value.state),
             processed_microphone_frames_total=value.processed_microphone_frames_total,
             output_frames_total=value.output_frames_total,
+            discarded_output_frames_total=value.discarded_output_frames_total,
             tail_frames_total=value.tail_frames_total,
             tail_padding_samples_total=value.tail_padding_samples_total,
             discarded_tail_generations_total=value.discarded_tail_generations_total,

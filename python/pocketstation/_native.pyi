@@ -195,6 +195,7 @@ class _RouteSettings:
     max_payload_bytes: int | None
     def with_media(self, media: _MediaCaps) -> _RouteSettings: ...
     def with_backpressure(self, value: str) -> _RouteSettings: ...
+    def with_loss(self, value: str) -> _RouteSettings: ...
     def with_copy_policy(self, value: str) -> _RouteSettings: ...
     def with_jitter_budget_ms(self, value: int | None) -> _RouteSettings: ...
     def with_max_payload_bytes(self, value: int) -> _RouteSettings: ...
@@ -1088,6 +1089,7 @@ class _EchoCancellationObservations:
     state: str
     processed_microphone_frames_total: int
     output_frames_total: int
+    discarded_output_frames_total: int
     tail_frames_total: int
     tail_padding_samples_total: int
     discarded_tail_generations_total: int
@@ -1217,6 +1219,7 @@ class _OperatorManifest:
         drain_queued: bool = False,
         continue_on_failure: bool = False,
         terminal_roles: list[str] = [],
+        input_delivery: _RouteSettings | None = None,
     ) -> None: ...
     operator_id: str
 

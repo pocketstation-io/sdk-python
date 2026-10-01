@@ -221,6 +221,15 @@ per producer. The authoring `queue_capacity_signals` does not enlarge compiled
 audio edges. Overload remains visible in route metrics and is independent of
 recording and Relay.
 
+The inference Operator explicitly allows dropping complete input windows using
+`OperatorManifest.input_delivery` and `DeliveryPolicy.with_loss(LossPolicy.DROP_ALLOWED)`.
+Custom asynchronous input policies also select `BackpressurePolicy.DROP_NEWEST`
+and `CopyPolicy.COPY_TO_BRANCH_POOL`.
+Its transcript outputs still require delivery. Omitting `input_delivery` retains
+the existing defaults; required messages fail visibly when a receiver cannot
+accept them. Explicit subscription close discards only that subscription's
+unread and later messages; unexpected receiver loss remains an error.
+
 Windows shorter than 500 ms (or a smaller configured window) emit
 `processing_outcome="skipped-short-window"` without inference. Their duration is
 accounted separately from transcribed coverage. Keep draining transcripts through

@@ -102,6 +102,7 @@ def test_given_echo_when_native_session_runs_then_cancelled_and_raw_stems_arrive
     assert observation.last_error is None
     assert observation.maximum_processing_duration_ns > 0
     assert observation.output_frames_total == 300 + 40 // duration_ms
+    assert observation.discarded_output_frames_total == 0
     assert observation.tail_frames_total == 40 // duration_ms
     assert observation.tail_padding_samples_total == 1920
     assert observation.discarded_tail_generations_total == 0

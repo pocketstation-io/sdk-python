@@ -638,6 +638,7 @@ def _exercise_echo_cancellation() -> dict[str, object]:
         and observation.tail_frames_total == 4
         and observation.tail_padding_samples_total == 1920
         and observation.discarded_tail_generations_total == 0
+        and observation.discarded_output_frames_total == 0
         and observation.nominal_delay_samples == 432
         and observation.drain_duration_ms == 40
         and observation.microphone_source_id == microphone.source_id
@@ -653,6 +654,7 @@ def _exercise_echo_cancellation() -> dict[str, object]:
         "output_frames_total": observation.output_frames_total,
         "tail_frames_total": observation.tail_frames_total,
         "tail_padding_samples_total": observation.tail_padding_samples_total,
+        "discarded_output_frames_total": observation.discarded_output_frames_total,
         "input_provenance_preserved": True,
         "polled_tail_preserved": True,
         "echo_power_ratio": echo_output_power / echo_input_power,

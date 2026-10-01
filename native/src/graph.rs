@@ -547,6 +547,18 @@ impl PythonRouteSettings {
         })
     }
 
+    fn with_loss(&self, value: &str) -> PyResult<Self> {
+        let loss = match value {
+            "conceal-for-audio" => pocketstation::LossPolicy::ConcealForAudio,
+            "must-deliver-or-fail" => pocketstation::LossPolicy::MustDeliverOrFail,
+            "drop-allowed" => pocketstation::LossPolicy::DropAllowed,
+            _ => return Err(invalid_contract("unrecognized route loss policy")),
+        };
+        Ok(Self {
+            value: self.value.with_loss(loss),
+        })
+    }
+
     fn with_copy_policy(&self, value: String) -> PyResult<Self> {
         Ok(Self {
             value: self.value.with_copy_policy(parse_copy_policy(&value)?),

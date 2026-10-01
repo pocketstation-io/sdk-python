@@ -13,6 +13,7 @@ from ._native import _OperatorPrepareContext as _NativeOperatorPrepareContext
 from ._native import _SignalEnvelope as _NativeSignalEnvelope
 from .errors import _native_call
 from .graph import (
+    DeliveryPolicy,
     MediaCaps,
     Operator,
     OperatorConfiguration,
@@ -45,6 +46,7 @@ class OperatorManifest:
     drain_queued: bool = False
     continue_on_failure: bool = False
     terminal_roles: tuple[str, ...] = ()
+    input_delivery: DeliveryPolicy | None = None
     _native: _NativeOperatorManifest = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -62,6 +64,7 @@ class OperatorManifest:
                 self.drain_queued,
                 self.continue_on_failure,
                 list(self.terminal_roles),
+                None if self.input_delivery is None else self.input_delivery._native,
             )
         )
         object.__setattr__(self, "_native", native)

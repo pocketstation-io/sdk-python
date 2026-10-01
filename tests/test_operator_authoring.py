@@ -27,7 +27,13 @@ from pocketstation._api import (
     SourceManifest,
     SourceProvider,
 )
-from pocketstation.graph import secret
+from pocketstation.graph import (
+    BackpressurePolicy,
+    CopyPolicy,
+    DeliveryPolicy,
+    LossPolicy,
+    secret,
+)
 
 _VOICE_FRAME_SAMPLES = 480
 
@@ -80,7 +86,10 @@ def _pcm_operator(
     return provider, closed
 
 
-def test_python_operator_processes_source_signal_with_derivation() -> None:
+@pytest.mark.parametrize("input_loss", [None, LossPolicy.DROP_ALLOWED])
+def test_python_operator_processes_source_signal_with_derivation(
+    input_loss: LossPolicy | None,
+) -> None:
     input_signal = SignalSpec.text(role="request")
     output_signal = SignalSpec.text(role="result.final")
     source = SourceProvider.from_iterable(
@@ -148,6 +157,14 @@ def test_python_operator_processes_source_signal_with_derivation() -> None:
                 ),
             ),
             terminal_roles=("result.final",),
+            input_delivery=(
+                None
+                if input_loss is None
+                else DeliveryPolicy.bounded_async()
+                .with_loss(input_loss)
+                .with_backpressure(BackpressurePolicy.DROP_NEWEST)
+                .with_copy_policy(CopyPolicy.COPY_TO_BRANCH_POOL)
+            ),
         ),
         Factory(),
     )
@@ -177,7 +194,17 @@ def test_python_operator_processes_source_signal_with_derivation() -> None:
     assert node.prepared is not None
     assert node.prepared.execution_partition == "async-worker"
     assert node.prepared.inputs[0].port_name == "input"
+    assert node.prepared.inputs[0].route_settings.loss is (
+        input_loss or LossPolicy.MUST_DELIVER_OR_FAIL
+    )
+    assert (
+        node.prepared.inputs[0].route_settings.backpressure
+        is BackpressurePolicy.DROP_NEWEST
+    )
     assert node.prepared.outputs[0].port_name == "output"
+    assert (
+        node.prepared.outputs[0].route_settings.loss is LossPolicy.MUST_DELIVER_OR_FAIL
+    )
     assert node.closed.wait(1.0)
     assert len(seen_configurations) >= 2
     assert all(

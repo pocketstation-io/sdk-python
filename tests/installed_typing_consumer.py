@@ -49,3 +49,4 @@ def verify_installed_echo() -> None:
     assert_type(cleaned.audio, Stem)
     assert_type(cleaned.reference, PlaybackReference)
     assert_type(cleaned.observations(), EchoCancellationObservations)
+    assert_type(cleaned.observations().discarded_output_frames_total, int)

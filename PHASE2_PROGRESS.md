@@ -886,3 +886,42 @@ documentation-only correction changes no runtime or artifact. Snapshot09 and
 installed wheel evidence remain bound to implementation commit 5008f5b.
 Documentation language and whitespace gates pass; no new scaffold or capability
 claim. Staff review: PASS for consistency with Core 5559610.
+
+## C138 — explicit signal close, input loss policy and AEC discard observations
+
+The native signal reader now calls Core's explicit close operation before
+discarding its receiver, including close requested before activation. Closing
+one subscription therefore revokes that subscription without reporting an
+unexpected required-receiver failure. OperatorManifest.input_delivery and
+DeliveryPolicy/RouteSettings.with_loss project existing Core policies; omitted
+input_delivery retains existing defaults. The example-owned model queue alone
+opts into dropping complete input windows. Transcript output remains required.
+Python also exposes Core's discarded_output_frames_total AEC counter and names
+the complete native-request timing interval accurately in the developer guide.
+
+Against frozen Core 71e203c, the compiled macOS arm64 fixture wheel passes 916
+tests with three existing conditional skips. All four regressions recorded
+against Core b06 pass without weakened assertions: explicit reader close,
+parallel inference cancellation, and model-window overload recover/abort.
+The new opt-in policy test initially omitted required DropNewest backpressure;
+its failed attempt is retained. Explicit DropNewest and CopyToBranchPool now
+match Core validation and the actual demo configuration, and the test verifies
+the compiled input policy while required output remains unchanged.
+
+The installed production wheel preserves 400 AEC input frames, 404 output frames,
+four tails and 1920 padding samples, exact raw PCM and input identity, and zero
+discarded outputs. Echo power ratio 0.0067768 and near-end power ratio 0.899031 are
+prepared-PCM results, not physical acoustic or double-talk qualification.
+Ten Rust tests, strict native Clippy, strict MyPy on 73 sources and the isolated
+installed consumer, 157-file Ruff checks, native formatting, public documentation
+language and diff checks pass. The restored environment's first static check
+failed for a missing WebSocket test dependency; its setup-only failure remains.
+
+Source snapshots, rebuilt fixture wheel, retained production wheel, installed
+byte checks and every command receipt are in release-preparation-138/python-bindings.
+Two interrupted pre-reset attempts remain UNKNOWN with their original logs;
+they were not converted into passes. No product scaffold was introduced;
+inventory n/a. Provider policy stays outside Core and Python remains off capture
+callbacks. These local SDK changes are SAFE-TO-TEST pending independent review
+and final release qualification. Published versions and Core dependency pins
+remain unchanged; the recorded diagnostic source override supplies Core 71e203c.
