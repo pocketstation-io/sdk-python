@@ -140,7 +140,13 @@ pub(crate) struct PythonEchoCancellationObservations {
     last_error: Option<String>,
 }
 
+#[pyfunction]
+fn aec_available() -> bool {
+    pocketstation::aec_available()
+}
+
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(aec_available, module)?)?;
     module.add_class::<PythonPlaybackReference>()?;
     module.add_class::<PythonEchoCancelledAudio>()?;
     module.add_class::<PythonEchoCancellationObservations>()?;

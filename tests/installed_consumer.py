@@ -15,7 +15,7 @@ import httpx
 import pocketstation as public_pocketstation
 import pocketstation._api as pocketstation
 import pocketstation._native as native
-from pocketstation.aec import EchoCancellationState, PlaybackReference
+from pocketstation.aec import EchoCancellationState, PlaybackReference, aec_available
 
 _VOICE_FRAME_SAMPLES = 480
 
@@ -680,7 +680,29 @@ def main() -> None:
     _exercise_structured_failure()
     _exercise_operator_pcm_reentry()
     _exercise_invitation_lifecycle()
-    aec = _exercise_echo_cancellation()
+    import os
+
+    expected_aec = os.environ.get("PKS_EXPECT_AEC", "0") == "1"
+    if aec_available() != expected_aec:
+        raise RuntimeError(
+            "installed AEC feature does not match the requested artifact"
+        )
+    if expected_aec:
+        aec = _exercise_echo_cancellation()
+    else:
+        probe = pocketstation.Session()
+        microphone = probe.audio_input("microphone")
+        reference = probe.audio_input("reference")
+        try:
+            probe.echo_cancel(
+                microphone.output, PlaybackReference.rendered_audio(reference.output)
+            )
+        except pocketstation.PocketStationError as error:
+            if "AEC is unavailable" not in str(error):
+                raise
+        else:
+            raise RuntimeError("lean artifact unexpectedly accepted AEC")
+        aec = {"available": False, "unavailable_error_verified": True}
     package_path = Path(pocketstation.__file__).resolve()
     environment_root = Path(sys.prefix).resolve()
     if not package_path.is_relative_to(environment_root):

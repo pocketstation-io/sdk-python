@@ -15,9 +15,14 @@ from pocketstation import AudioFrame, Session
 from pocketstation.aec import (
     EchoCancellationState,
     PlaybackReference,
+    aec_available,
 )
 from pocketstation.errors import PocketStationError
 from pocketstation.signal import STREAM_EOF, AudioProcessing
+
+pytestmark = pytest.mark.skipif(
+    not aec_available(), reason="requires explicit AEC build"
+)
 
 
 @pytest.mark.parametrize(("duration_ms", "channels"), [(10, 1), (20, 1), (10, 2)])

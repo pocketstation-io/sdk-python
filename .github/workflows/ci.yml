@@ -50,7 +50,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install "maturin==1.13.0" "pytest>=8.0" "pytest-asyncio>=0.23" "mypy==2.3.1" "ruff>=0.11" "packaging==26.3" "websockets>=17.0,<18"
-          python -m pip install "meson==1.7.2" "ninja==1.11.1.4"
           maturin build --release --locked --features conformance-fixtures --out dist-conformance
           python -c "from pathlib import Path; import subprocess, sys; wheel = next(Path('dist-conformance').glob('*.whl')); subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--force-reinstall', str(wheel)])"
 
@@ -61,12 +60,12 @@ jobs:
 
       - name: Native conformance
         working-directory: sdk-python
-        run: cargo test --manifest-path native/Cargo.toml --all-features --locked
+        run: cargo test --manifest-path native/Cargo.toml --features conformance-fixtures --locked
 
       - name: Native lint
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
         working-directory: sdk-python
-        run: cargo clippy --manifest-path native/Cargo.toml --all-targets --all-features --locked -- -D warnings
+        run: cargo clippy --manifest-path native/Cargo.toml --all-targets --features conformance-fixtures --locked -- -D warnings
 
       - name: Python lint and formatting
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
@@ -157,7 +156,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install "maturin==1.13.0"
-          python -m pip install "meson==1.7.2" "ninja==1.11.1.4"
           maturin sdist --manifest-path native/Cargo.toml --out dist
 
       - name: Rebuild and test isolated source distribution
@@ -173,3 +171,31 @@ jobs:
           name: pocketstation-sdist
           path: sdk-python/dist/*.tar.gz
           if-no-files-found: error
+
+  aec:
+    name: opt-in AEC / macOS
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: clippy, rustfmt, llvm-tools
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.13"
+      - name: Build explicitly enabled artifact
+        run: |
+          python -m pip install "maturin==1.13.0" "meson==1.7.2" "ninja==1.11.1.4" pytest pytest-asyncio
+          maturin build --release --locked --features aec --out dist-aec
+          python build_backend.py dist-aec/*.whl
+          python -m pip install dist-aec/*.whl
+      - name: Verify enabled processing and native checks
+        env:
+          PKS_EXPECT_AEC: "1"
+        run: |
+          python tests/installed_consumer.py
+          python -m pytest tests/test_aec.py tests/test_aio_aec.py
+          cargo test --manifest-path native/Cargo.toml --all-features --locked
+          cargo clippy --manifest-path native/Cargo.toml --all-targets --all-features --locked -- -D warnings

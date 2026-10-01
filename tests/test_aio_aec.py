@@ -5,9 +5,14 @@ from __future__ import annotations
 import asyncio
 from array import array
 
+import pytest
 from pocketstation import AudioFrame, aio
-from pocketstation.aec import EchoCancellationState, PlaybackReference
+from pocketstation.aec import EchoCancellationState, PlaybackReference, aec_available
 from pocketstation.signal import STREAM_EOF
+
+pytestmark = pytest.mark.skipif(
+    not aec_available(), reason="requires explicit AEC build"
+)
 
 
 async def test_given_async_session_when_echo_runs_then_stop_is_observed() -> None:

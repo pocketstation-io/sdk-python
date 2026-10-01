@@ -1,5 +1,35 @@
 # Reduce playback echo in microphone audio
 
+Default native builds exclude the AEC engine. The API remains importable and
+reports an explicit unavailable error when processing is requested without it.
+This is unreleased source functionality; use a matching Core development build.
+An AEC-enabled build of this same SDK is selected explicitly. Install Rust,
+a C/C++ toolchain, Meson, Ninja, pkg-config, libclang and Rust's `llvm-tools`
+component first, then build and install the wheel:
+
+```sh
+maturin build --release --features aec --out dist-aec
+python build_backend.py dist-aec/*.whl
+python -m pip install dist-aec/*.whl
+```
+
+After installing the resulting artifact, check its actual native capability:
+
+```python
+from pocketstation.aec import aec_available
+print(aec_available())
+```
+
+A runtime option does not remove compiled dependencies. Default wheels
+omit the engine; explicitly enabled artifacts include it. No additional package
+name is introduced. For source qualification before the Core release, the test
+runner records the exact local Core override; this is not published-registry
+compatibility. Published versions and dependencies are unchanged. PocketStation
+does not automatically discover or enable OS-provided AEC on any platform.
+Availability here means this artifact includes the optional processor, not that
+a microphone and playback route have been acoustically qualified.
+
+
 The development candidate exposes Core's built-in echo processor through
 `Session.echo_cancel()`. This API is not in the published Python 0.1.5 wheels.
 Installed native platform and physical-device qualification remains required

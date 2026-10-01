@@ -13,10 +13,11 @@ crate-type = ["cdylib"]
 
 [features]
 default = []
+aec = ["pocketstation/aec"]
 conformance-fixtures = ["pocketstation/conformance-fixtures"]
 
 [dependencies]
-pocketstation = "=1.1.12"
+pocketstation = { version = "=1.1.12", default-features = false, features = ["native-capture", "opus-codec"] }
 pocketstation-relay = "=0.1.5"
 pyo3 = { version = "0.27", features = ["abi3-py311"] }
 
@@ -25,3 +26,9 @@ tokio = { version = "1", features = ["sync"] }
 [dev-dependencies]
 pocketstation = { version = "=1.1.12", features = ["conformance-fixtures"] }
 tempfile = "3"
+
+[profile.release]
+# Rust's implicit debug stripping can misalign Mach-O libraries on macOS 27.
+# Keep linker output intact; see rust-lang/rust#157750. Installed-wheel CI
+# verifies that the resulting native module actually loads.
+strip = "none"

@@ -925,3 +925,32 @@ inventory n/a. Provider policy stays outside Core and Python remains off capture
 callbacks. These local SDK changes are SAFE-TO-TEST pending independent review
 and final release qualification. Published versions and Core dependency pins
 remain unchanged; the recorded diagnostic source override supplies Core 71e203c.
+
+## 2026-10-01 — optional AEC projection, candidate 142
+
+SAFE-TO-TEST against the recorded matching local Core source. The default native
+artifact omits AEC; the explicit `aec` feature enables Core processing.
+`pocketstation.aec.aec_available()` exposes actual build availability and lean
+Session requests fail explicitly while independent PCM still arrives. Installed
+consumer mode is asserted with PKS_EXPECT_AEC rather than silently skipping the
+positive proof. CI retains default conformance and adds a separate enabled gate.
+Release strip=none preserves linker output after reproducing the macOS 27
+misaligned LINKEDIT import failure; final wheel imports and consumers pass.
+
+Both finalized macOS arm64 wheels were installed and exercised. Enabled:
+400 microphone frames, 404 outputs/four tails, 1920 padding samples, exact raw
+stem, retained provenance and zero discarded outputs. Prepared echo/voice power
+ratios are 0.0067768/0.899031. Fifteen focused enabled tests pass; one default-only
+case is skipped there and passes in the lean build. Two lean tests, ten native
+Rust tests, strict Clippy/formatting, Ruff (158 files), strict isolated MyPy
+(58 sources), public docs and installed consumers pass. Failed setup/toolchain
+attempts are retained honestly in the factory evidence.
+
+No new live scaffold; factory inventory updated. Core owns audio policy, Python
+stays outside callbacks, bounded execution and explicit observations retained.
+Staff gate PASS for this local source projection; no registry compatibility,
+physical acoustic, native auto-selection or multi-platform claim. Published
+Core 1.1.12 lacks this development API, so matching source is required until a
+separately authorized dependency/release update. Temporary absolute-path patches
+and diagnostic locks are removed/restored after qualification. No version,
+tag, push, publication or deployment changed.
