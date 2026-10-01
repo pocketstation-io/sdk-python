@@ -11,7 +11,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use crate::errors::coded_reason;
-use crate::graph::{PythonPortSpec, PythonSignalSpec};
+use crate::graph::{PythonPortSpec, PythonRouteSettings, PythonSignalSpec};
 
 fn invalid_operator(reason: impl Into<String>) -> PyErr {
     PyValueError::new_err(coded_reason("operator.invalid_contract", reason.into()))
@@ -26,7 +26,7 @@ pub(crate) struct PythonOperatorManifest {
 #[pymethods]
 impl PythonOperatorManifest {
     #[new]
-    #[pyo3(signature = (operator_id, inputs, outputs, revision=1, implementation_generation=1, queue_capacity_signals=8, process_timeout_ms=30_000, network_allowed=false, filesystem_allowed=false, drain_queued=false, continue_on_failure=false, terminal_roles=Vec::new()))]
+    #[pyo3(signature = (operator_id, inputs, outputs, revision=1, implementation_generation=1, queue_capacity_signals=8, process_timeout_ms=30_000, network_allowed=false, filesystem_allowed=false, drain_queued=false, continue_on_failure=false, terminal_roles=Vec::new(), input_delivery=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
@@ -42,6 +42,7 @@ impl PythonOperatorManifest {
         drain_queued: bool,
         continue_on_failure: bool,
         terminal_roles: Vec<String>,
+        input_delivery: Option<&PythonRouteSettings>,
     ) -> PyResult<Self> {
         let inputs = inputs
             .into_iter()
@@ -64,7 +65,9 @@ impl PythonOperatorManifest {
         }
         let input_media = common_media(&inputs, "input")?;
         let output_media = common_media(&outputs, "output")?;
-        let input_route_settings = if matches!(input_media, MediaCaps::Audio(_)) {
+        let input_route_settings = if let Some(delivery) = input_delivery {
+            delivery.value.with_media(input_media)
+        } else if matches!(input_media, MediaCaps::Audio(_)) {
             RouteSettings::realtime_audio()
                 .with_media(input_media)
                 .with_copy_policy(CopyPolicy::CopyToBranchPool)

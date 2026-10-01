@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING
 
 from pocketstation.aio.session import Session as AsyncSession
 from pocketstation.graph import (
+    BackpressurePolicy,
+    CopyPolicy,
+    DeliveryPolicy,
     DerivedStream,
+    LossPolicy,
     Multiplicity,
     OperatorConfiguration,
     PortSpec,
@@ -171,6 +175,14 @@ def attach_window_pipeline(
         filesystem_allowed=True,
         drain_queued=False,
         terminal_roles=transcriber.manifest.terminal_roles,
+        # Slow inference may discard complete input windows; transcript output
+        # remains required. Keep that product policy explicit in the graph.
+        input_delivery=(
+            DeliveryPolicy.bounded_async()
+            .with_loss(LossPolicy.DROP_ALLOWED)
+            .with_backpressure(BackpressurePolicy.DROP_NEWEST)
+            .with_copy_policy(CopyPolicy.COPY_TO_BRANCH_POOL)
+        ),
     )
     configuration = transcriber.configuration
     worker_count = min(configuration.inference_concurrency, len(selected))

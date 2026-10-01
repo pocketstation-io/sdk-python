@@ -83,8 +83,13 @@ source identities and the last error. Observations remain readable after stop.
 convergence or useful speech recognition. `interrupted` reports a cancelled
 wait for native work; it does not identify its cause as a device failure.
 The Session stop result and events remain necessary to assess the complete run.
-Unknown `qualified_algorithmic_delay_samples` is `None`; CPU processing
-duration is not the signal's algorithmic delay.
+Unknown `qualified_algorithmic_delay_samples` is `None`.
+`latest_processing_duration_ns` and `maximum_processing_duration_ns` measure
+the complete native request, including queue wait, reset, reference analysis
+and microphone processing. They are not the signal's algorithmic delay.
+`discarded_output_frames_total` counts produced frames discarded when their
+awaiting request was interrupted; inspect it alongside input and route discard
+counters.
 
 Cancellation does not mute the microphone when playback is active. Simultaneous
 speech must survive. Missing references, timing errors and source changes need

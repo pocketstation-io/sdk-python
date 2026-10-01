@@ -569,6 +569,9 @@ class DeliveryPolicy:
             _native_call(lambda: self._native.with_backpressure(policy.value))
         )
 
+    def with_loss(self, policy: LossPolicy) -> DeliveryPolicy:
+        return type(self)(_native_call(lambda: self._native.with_loss(policy.value)))
+
     def with_copy_policy(self, policy: CopyPolicy) -> DeliveryPolicy:
         return type(self)(
             _native_call(lambda: self._native.with_copy_policy(policy.value))
@@ -679,6 +682,9 @@ class RouteSettings:
         return type(self)(
             _native_call(lambda: self._native.with_backpressure(policy.value))
         )
+
+    def with_loss(self, policy: LossPolicy) -> RouteSettings:
+        return type(self)(_native_call(lambda: self._native.with_loss(policy.value)))
 
     def with_copy_policy(self, policy: CopyPolicy) -> RouteSettings:
         return type(self)(
