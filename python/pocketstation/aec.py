@@ -9,6 +9,7 @@ from typing import TypeAlias
 from ._native import _EchoCancellationObservations as _NativeObservations
 from ._native import _EchoCancelledAudio as _NativeEchoCancelledAudio
 from ._native import _PlaybackReference as _NativePlaybackReference
+from ._native import aec_available as aec_available
 from .errors import _native_call
 from .graph import DerivedStream, SourceOutput, Stem, _DestinationResolver
 from .identity import SourceId
@@ -197,4 +198,5 @@ __all__ = [
     "EchoCancellationState",
     "EchoCancelledAudio",
     "PlaybackReference",
+    "aec_available",
 ]
