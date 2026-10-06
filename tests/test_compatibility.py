@@ -16,9 +16,13 @@ def test_runtime_compatibility_matches_python_and_native_manifests() -> None:
     compatibility = pocketstation.RUNTIME_COMPATIBILITY
 
     assert compatibility.sdk_version == project["project"]["version"]
-    assert compatibility.core_version == native["dependencies"]["pocketstation"].lstrip(
-        "="
+    core_dependency = native["dependencies"]["pocketstation"]
+    core_requirement = (
+        core_dependency
+        if isinstance(core_dependency, str)
+        else core_dependency["version"]
     )
+    assert compatibility.core_version == core_requirement.lstrip("=")
     assert compatibility.relay_connector_version == native["dependencies"][
         "pocketstation-relay"
     ].lstrip("=")

@@ -139,3 +139,26 @@ def test_given_bad_aec_evidence_when_checked_then_rejected(
 def test_given_missing_aec_evidence_when_checked_then_rejected() -> None:
     with pytest.raises(ValueError, match="AEC evidence is missing"):
         validator.validate_aec({})
+
+
+def test_given_lean_artifact_when_checked_then_explicit_unavailability_required() -> (
+    None
+):
+    evidence = {"available": False, "unavailable_error_verified": True}
+    validator.validate_aec({"aec": evidence}, expected_available=False)
+    for key, value in (
+        ("available", True),
+        ("available", 0),
+        ("unavailable_error_verified", False),
+        ("unavailable_error_verified", 1),
+    ):
+        altered = dict(evidence, **{key: value})
+        with pytest.raises(ValueError, match="availability evidence failed"):
+            validator.validate_aec({"aec": altered}, expected_available=False)
+    with pytest.raises(ValueError, match="availability evidence failed"):
+        validator.validate_aec(
+            {"aec": {**evidence, "processed_frames_total": 400}},
+            expected_available=False,
+        )
+    with pytest.raises(ValueError, match="processing evidence failed"):
+        validator.validate_aec({"aec": evidence}, expected_available=True)

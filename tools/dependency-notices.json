@@ -2982,6 +2982,27 @@
     {
       "ecosystem": "cargo",
       "license_expression": "MIT OR Apache-2.0",
+      "name": "pocketstation",
+      "notice_origins": [
+        {
+          "origin": "crate:pocketstation@1.1.13/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "crate:pocketstation@1.1.13/LICENSE-MIT",
+          "sha256": "37c1efe6301b127afb9d810c5fab62bdc60f72a7fb55f7a85ae00c0b8f6c1a42"
+        }
+      ],
+      "notices": [
+        "37c1efe6301b127afb9d810c5fab62bdc60f72a7fb55f7a85ae00c0b8f6c1a42",
+        "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+      ],
+      "source_url": "https://crates.io/api/v1/crates/pocketstation/1.1.13/download",
+      "version": "1.1.13"
+    },
+    {
+      "ecosystem": "cargo",
+      "license_expression": "MIT OR Apache-2.0",
       "name": "pocketstation-relay",
       "notice_origins": [
         {

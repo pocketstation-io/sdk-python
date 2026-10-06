@@ -1,7 +1,11 @@
-use pocketstation::{EchoAudioInput, EchoCancellationState, EchoCancelledAudio, PlaybackReference};
+use pocketstation::{
+    DeviceId, EchoAudioInput, EchoCancellationState, EchoCancelledAudio, NativePlaybackReference,
+    PlaybackReference,
+};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 
+use crate::errors::validate_nonempty;
 use crate::graph::{PythonDerivedStream, PythonSourceOutput, PythonStem};
 
 pub(crate) fn audio_input(input: &Bound<'_, PyAny>) -> PyResult<EchoAudioInput> {
@@ -45,6 +49,29 @@ impl PythonPlaybackReference {
         Ok(Self {
             value: PlaybackReference::rendered_audio(audio_input(input)?),
         })
+    }
+}
+
+#[pyclass(name = "_NativePlaybackReference", frozen)]
+pub(crate) struct PythonNativePlaybackReference {
+    pub(crate) value: NativePlaybackReference,
+    playback_device_id: String,
+}
+
+#[pymethods]
+impl PythonNativePlaybackReference {
+    #[staticmethod]
+    fn output(playback_device_id: String) -> PyResult<Self> {
+        validate_nonempty("playback device ID", &playback_device_id)?;
+        Ok(Self {
+            value: NativePlaybackReference::output(DeviceId::new(playback_device_id.clone())),
+            playback_device_id,
+        })
+    }
+
+    #[getter]
+    fn playback_device_id(&self) -> &str {
+        &self.playback_device_id
     }
 }
 
@@ -148,6 +175,7 @@ fn aec_available() -> bool {
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(aec_available, module)?)?;
     module.add_class::<PythonPlaybackReference>()?;
+    module.add_class::<PythonNativePlaybackReference>()?;
     module.add_class::<PythonEchoCancelledAudio>()?;
     module.add_class::<PythonEchoCancellationObservations>()?;
     Ok(())

@@ -1118,6 +1118,11 @@ class _PlaybackReference:
         input: Stem | SourceOutput | DerivedStream,
     ) -> _PlaybackReference: ...
 
+class _NativePlaybackReference:
+    playback_device_id: str
+    @staticmethod
+    def output(playback_device_id: str) -> _NativePlaybackReference: ...
+
 class _EchoCancelledAudio:
     audio: Stem
     reference_coverage: str
@@ -1383,6 +1388,9 @@ class Session:
         microphone: Stem | SourceOutput | DerivedStream,
         reference: _PlaybackReference,
     ) -> _EchoCancelledAudio: ...
+    def native_aec(
+        self, microphone: Stem, reference: _NativePlaybackReference
+    ) -> None: ...
     def endpoint(self, descriptor: _EndpointDescriptor) -> Endpoint: ...
     def connector(
         self,

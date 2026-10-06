@@ -27,7 +27,7 @@ def notice_document(extra: bool = False) -> bytes:
             "notices": [digest],
         }
         for name, version in [
-            ("pocketstation", "1.1.12"),
+            ("pocketstation", "1.1.13"),
             ("pocketstation-relay", "0.1.5"),
         ]
     ]
@@ -62,7 +62,7 @@ def wheel_files() -> dict[str, bytes]:
         root + "sboms/pocketstation-python.cyclonedx.json": json.dumps(
             {
                 "bomFormat": "CycloneDX",
-                "components": [{"name": "pocketstation", "version": "1.1.12"}],
+                "components": [{"name": "pocketstation", "version": "1.1.13"}],
             }
         ).encode(),
         root + "sboms/auditwheel.cdx.json": json.dumps(

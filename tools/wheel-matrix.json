@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "package_version": "0.1.5",
+  "package_version": "0.1.6",
   "abi": "cp311-abi3",
   "targets": [
     {"id": "linux-x64", "runner": "ubuntu-24.04", "target": "x86_64-unknown-linux-gnu", "system": "Linux", "machine": "x86_64", "platform_tag": "manylinux_2_34_x86_64", "manylinux": "2_34", "python_versions": ["3.11", "3.12", "3.13", "3.14"]},

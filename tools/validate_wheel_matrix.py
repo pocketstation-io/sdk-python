@@ -59,10 +59,18 @@ def one(directory: Path, pattern: str) -> Path:
     return matches[0]
 
 
-def validate_aec(result: dict[str, Any]) -> None:
+def validate_aec(result: dict[str, Any], *, expected_available: bool = True) -> None:
     observation = result.get("aec")
     if not isinstance(observation, dict):
         raise ValueError("installed AEC evidence is missing")
+    if not expected_available:
+        if (
+            set(observation) != {"available", "unavailable_error_verified"}
+            or observation["available"] is not False
+            or observation["unavailable_error_verified"] is not True
+        ):
+            raise ValueError("lean artifact AEC availability evidence failed")
+        return
     echo = observation.get("echo_power_ratio")
     voice = observation.get("voice_power_ratio")
     if not (
@@ -112,7 +120,9 @@ def validate_result(result: dict[str, Any], distribution_format: str) -> None:
         raise ValueError("consumer imported outside site-packages")
     if consumer["source_id"] <= 0 or consumer["stream_id"] <= 0:
         raise ValueError("source identity is absent")
-    validate_aec(consumer)
+    # The published matrix builds the default, engine-free wheel. An enabled
+    # source build has its separate positive processor qualification.
+    validate_aec(consumer, expected_available=False)
     if result["tools"] != {"mypy_requirement": "mypy==2.3.1", "mypy_version": "2.3.1"}:
         raise ValueError("installed typing tool differs")
     for mode in ("sync", "asyncio"):

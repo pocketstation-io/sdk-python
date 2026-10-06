@@ -2,7 +2,7 @@
 
 Use `RecordedAudio` to extract context from a finalized Session recording without
 opening a microphone or recapturing an application. Core owns file validation,
-sample slicing and provenance. The Python layer only projects its results.
+sample slicing and provenance. The Python API returns Core's results.
 
 ```python
 from pocketstation import RecordedAudio, RecordingClipWindow
@@ -46,7 +46,7 @@ reader = await RecordedAudio.open(outcome.session_directory, outcome.session_id)
 clip = await reader.read_clip(stem.stem_id, window)
 ```
 
-The synchronous native I/O releases the GIL. The asyncio projection keeps that
+The synchronous native I/O releases the GIL. The asyncio API keeps that
 I/O off the event loop. Cancelling an await does not forcibly stop file I/O
 already running; applications must bound their concurrent requests.
 
@@ -61,7 +61,7 @@ The checksum detects corruption; it is not a cryptographic signature. The
 application owns directory authorization and must prevent hostile concurrent
 writers. The reader never broadens capture scope or authorizes a recording.
 
-For recent audio during capture, declare bounded history before starting and
+For recent audio during capture, declare history with explicit limits before starting and
 route only the authorized sources you want to retain:
 
 ```python

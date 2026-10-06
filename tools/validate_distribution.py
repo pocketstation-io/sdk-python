@@ -34,7 +34,7 @@ _backend_spec.loader.exec_module(BUILD_BACKEND)
 PROJECT_NAME = "pocketstation"
 NATIVE_PACKAGE_NAME = "pocketstation-python"
 CORE_NAME = "pocketstation"
-CORE_VERSION = "1.1.12"
+CORE_VERSION = "1.1.13"
 RELAY_NAME = "pocketstation-relay"
 RELAY_VERSION = "0.1.5"
 CONSOLE_COMMAND = "pocketstation-demo"

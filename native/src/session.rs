@@ -364,6 +364,18 @@ impl PythonSession {
         })
     }
 
+    fn native_aec(
+        &self,
+        microphone: &PythonStem,
+        reference: &crate::aec::PythonNativePlaybackReference,
+    ) -> PyResult<()> {
+        self.with_session(|session| {
+            session
+                .native_aec(&microphone.handle, reference.value.clone())
+                .map_err(session_error)
+        })
+    }
+
     fn endpoint(&self, descriptor: &PythonEndpointDescriptor) -> PyResult<PythonEndpoint> {
         self.with_session(|session| {
             session
