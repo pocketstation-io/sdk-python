@@ -56,6 +56,8 @@ jobs:
           manylinux: ${{ matrix.manylinux }}
           before-script-linux: |
             dnf install -y alsa-lib-devel openssl-devel opus-devel pipewire-devel clang cmake ninja-build
+            # Use the manylinux CPython toolchain, whose pip is preinstalled.
+            export PATH="/opt/python/cp313-cp313/bin:$PATH"
             python3 -m pip install 'ninja==1.11.1.4'
           args: --release --locked --compatibility pypi --out dist
       - name: Finalize dependency license metadata before qualification
