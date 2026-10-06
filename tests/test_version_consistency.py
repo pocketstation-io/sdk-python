@@ -27,7 +27,7 @@ VALIDATOR = _load_validator()
 
 
 def test_given_release_checkout_when_versions_validated_then_all_inputs_agree() -> None:
-    assert VALIDATOR.validate_source_versions(ROOT) == "0.1.5"
+    assert VALIDATOR.validate_source_versions(ROOT) == "0.1.6"
 
 
 def test_given_checkout_without_uv_lock_when_versions_validated_then_check_fails(

@@ -5,8 +5,8 @@ from __future__ import annotations
 from .audio_input import AudioInput, PcmSource
 from .capture import Capture, capture
 from .connector import Connector, ConnectorDeadlines
-from .relay import RelaySession
 from .recording import RecordedAudio
+from .relay import RelaySession
 from .session import RunningSession, Session
 from .sources import discover_sources
 
@@ -16,8 +16,8 @@ __all__ = [
     "Connector",
     "ConnectorDeadlines",
     "PcmSource",
-    "RelaySession",
     "RecordedAudio",
+    "RelaySession",
     "RunningSession",
     "Session",
     "capture",

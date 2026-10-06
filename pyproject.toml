@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "pocketstation"
-version = "0.1.5"
+version = "0.1.6"
 description = "Source-aware live audio capture, processing, and routing for Python"
 readme = "README.md"
 requires-python = ">=3.11"

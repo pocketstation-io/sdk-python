@@ -17,7 +17,7 @@ from .recording import RecordedAudio, RecordingClipWindow
 from .session import RecordingOutcome, RunningSession, Session, StopResult
 from .sources import Source, discover_sources
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 __all__ = [
     "RUNTIME_COMPATIBILITY",
@@ -29,9 +29,9 @@ __all__ = [
     "Connector",
     "PcmSource",
     "PocketStationError",
-    "RecordingOutcome",
     "RecordedAudio",
     "RecordingClipWindow",
+    "RecordingOutcome",
     "RunningSession",
     "RuntimeCompatibility",
     "Session",

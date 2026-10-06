@@ -34,7 +34,12 @@ from .identity import (
 )
 
 if TYPE_CHECKING:
-    from .aec import EchoAudioInput, EchoCancelledAudio, PlaybackReference
+    from .aec import (
+        EchoAudioInput,
+        EchoCancelledAudio,
+        NativePlaybackReference,
+        PlaybackReference,
+    )
     from .aio.connector import Connector as AsyncConnector
     from .connector import Connector as SyncConnector
     from .relay import RelayPublisher, RelayRoute
@@ -1226,6 +1231,23 @@ class _GraphSessionDeclarations:
                 reference,
                 self._destination_for_stream,
             )
+        )
+
+    def native_aec(self, microphone: Stem, reference: NativePlaybackReference) -> None:
+        """Request active device AEC for a captured microphone and exact output.
+
+        Start fails if the opened route cannot attest the requested processing.
+        The existing microphone Stem carries the resulting audio; no second
+        processing stage or output capture is implicitly declared.
+        """
+        from .aec import NativePlaybackReference
+
+        if not isinstance(microphone, Stem):
+            raise TypeError("native AEC microphone must be a captured Stem")
+        if not isinstance(reference, NativePlaybackReference):
+            raise TypeError("reference must be a NativePlaybackReference")
+        _native_call(
+            lambda: self._native.native_aec(microphone._native, reference._native)
         )
 
     def endpoint(self, descriptor: EndpointDescriptor) -> Endpoint:

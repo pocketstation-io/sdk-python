@@ -2,13 +2,29 @@
 
 ## Unreleased
 
-The native binding now uses released Core 1.1.12, which corrects false microphone
-timestamp discontinuities when the device audio format is converted for a
-Session. Python API behavior and Relay Connector 0.1.5 are unchanged. Dependency
-notices and runtime compatibility values are refreshed with the Core pin.
+## 0.1.6 — 2026-10-06
 
-This source candidate is not a new PyPI release. Published 0.1.5 artifacts still
-use Core 1.1.11; new distribution and release qualification is required.
+This version adds Core-owned live audio history and finalized
+recording clips. Declare `Session.audio_history()`, route selected sources with
+`retain_audio()`, and use `pocketstation.recording` to read owned WAV bytes and
+exact source, stem, clock and sample provenance. Default retention is 30 seconds,
+16 MiB of PCM and 4096 buffers shared across the selected stems. Missing,
+expired and not-yet-captured context are explicit errors. Asyncio reads run on
+worker threads; the application controls concurrent read requests. See the
+[recording guide](docs/guides/recording-clips.md).
+
+This version targets Core 1.1.13. It exposes the optional portable
+echo processor through `Session.echo_cancel()` and exact output-device native
+processing through `Session.native_aec()`. Native processing is a separate
+request, does not require the portable engine, and fails at Session start when
+the opened route cannot attest active processing. Both declarations reject a
+second AEC stage on the same microphone. Default wheels omit the portable
+engine; enabled builds include it explicitly.
+
+Installed macOS artifacts passed the controlled-PCM Lab workflow; this result
+establishes no physical acoustic or automatic native-AEC claim.
+Native macOS/Linux AEC routes remain unavailable,
+and Windows acoustic qualification remains in progress.
 
 ## 0.1.5
 

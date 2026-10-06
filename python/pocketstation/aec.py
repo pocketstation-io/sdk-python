@@ -8,6 +8,7 @@ from typing import TypeAlias
 
 from ._native import _EchoCancellationObservations as _NativeObservations
 from ._native import _EchoCancelledAudio as _NativeEchoCancelledAudio
+from ._native import _NativePlaybackReference as _NativeNativePlaybackReference
 from ._native import _PlaybackReference as _NativePlaybackReference
 from ._native import aec_available as aec_available
 from .errors import _native_call
@@ -152,6 +153,36 @@ class PlaybackReference:
         )
 
 
+class NativePlaybackReference:
+    """Select one exact output device for an OS-managed microphone AEC route.
+
+    This declaration does not open or record the output mix. Session start must
+    attest that the opened microphone uses the requested device and active AEC.
+    """
+
+    __slots__ = ("_native", "_playback_device_id")
+
+    def __init__(
+        self, native: _NativeNativePlaybackReference, playback_device_id: str
+    ) -> None:
+        self._native = native
+        self._playback_device_id = playback_device_id
+
+    @property
+    def playback_device_id(self) -> str:
+        return self._playback_device_id
+
+    @classmethod
+    def output(cls, playback_device_id: str) -> NativePlaybackReference:
+        """Use a discovered output device's exact native ID."""
+        if not isinstance(playback_device_id, str):
+            raise TypeError("playback_device_id must be a string")
+        native = _native_call(
+            lambda: _NativeNativePlaybackReference.output(playback_device_id)
+        )
+        return cls(native, native.playback_device_id)
+
+
 class EchoCancelledAudio:
     """Processed microphone audio, selected inputs, and native observations."""
 
@@ -197,6 +228,7 @@ __all__ = [
     "EchoCancellationObservations",
     "EchoCancellationState",
     "EchoCancelledAudio",
+    "NativePlaybackReference",
     "PlaybackReference",
     "aec_available",
 ]

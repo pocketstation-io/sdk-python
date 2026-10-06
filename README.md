@@ -143,8 +143,9 @@ it can be recorded, published, observed, or removed from pending local output
 without stopping microphone capture.
 
 This API does not provide model intelligence or a hosted inference service.
-Native echo processing has its own [Session API](docs/guides/echo-cancellation.md)
-in the development candidate; published 0.1.5 wheels do not include it.
+Optional portable processing and explicit device AEC have separate
+[Session APIs](docs/guides/echo-cancellation.md) in the development candidate;
+published 0.1.5 wheels do not include them.
 Provider-side cancellation and receiver playout
 remain separate observations; PocketStation does not report that a person
 stopped hearing audio unless the receiver can prove it.
@@ -392,6 +393,7 @@ include dependencies with their own terms; see [third-party notices](THIRD_PARTY
 Read [support](SUPPORT.md), [security](SECURITY.md), and
 [contributing](CONTRIBUTING.md) for reporting and development expectations.
 
-The unreleased source candidate pins Core 1.1.12 for the microphone timestamp
-correction. Published 0.1.5 remains unchanged; consult the Unreleased release
-notes before building this candidate.
+Version 0.1.6 uses Core 1.1.13 for live audio history, recording clips and
+optional AEC APIs. See the [recording guide](docs/guides/recording-clips.md)
+and [echo processing guide](docs/guides/echo-cancellation.md) for the APIs and
+their support limits.

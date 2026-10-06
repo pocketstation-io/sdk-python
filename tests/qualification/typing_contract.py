@@ -6,6 +6,7 @@ from pocketstation.aec import (
     EchoCancellationObservations,
     EchoCancellationState,
     EchoCancelledAudio,
+    NativePlaybackReference,
     PlaybackReference,
 )
 from pocketstation.aio import Session as AsyncSession
@@ -81,3 +82,9 @@ def verify_echo_types(
     assert_type(observation.microphone_source_id, SourceId | None)
     assert_type(observation.tail_padding_samples_total, int)
     assert_type(observation.nominal_delay_samples, int)
+
+
+def verify_native_echo_types(session: Session | AsyncSession, microphone: Stem) -> None:
+    reference = NativePlaybackReference.output("exact-output-device")
+    assert_type(reference.playback_device_id, str)
+    assert_type(session.native_aec(microphone, reference), None)

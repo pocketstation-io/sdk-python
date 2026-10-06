@@ -1003,3 +1003,42 @@ versions, tags or publication. Unrelated native-AEC and release work is preserve
 in the working tree and excluded from this commit. Scaffold inventory: no new
 runtime stub; controlled Lab PCM is LOOPBACK-ONLY. Staff component review: PASS.
 Physical/platform/release qualification and Capturo use remain separate.
+
+### 2026-10-06 — existing clip/history release candidate qualification
+
+The user authorizes publication of the existing Core 1.1.13 and corresponding
+Python 0.1.6 / Node 0.1.5 candidates when required gates pass. Release metadata,
+version assertions and compatibility declarations now agree. The installed
+consumer already distinguishes default engine-free builds from explicit AEC
+builds; the matrix validator now requires the matching negative availability
+proof for shipping default artifacts. Positive cancellation/tail/provenance
+checks remain for enabled-engine evidence; no physical claim follows from them.
+Adversarial matrix tests reject mismatched or incomplete availability evidence.
+
+Candidate149 receipts record passed local metadata/protocol checks and historical
+failures separately. Same-source registry dependency locks, clean production
+artifacts and cloud distribution qualification are still pending Core release.
+The installed-artifact Lab result in candidate148 remains LOOPBACK-ONLY; it does
+not replace those release gates. No new dependency/package/fork, implicit capture,
+default processing or model is introduced. Native macOS/Linux AEC remains
+unsupported and acoustic Windows qualification remains in progress.
+
+Registry-source qualification now passes: published Core1.1.13 checksum
+37b4ca82d96d1d1755fd51ba3c81282baba9b5de8837c84ea9dad1da692a454e
+replaces the development dependency; all other lock entries are preserved.
+Full conformance-wheel suite: 928 PASS / 18 feature skips. Ruff (163 files),
+strict MyPy, native formatting/Clippy and 10 native tests pass. Four old
+distribution fixture failures were corrected by updating Core/SBOM/notice
+versions; corruption, duplicate RECORD and local dependency rejection remain.
+Production wheel/sdist validation and the isolated macOS-arm64 wheel consumer
+pass. Lab149 installs the ordinary wheel and Node archives and passes exact
+independent stereo history/finalized recording, 128 concurrent reads per SDK,
+retention limits and zero recording drops; this remains LOOPBACK-ONLY.
+
+Staff source review: PASS / SAFE-TO-TEST. Purpose: prepare 0.1.6, expose Core's
+explicit native-device request and retain source-aware history/clip bindings.
+No provider/inference or retention engine is added to Python. No new runtime
+scaffold; existing unsupported native routes are declared honestly. Public
+documentation language, versions, dependency notices and exact registry locks
+pass. Cloud same-source native matrix and PyPI publication remain pending;
+this local result does not claim physical/platform qualification.

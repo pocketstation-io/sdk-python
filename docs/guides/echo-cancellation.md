@@ -1,8 +1,48 @@
 # Reduce playback echo in microphone audio
 
+## Request device processing explicitly
+
+`NativePlaybackReference.output(device_id)` selects one exact playback device
+for an operating-system AEC route. This request does not compile the optional
+portable engine. Declare a captured microphone Stem and the exact output device
+before starting the Session:
+
+```python
+import pocketstation as pks
+from pocketstation.aec import NativePlaybackReference
+from pocketstation.sources import SourceKind
+
+output = next(
+    source for source in pks.discover_sources()
+    if source.stable_id.kind is SourceKind.OUTPUT_DEVICE
+    and source.device_uid is not None
+)
+session = pks.Session()
+microphone = session.capture(pks.Source.microphone_default())
+session.native_aec(microphone, NativePlaybackReference.output(output.device_uid))
+microphone.send(session.polled_audio())
+with session.start() as running:
+    for frame in running.audio:
+        print(frame.source_id, frame.timestamp_start_ns)
+```
+
+Choose and display the output device in the application; the first-discovered
+device above is only a compact illustration. The request does not capture or
+record the output mix. Starting fails if the opened microphone cannot attest an
+active, non-bypassed effect using the exact selected reference. A failed route
+does not deliver an unprocessed microphone as though it were cancelled.
+macOS and Linux native routes are not yet implemented; the current Windows
+backend also rejects unsupported endpoints. A successful declaration is not
+evidence of acoustic quality. Native and portable processing requests on the
+same microphone are mutually exclusive, including when their order changes.
+The microphone Stem may already be processed; do not label it raw merely
+because no Python processor was declared.
+
+## Enable the portable processor
+
 Default native builds exclude the AEC engine. The API remains importable and
 reports an explicit unavailable error when processing is requested without it.
-This is unreleased source functionality; use a matching Core development build.
+Version 0.1.6 uses Core 1.1.13 for these APIs.
 An AEC-enabled build of this same SDK is selected explicitly. Install Rust,
 a C/C++ toolchain, Meson, Ninja, pkg-config, libclang and Rust's `llvm-tools`
 component first, then build and install the wheel:
@@ -22,18 +62,15 @@ print(aec_available())
 
 A runtime option does not remove compiled dependencies. Default wheels
 omit the engine; explicitly enabled artifacts include it. No additional package
-name is introduced. For source qualification before the Core release, the test
-runner records the exact local Core override; this is not published-registry
-compatibility. Published versions and dependencies are unchanged. PocketStation
-does not automatically discover or enable OS-provided AEC on any platform.
+name is introduced. PocketStation does not automatically discover or enable
+OS-provided AEC on any platform.
 Availability here means this artifact includes the optional processor, not that
 a microphone and playback route have been acoustically qualified.
 
 
-The development candidate exposes Core's built-in echo processor through
-`Session.echo_cancel()`. This API is not in the published Python 0.1.5 wheels.
-Installed native platform and physical-device qualification remains required
-before a release can promise those results.
+An explicitly enabled build exposes Core's portable processor through
+`Session.echo_cancel()`. Including an engine and processing synthetic PCM does
+not establish physical-device cancellation quality.
 
 Select the microphone and playback reference explicitly:
 
