@@ -1055,3 +1055,19 @@ rejection, latest-token deletion, timeout reporting and joined cleanup remain.
 All 15 owner-renewal tests and Ruff lint/format pass. Initial CI failures remain
 in candidate149 logs. Staff fix review: PASS / SAFE-TO-TEST; cloud CI must rerun
 on this source before merge. No new dependency, runtime scaffold or product claim.
+
+### 2026-10-06 — Linux qualification container interpreter
+
+PR20 merged at main02c245a after all eight source CI jobs passed; it includes
+the superseded PR19 microphone timestamp work. The first exact-main frozen
+distribution run fails both Linux builds before compilation: the manylinux
+container's `/usr/bin/python3` has no pip. Its documented CPython toolchains
+under `/opt/python` include pip. The Linux before-script now selects CPython
+3.13 before installing the existing pinned Ninja build tool and running maturin.
+No runtime dependency, package/version, ABI floor or acceptance assertion changes.
+Both failed platform logs remain in candidate149. Existing matrix/release tests
+and corrected real container qualification are required before publication.
+
+Local 45 matrix/release artifact tests and whitespace review pass. Staff setup review: PASS /
+SAFE-TO-TEST; corrected container builds and full source CI remain pending.
+Scaffold inventory: n/a; no runtime path or acceptance claim is introduced.
