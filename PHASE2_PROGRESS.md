@@ -980,3 +980,26 @@ No live scaffold, wake model, rolling capture, version/tag/package publication
 or external mutation. Prior release/AEC edits are preserved. Staff review PASS
 for these component semantics; formal clean-owner/release acceptance pending.
 Receipts: factory evidence/W21-RECORDING-TRIGGER-CLIPS/sdk-parity-147.
+
+### W21 live audio history — candidate 148, 2026-10-06
+
+REAL thin bindings; LOOPBACK-ONLY installed-artifact proof. Session declares
+Core-owned audio history; source/stem `retain_audio()` routes explicitly.
+`pocketstation.recording` exposes typed limits, metadata, errors, observations
+and copied clips. Sync native calls release the GIL; the asyncio projection
+uses workers, with explicit caller ownership of request concurrency. All u64
+values remain exact integers. No retention/slicing algorithm or detector is
+duplicated in Python.
+
+877 component tests pass, 49 fixture/feature skips; 26 focused installed-wheel
+recording/history/export checks pass. Strict MyPy (58 modules), Ruff and native
+Clippy pass. Lab's matching local wheel checks 288 buffers, 128 concurrent reads,
+retention caps, expiry, cancellation, exact finalized/live PCM and Node parity.
+Four inherited release/version/supply-chain/compatibility suites remain outside
+this component gate; previous failures remain in candidate147 evidence.
+
+Evidence: factory W21-RECORDING-TRIGGER-CLIPS/live-history-148. No new dependencies,
+versions, tags or publication. Unrelated native-AEC and release work is preserved
+in the working tree and excluded from this commit. Scaffold inventory: no new
+runtime stub; controlled Lab PCM is LOOPBACK-ONLY. Staff component review: PASS.
+Physical/platform/release qualification and Capturo use remain separate.

@@ -844,6 +844,12 @@ pub(crate) struct PythonStem {
 
 #[pymethods]
 impl PythonStem {
+    fn retain_audio(&self) -> PyResult<PythonEndpoint> {
+        self.handle
+            .retain_audio()
+            .map(|handle| PythonEndpoint { handle })
+            .map_err(session_error)
+    }
     fn send(&self, endpoint: &PythonEndpoint) -> PyResult<u64> {
         self.handle
             .send(endpoint.handle)
@@ -1024,6 +1030,12 @@ pub(crate) struct PythonSourceOutput {
 
 #[pymethods]
 impl PythonSourceOutput {
+    fn retain_audio(&self) -> PyResult<PythonEndpoint> {
+        self.handle
+            .retain_audio()
+            .map(|handle| PythonEndpoint { handle })
+            .map_err(session_error)
+    }
     #[getter]
     fn session_id(&self) -> u64 {
         self.handle.session_id().get()
