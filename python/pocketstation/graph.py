@@ -1015,6 +1015,12 @@ class Stem(_RoutableStream):
     def session_id(self) -> RuntimeSessionId:
         return RuntimeSessionId(self._native.session_id)
 
+    def retain_audio(self) -> Endpoint:
+        """Send this independent stem to the Session's declared audio history."""
+        endpoint = _native_call(lambda: Endpoint(self._native.retain_audio()))
+        self._endpoint_ids.add(int(endpoint.id))
+        return endpoint
+
     def record(self, stem_name: str) -> Endpoint:
         endpoint = _native_call(lambda: Endpoint(self._native.record(stem_name)))
         self._endpoint_ids.add(int(endpoint.id))
@@ -1137,6 +1143,12 @@ class SourceOutput(_RoutableStream):
     @property
     def output_port(self) -> str:
         return self._native.output_port
+
+    def retain_audio(self) -> Endpoint:
+        """Send this independent stem to the Session's declared audio history."""
+        endpoint = _native_call(lambda: Endpoint(self._native.retain_audio()))
+        self._endpoint_ids.add(int(endpoint.id))
+        return endpoint
 
     def record(self, stem_name: str) -> Endpoint:
         endpoint = _native_call(lambda: Endpoint(self._native.record(stem_name)))

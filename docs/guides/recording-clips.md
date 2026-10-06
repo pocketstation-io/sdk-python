@@ -61,6 +61,43 @@ The checksum detects corruption; it is not a cryptographic signature. The
 application owns directory authorization and must prevent hostile concurrent
 writers. The reader never broadens capture scope or authorizes a recording.
 
-This API reads finalized recordings. Live rolling retention, wake-word
-recognition and detector models are separate capabilities. External detectors
-may supply intervals; this reader neither classifies speech nor chooses a model.
+For recent audio during capture, declare bounded history before starting and
+route only the authorized sources you want to retain:
+
+```python
+from pocketstation import Session
+from pocketstation.recording import AudioHistoryConfig
+
+session = Session()
+history = session.audio_history(AudioHistoryConfig())
+source = session.audio_input("authorized-audio")
+source.output.retain_audio()
+running = session.start()
+# Feed/capture audio; stem metadata appears after its first frame arrives.
+# clip = history.read_clip(exact_stem_id, detector_window)
+source.close()
+running.stop()
+```
+
+Defaults share 30 seconds, 16 MiB PCM and 4096 buffers across at most 64 stems.
+Configure `retention_ns`, `max_pcm_bytes` and `max_buffers` explicitly for your
+workload. History keeps original channels and source identity. A source reset
+discards that stem's older generation. `clear()` discards retained audio while
+capture and its other destinations continue. Graceful stop keeps the retained
+tail; cancellation discards it.
+
+`AudioHistoryError.code` distinguishes `recording.history_not_ready` (post-context
+has not arrived), `recording.history_expired`, `recording.history_missing_context`,
+`recording.history_ended`, cancellation, failure and invalid limits. Live history
+does not shorten missing context or invent silence. Limit retries and concurrent
+requests in your application; each returned clip owns its WAV bytes. Observe
+shared retention and delivery through `history.observations()`.
+
+For asyncio use `pocketstation.aio.Session`: history methods are awaited,
+including `get_stems()`, `read_clip()`, `clear()` and `observations()`. Declaration
+and `retain_audio()` stay synchronous. Do not forget to await async input writes,
+close and Session stop. Native history operations run off the event loop.
+
+These APIs are qualified against matching local builds. Registry publication
+and physical capture qualification are separate. External detectors supply
+Session-time intervals; neither reader recognizes speech nor chooses a model.

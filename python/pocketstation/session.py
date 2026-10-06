@@ -58,6 +58,8 @@ from .operator_authoring import (
 from .operator_authoring import (
     _NativeFactoryAdapter as _NativeOperatorFactoryAdapter,
 )
+from .recording import AudioHistory as _SyncAudioHistory
+from .recording import AudioHistoryConfig
 from .sidecar import SidecarConnection, SidecarHandle, SidecarProcessSpec
 from .signal import BusSubscription
 from .source_authoring import RegisteredSource, SourceProvider, _NativeFactoryAdapter
@@ -374,6 +376,18 @@ class Session(_GraphSessionDeclarations):
                 self._destination_for_stream,
             )
         )
+
+    def audio_history(
+        self, config: AudioHistoryConfig | None = None
+    ) -> _SyncAudioHistory:
+        """Retain explicitly routed PCM using Core limits; declare before start."""
+        if config is None:
+            config = AudioHistoryConfig()
+        if not isinstance(config, AudioHistoryConfig):
+            raise TypeError("config must be AudioHistoryConfig")
+        native = _native_call(lambda: self._native.audio_history(*config._limits()))
+        history = _SyncAudioHistory(native)
+        return history
 
     def audio_input(
         self,

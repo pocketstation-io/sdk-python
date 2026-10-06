@@ -180,5 +180,68 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PythonRecordedStem>()?;
     module.add_class::<PythonRecordingClip>()?;
     module.add_class::<PythonRecordedAudio>()?;
+    module.add_class::<PythonAudioHistory>()?;
     Ok(())
+}
+
+#[pyclass(name = "AudioHistory", frozen)]
+pub(crate) struct PythonAudioHistory {
+    pub(crate) inner: pocketstation::AudioHistory,
+}
+
+fn history_error(error: pocketstation::AudioHistoryError) -> PyErr {
+    PyRuntimeError::new_err(coded_reason(error.code(), error.to_string()))
+}
+
+type HistoryObservationsTuple = (String, usize, usize, u64, u64, u64, u64, u64);
+
+#[pymethods]
+impl PythonAudioHistory {
+    fn stems(&self, py: Python<'_>) -> PyResult<Vec<Py<PythonRecordedStem>>> {
+        py.detach(|| self.inner.stems())
+            .map_err(history_error)?
+            .into_iter()
+            .map(|stem| Py::new(py, PythonRecordedStem::from(stem)))
+            .collect()
+    }
+
+    fn read_clip(
+        &self,
+        py: Python<'_>,
+        stem_id: u64,
+        window: &PythonRecordingClipWindow,
+    ) -> PyResult<PythonRecordingClip> {
+        let interval = window.inner;
+        let value = py
+            .detach(|| self.inner.read_clip(StemId::new(stem_id), interval))
+            .map_err(history_error)?;
+        python_clip(py, value)
+    }
+
+    fn clear(&self, py: Python<'_>) -> PyResult<()> {
+        py.detach(|| self.inner.clear()).map_err(history_error)
+    }
+
+    fn observations(&self, py: Python<'_>) -> PyResult<HistoryObservationsTuple> {
+        let value = py
+            .detach(|| self.inner.observations())
+            .map_err(history_error)?;
+        let state = match value.state {
+            pocketstation::AudioHistoryState::Preparing => "preparing",
+            pocketstation::AudioHistoryState::Running => "running",
+            pocketstation::AudioHistoryState::Complete => "complete",
+            pocketstation::AudioHistoryState::Cancelled => "cancelled",
+            pocketstation::AudioHistoryState::Failed => "failed",
+        };
+        Ok((
+            state.into(),
+            value.retained_pcm_bytes,
+            value.retained_buffers,
+            value.received_buffers_total,
+            value.evicted_buffers_total,
+            value.rejected_buffers_total,
+            value.discontinuities_total,
+            value.source_resets_total,
+        ))
+    }
 }

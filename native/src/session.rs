@@ -144,6 +144,35 @@ impl PythonSessionStartCancellation {
 
 #[pymethods]
 impl PythonSession {
+    fn audio_history(
+        &self,
+        retention_ns: u64,
+        max_pcm_bytes: usize,
+        max_buffers: usize,
+    ) -> PyResult<crate::recording::PythonAudioHistory> {
+        self.with_session(|session| {
+            session
+                .audio_history(pocketstation::AudioHistoryConfig {
+                    retention_ns,
+                    max_pcm_bytes,
+                    max_buffers,
+                })
+                .map(|inner| crate::recording::PythonAudioHistory { inner })
+                .map_err(|error| {
+                    PyRuntimeError::new_err(coded_reason(
+                        match &error {
+                            pocketstation::AudioHistoryDeclarationError::History(failure) => {
+                                failure.code()
+                            }
+                            pocketstation::AudioHistoryDeclarationError::Session(_) => {
+                                "session.invalid_endpoint"
+                            }
+                        },
+                        error.to_string(),
+                    ))
+                })
+        })
+    }
     #[new]
     #[pyo3(signature = (*, recording_root=None, trace_path=None, trace_capacity_records=256, sample_rate_hz=48_000, channels=1, frame_duration_ms=20))]
     fn new(

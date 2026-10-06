@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 
 from . import _native
 from ._native import RecordingClipWindow as _NativeClipWindow
-from .errors import RecordingClipError, _native_call
+from .errors import AudioHistoryError, RecordingClipError, _native_call
 from .identity import ClockDomainId, RuntimeSessionId, SourceId, StemId
 from .observations import RecordingDiscontinuity
 
 
 def _u64(value: int, label: str, code: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < 2**64:
-        raise RecordingClipError(f"{label} must be an unsigned 64-bit integer", code)
+        failure = (
+            AudioHistoryError
+            if code.startswith("recording.history_")
+            else RecordingClipError
+        )
+        raise failure(f"{label} must be an unsigned 64-bit integer", code)
     return value
 
 
@@ -169,4 +175,85 @@ __all__ = [
     "RecordingClip",
     "RecordingClipError",
     "RecordingClipWindow",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class AudioHistoryConfig:
+    retention_ns: int = 30_000_000_000
+    max_pcm_bytes: int = 16 * 1024 * 1024
+    max_buffers: int = 4096
+
+    def _limits(self) -> tuple[int, int, int]:
+        code = "recording.history_invalid_limits"
+        return (
+            _u64(self.retention_ns, "retention_ns", code),
+            _u64(self.max_pcm_bytes, "max_pcm_bytes", code),
+            _u64(self.max_buffers, "max_buffers", code),
+        )
+
+
+class AudioHistoryState(StrEnum):
+    PREPARING = "preparing"
+    RUNNING = "running"
+    COMPLETE = "complete"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class AudioHistoryObservations:
+    state: AudioHistoryState
+    retained_pcm_bytes: int
+    retained_buffers: int
+    received_buffers_total: int
+    evicted_buffers_total: int
+    rejected_buffers_total: int
+    discontinuities_total: int
+    source_resets_total: int
+
+
+class AudioHistory:
+    """Recent Core-owned audio. Read/copy/encoding releases the GIL.
+
+    Session owns the endpoint worker; this handle survives stop with finite
+    retained audio. Cancel discards it. Not-ready, expired and missing context
+    fail explicitly. Callers limit concurrent requests and retries.
+    """
+
+    __slots__ = ("_native",)
+
+    def __init__(self, native: _native.AudioHistory) -> None:
+        self._native = native
+
+    @property
+    def stems(self) -> tuple[RecordedStem, ...]:
+        values = _native_call(self._native.stems)
+        return tuple(RecordedStem._from_native(value) for value in values)
+
+    def read_clip(self, stem_id: StemId, window: RecordingClipWindow) -> RecordingClip:
+        if not isinstance(window, RecordingClipWindow):
+            raise TypeError("window must be RecordingClipWindow")
+        value = _native_call(
+            lambda: self._native.read_clip(
+                _u64(stem_id, "stem_id", "recording.history_unknown_stem"),
+                window._native,
+            )
+        )
+        return RecordingClip._from_native(value)
+
+    def clear(self) -> None:
+        _native_call(self._native.clear)
+
+    def observations(self) -> AudioHistoryObservations:
+        value = _native_call(self._native.observations)
+        return AudioHistoryObservations(AudioHistoryState(value[0]), *value[1:])
+
+
+__all__ += [
+    "AudioHistory",
+    "AudioHistoryConfig",
+    "AudioHistoryError",
+    "AudioHistoryObservations",
+    "AudioHistoryState",
 ]
