@@ -13,6 +13,7 @@ from .capture import Capture, capture
 from .compatibility import RUNTIME_COMPATIBILITY, RuntimeCompatibility
 from .connector import Connector
 from .errors import CaptureError, PocketStationError, SessionError
+from .recording import RecordedAudio, RecordingClipWindow
 from .session import RecordingOutcome, RunningSession, Session, StopResult
 from .sources import Source, discover_sources
 
@@ -29,6 +30,8 @@ __all__ = [
     "PcmSource",
     "PocketStationError",
     "RecordingOutcome",
+    "RecordedAudio",
+    "RecordingClipWindow",
     "RunningSession",
     "RuntimeCompatibility",
     "Session",

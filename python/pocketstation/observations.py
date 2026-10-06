@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from ._native import RecordingDiscontinuity as _NativeRecordingDiscontinuity
 from ._native import RecordingOutcome as _NativeRecordingOutcome
@@ -31,7 +31,7 @@ from ._native import _SessionFailure as _NativeSessionFailure
 from ._native import _SessionSourceMetrics as _NativeSessionSourceMetrics
 from ._native import _SessionTraceValidation as _NativeTraceValidation
 from ._native import _SignalQueueMetrics as _NativeSignalQueueMetrics
-from .errors import PocketStationError, _native_call
+from .errors import PocketStationError, RecordingClipError, _native_call
 from .identity import (
     EndpointId,
     OperatorInstanceId,
@@ -43,6 +43,10 @@ from .identity import (
     StemId,
 )
 from .sidecar import SidecarSnapshot
+
+if TYPE_CHECKING:
+    from .recording import RecordingClip, RecordingClipWindow
+
 from .source_truth import (
     SourceActivityObservation,
     SourceNativeFormatObservation,
@@ -1008,6 +1012,18 @@ class RecordingOutcome:
     @property
     def complete(self) -> bool:
         return self.state is RecordingState.COMPLETE
+
+    def read_clip(self, stem_id: StemId, window: RecordingClipWindow) -> RecordingClip:
+        """Read context from this finalized outcome, on a blocking control worker."""
+        from .recording import RecordedAudio
+
+        if not self.complete:
+            raise RecordingClipError(
+                "Recording is not finalized", "recording.clip_invalid_recording"
+            )
+        return RecordedAudio.open(self.session_directory, self.session_id).read_clip(
+            stem_id, window
+        )
 
     @classmethod
     def _from_native(cls, value: _NativeRecordingOutcome) -> RecordingOutcome:

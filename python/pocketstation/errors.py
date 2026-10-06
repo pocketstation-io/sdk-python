@@ -19,6 +19,10 @@ class PocketStationError(Exception):
         self.code = code
 
 
+class RecordingClipError(PocketStationError):
+    """Core refused a recording interval, identity, format or integrity check."""
+
+
 class SessionError(PocketStationError):
     """Base failure from Session declaration, startup, or runtime ownership."""
 
@@ -203,6 +207,8 @@ def _normalize_native_error(error: Exception) -> PocketStationError:
         return PocketStationError(message, "session.internal")
     code = match.group(1)
     detail = match.group(2) or code
+    if code.startswith("recording.clip_"):
+        return RecordingClipError(detail, code)
     if code in {"sidecar.queue_full", "sidecar.control_queue_full"}:
         return SidecarBackpressureError(detail, code)
     if code in {

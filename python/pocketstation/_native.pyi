@@ -587,6 +587,42 @@ class RecordingDiscontinuity:
     sequence_start: int | None
     sequence_end: int | None
 
+class RecordingClipWindow:
+    start_ns: int
+    end_ns: int
+    def __init__(self, start_ns: int, end_ns: int) -> None: ...
+    @staticmethod
+    def around(
+        start_ns: int, end_ns: int, before_ns: int, after_ns: int
+    ) -> RecordingClipWindow: ...
+
+class RecordedStem:
+    label: str
+    session_id: int
+    source_id: int
+    stem_id: int
+    clock_id: int
+    source_generation: int
+    permission_epoch: int
+    sample_rate_hz: int
+    channels: int
+    first_timestamp_ns: int
+    final_timestamp_ns: int
+
+class RecordingClip:
+    wav: bytes
+    stem: RecordedStem
+    requested: RecordingClipWindow
+    actual: RecordingClipWindow
+    first_sample_frame: int
+    sample_frames: int
+    def discontinuities(self) -> list[RecordingDiscontinuity]: ...
+
+class RecordedAudio:
+    def __init__(self, directory: Path, session_id: int) -> None: ...
+    def stems(self) -> list[RecordedStem]: ...
+    def read_clip(self, stem_id: int, window: RecordingClipWindow) -> RecordingClip: ...
+
 class RecordingStemOutcome:
     stem_name: str
     frames_written_total: int

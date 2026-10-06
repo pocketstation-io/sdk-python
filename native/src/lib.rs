@@ -9,6 +9,7 @@ pub(crate) mod extensions;
 pub(crate) mod graph;
 pub(crate) mod observations;
 pub(crate) mod operator_authoring;
+pub(crate) mod recording;
 pub(crate) mod relay;
 pub(crate) mod session;
 pub(crate) mod sidecar;
@@ -35,6 +36,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     signals::register(module)?;
     sidecar::register(module)?;
     relay::register(module)?;
+    recording::register(module)?;
     streams::register(module)?;
     observations::register(module)?;
     session::register(module)?;

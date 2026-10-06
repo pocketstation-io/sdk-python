@@ -954,3 +954,29 @@ Core 1.1.12 lacks this development API, so matching source is required until a
 separately authorized dependency/release update. Temporary absolute-path patches
 and diagnostic locks are removed/restored after qualification. No version,
 tag, push, publication or deployment changed.
+
+
+## 2026-10-05 — Core recording clip projection
+
+W21-RECORDING-TRIGGER-CLIPS candidate147 is a thin projection of Core's
+finalized-recording reader: RecordedAudio, RecordingClipWindow, immutable clip
+metadata, owned WAV bytes, stable RecordingClipError and RecordingOutcome
+convenience. Sync I/O releases the GIL; aio runs it on worker threads. Started
+file I/O is not forcibly cancellable. No slicing, checksum or timestamp engine
+is duplicated in Python, and no model/provider/default AEC dependency changes.
+
+Fourteen focused production-wheel tests and six public/native export tests
+pass. The wider component suite passes 871 tests with 49 fixture-only skips.
+Strict MyPy passes all 58 source files; Ruff, format and native Clippy pass.
+Cross-SDK installed consumers verify real Session-written independent stereo
+WAVs, exact clip hashes/provenance and a labelled u64/gap serialization fixture.
+The full repository suite also exposed pre-existing release/matrix/version/
+notice inconsistencies, preserved in python-full-tests.log; it is not green.
+The wheel uses pinned Maturin 1.13.0 and matching local Core, with verified local
+Core license notices added only in the isolated build stage. This is a local
+development artifact, not a public-registry or platform qualification claim.
+
+No live scaffold, wake model, rolling capture, version/tag/package publication
+or external mutation. Prior release/AEC edits are preserved. Staff review PASS
+for these component semantics; formal clean-owner/release acceptance pending.
+Receipts: factory evidence/W21-RECORDING-TRIGGER-CLIPS/sdk-parity-147.
