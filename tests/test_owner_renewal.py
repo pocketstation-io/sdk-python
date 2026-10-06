@@ -25,7 +25,10 @@ CREATE = {
 }
 
 
-def renewal(token: str, ttl_seconds: float = 0.15) -> dict[str, str]:
+def renewal(token: str, ttl_seconds: float = 1.0) -> dict[str, str]:
+    # Exercise renewal and shutdown, rather than the host's ability to schedule
+    # a background thread inside a 150 ms credential lifetime. Expired-token
+    # rejection has its own explicit negative-lifetime cases below.
     return {
         "source_token": token,
         "expires_at": (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).isoformat(),
@@ -106,7 +109,9 @@ def test_terminal_renewal_failure_is_observable_and_close_cannot_report_success(
         if request.url.path.endswith("/renew"):
             calls += 1
             if calls == 1:
-                return httpx.Response(200, json=renewal("bootstrap-secret", 1.0))
+                # Half-life scheduling plus 100/200 ms retry backoff must fit
+                # before expiry even on a loaded native-build runner.
+                return httpx.Response(200, json=renewal("bootstrap-secret", 2.0))
             return httpx.Response(status, text="unknown-leaked-token")
         deleted.append(request.headers["authorization"])
         return httpx.Response(204)
