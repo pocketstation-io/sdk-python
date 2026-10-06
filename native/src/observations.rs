@@ -29,6 +29,26 @@ pub(crate) struct PythonRecordingDiscontinuity {
     sequence_end: Option<u64>,
 }
 
+impl From<pocketstation::RecordingDiscontinuity> for PythonRecordingDiscontinuity {
+    fn from(value: pocketstation::RecordingDiscontinuity) -> Self {
+        use pocketstation::RecordingDiscontinuityKind;
+        Self {
+            stem_id: value.stem_id,
+            label: value.label,
+            kind: match value.kind {
+                RecordingDiscontinuityKind::TimestampGap => "timestamp-gap",
+                RecordingDiscontinuityKind::SequenceGap => "sequence-gap",
+                RecordingDiscontinuityKind::OverlapRejected => "overlap-rejected",
+            }
+            .to_owned(),
+            timestamp_start_ns: value.timestamp_start_ns,
+            timestamp_end_ns: value.timestamp_end_ns,
+            sequence_start: value.sequence_start,
+            sequence_end: value.sequence_end,
+        }
+    }
+}
+
 #[pyclass(name = "RecordingStemOutcome", frozen)]
 pub(crate) struct PythonRecordingStemOutcome {
     #[pyo3(get)]
