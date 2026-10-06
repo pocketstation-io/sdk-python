@@ -1042,3 +1042,16 @@ scaffold; existing unsupported native routes are declared honestly. Public
 documentation language, versions, dependency notices and exact registry locks
 pass. Cloud same-source native matrix and PyPI publication remain pending;
 this local result does not claim physical/platform qualification.
+
+### 2026-10-06 — cross-platform renewal fixture scheduling
+
+PR20 source CI passed Linux, Windows 3.11, the standalone sdist rebuild and
+explicitly enabled macOS AEC. Both macOS default jobs exposed owner-lifecycle
+fixtures whose 150 ms credential lifetime expired before scheduler-dependent
+thread observations; the 1 s retry fixture also expired before its last retry.
+The fixtures now use a 1 s ordinary credential and 2 s retry bootstrap. Runtime
+expiration/deadline policy is unchanged. Exact retry counts, expired-bootstrap
+rejection, latest-token deletion, timeout reporting and joined cleanup remain.
+All 15 owner-renewal tests and Ruff lint/format pass. Initial CI failures remain
+in candidate149 logs. Staff fix review: PASS / SAFE-TO-TEST; cloud CI must rerun
+on this source before merge. No new dependency, runtime scaffold or product claim.
