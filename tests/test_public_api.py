@@ -32,6 +32,7 @@ def test_root_exports_are_a_small_intentional_entry_point() -> None:
         "StopResult",
         "aio",
         "capture",
+        "discover_process_instances",
         "discover_sources",
     }
 
@@ -54,6 +55,7 @@ def test_async_namespace_is_concise() -> None:
         "RunningSession",
         "Session",
         "capture",
+        "discover_process_instances",
         "discover_sources",
     }
     assert hasattr(pocketstation.aio, "Connector")

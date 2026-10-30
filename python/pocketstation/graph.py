@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from .connector import Connector as SyncConnector
     from .relay import RelayPublisher, RelayRoute
     from .signal import BusSubscription, SignalAudioPayload
+    from .sources import ObservedProcessInstance
 
     _ConnectorTarget: TypeAlias = SyncConnector | AsyncConnector
 else:
@@ -1114,7 +1115,7 @@ class SourceInstance:
 
 
 class SourceOutput(_RoutableStream):
-    """One named output from an externally registered source instance."""
+    """One named output from a registered source instance."""
 
     __slots__ = ("_native",)
     _native: _NativeSourceOutput
@@ -1184,6 +1185,30 @@ class _GraphSessionDeclarations:
     def id(self) -> RuntimeSessionId:
         """Return the stable identity allocated by the Rust Session."""
         return RuntimeSessionId(self._native.id)
+
+    def capture_process_set(
+        self,
+        members: Sequence[ObservedProcessInstance],
+    ) -> SourceOutput:
+        """Declare one exact frozen process selection using the existing Core source.
+
+        This immediate declaration is shared by sync and asyncio Sessions.
+        It neither opens capture nor refreshes the supplied start observations.
+        """
+        from .sources import _native_process_set_members
+
+        selected = _native_process_set_members(members)
+        capture = getattr(self._native, "capture_process_set", None)
+        if capture is None:
+            from .errors import CaptureError
+
+            raise CaptureError(
+                "this native build cannot declare exact process sets",
+                "capture.unsupported",
+            )
+        return _native_call(
+            lambda: SourceOutput(capture(selected), self._destination_for_stream)
+        )
 
     def source(
         self,

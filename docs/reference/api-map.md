@@ -13,6 +13,8 @@ provider, Relay, and diagnostic APIs from the module that implements them.
 | Declare an asyncio Session | `pocketstation.aio.Session` |
 | Select a source | `pocketstation.Source` |
 | Discover running sources | `pocketstation.discover_sources` |
+| Observe original process identities | `pocketstation.discover_process_instances` and `pocketstation.sources.ObservedProcessInstance` |
+| Declare an explicit exact process set | `Session.capture_process_set` returning `pocketstation.graph.SourceOutput` |
 | Feed application-owned PCM | `Session.audio_input` |
 
 `capture()` is the convenience API. Use `Session` when you need more than one

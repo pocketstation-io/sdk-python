@@ -20,6 +20,7 @@ from pocketstation.errors import (
     ("encoded", "expected"),
     [
         ("[session.invalid_route] wrong owner", SessionDeclarationError),
+        ("[session.invalid_process_set] duplicate process", SessionDeclarationError),
         ("[session.endpoint_start_failed] refused", SessionStartError),
         ("[session.missing_metrics_snapshot] unavailable", SessionRuntimeError),
         ("[capture.permission_denied] denied", CaptureError),

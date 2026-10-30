@@ -8,7 +8,7 @@ from .connector import Connector, ConnectorDeadlines
 from .recording import RecordedAudio
 from .relay import RelaySession
 from .session import RunningSession, Session
-from .sources import discover_sources
+from .sources import discover_process_instances, discover_sources
 
 __all__ = [
     "AudioInput",
@@ -21,5 +21,6 @@ __all__ = [
     "RunningSession",
     "Session",
     "capture",
+    "discover_process_instances",
     "discover_sources",
 ]
