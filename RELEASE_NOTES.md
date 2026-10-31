@@ -1,8 +1,6 @@
 # PocketStation for Python release notes
 
-## Unreleased
-
-### 0.1.7
+## 0.1.7
 
 The native module uses published Core 1.1.16 and Relay Connector 0.1.6.
 Synchronous and asyncio APIs add immutable observed process instances,

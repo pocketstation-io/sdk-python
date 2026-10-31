@@ -4,9 +4,9 @@ Capture one desktop application and an optional microphone as separate live
 audio stems. Use the same native Session for Python model code, browser
 delivery, and one recording file per stem.
 
-Version 0.1.7 is unreleased. Its native module uses published PocketStation
-Core 1.1.16 and Relay Connector 0.1.6. Release artifacts and installed consumers
-still require their own qualification.
+Version 0.1.7 uses PocketStation Core 1.1.16 and Relay Connector 0.1.6.
+[Release qualification](docs/operations/releasing.md) covers the native wheels
+and installed-consumer checks.
 
 [![PyPI](https://img.shields.io/pypi/v/pocketstation.svg)](https://pypi.org/project/pocketstation/)
 [![Python](https://img.shields.io/pypi/pyversions/pocketstation.svg)](https://pypi.org/project/pocketstation/)
