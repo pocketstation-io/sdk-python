@@ -5,7 +5,7 @@ A release uses the exact seven distributions selected by a successful
 The run records 22 installed CPython consumers and one source rebuild. Every
 report identifies the source commit, platform, interpreter and artifact hash.
 
-Version 0.1.7 is unreleased and uses published Core 1.1.15 and Relay Connector
+Version 0.1.7 is unreleased and uses published Core 1.1.16 and Relay Connector
 0.1.6. Ordinary distributions omit the portable AEC engine. Each installed
 consumer must report `available: false` and `unavailable_error_verified: true`;
 the aggregate verifier rejects missing or enabled-engine evidence for these

@@ -44,7 +44,7 @@ new frames and reports the loss.
 
 Version 0.1.7 adds `discover_process_instances()` and
 `Session.capture_process_set()`. This version is unreleased and requires its
-matching native module with Core 1.1.15. Acquisition requires macOS 26 or newer
+matching native module with Core 1.1.16. Acquisition requires macOS 26 or newer
 with native capture enabled and ordinary operating-system consent. Other
 platforms or builds report `capture.unsupported`.
 
