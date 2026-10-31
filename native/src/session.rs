@@ -8,6 +8,7 @@ use std::time::Duration;
 use pocketstation_relay::{RelayConnector, RelayIceServer};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 use crate::audio_input::{configuration as audio_input_configuration, PythonAudioInput};
 use crate::connector::{
@@ -50,7 +51,7 @@ use crate::signals::{
 };
 use crate::source_authoring::{register_source, PythonRegisteredSource, PythonSourceManifest};
 use crate::source_truth::{source_replacement, PythonSourceReplacement};
-use crate::sources::{PythonSource, SourceDeclaration};
+use crate::sources::{process_set, process_set_error, PythonSource, SourceDeclaration};
 use crate::streams::{copy_audio_receipt, python_audio_batch, PythonAudioBatch};
 
 pub(crate) enum SessionCommand {
@@ -270,6 +271,16 @@ impl PythonSession {
                 .capture(source.declaration.to_source())
                 .map(|handle| PythonStem { handle })
                 .map_err(session_error)
+        })
+    }
+
+    fn capture_process_set(&self, members: &Bound<'_, PyList>) -> PyResult<PythonSourceOutput> {
+        let selected = process_set(members)?;
+        self.with_session(|session| {
+            session
+                .capture_process_set(selected)
+                .map(|handle| PythonSourceOutput { handle })
+                .map_err(process_set_error)
         })
     }
 

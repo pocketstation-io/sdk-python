@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### 0.1.7
+
+The native module uses published Core 1.1.15 and Relay Connector 0.1.6.
+Synchronous and asyncio APIs add immutable observed process instances,
+discovery, and `Session.capture_process_set()`. Select 1–32 original processes
+and route their existing `SourceOutput` to the same Session destinations.
+Process start times preserve the full unsigned 64-bit range as Python integers.
+
+Exact process-set acquisition requires macOS 26 or newer. Other platforms and
+unsupported builds return `capture.unsupported`. Remaining original members
+may continue after another exits, but replacement processes are never followed.
+Losing all originals fails explicitly; renewed membership requires a new Session.
+No microphone, wider application selection or system-audio fallback is added.
+
+Ordinary wheels continue to omit the portable AEC engine and retain ABI3
+compatibility with CPython 3.11 and newer. Distribution qualification remains
+separate from earlier same-host capture and generated-PCM evidence; this entry
+does not establish a new hardware, platform or acoustic result.
+
 ## 0.1.6 — 2026-10-06
 
 This version adds Core-owned live audio history and finalized

@@ -4,6 +4,10 @@ Capture one desktop application and an optional microphone as separate live
 audio stems. Use the same native Session for Python model code, browser
 delivery, and one recording file per stem.
 
+Version 0.1.7 is unreleased. Its native module uses published PocketStation
+Core 1.1.15 and Relay Connector 0.1.6. Release artifacts and installed consumers
+still require their own qualification.
+
 [![PyPI](https://img.shields.io/pypi/v/pocketstation.svg)](https://pypi.org/project/pocketstation/)
 [![Python](https://img.shields.io/pypi/pyversions/pocketstation.svg)](https://pypi.org/project/pocketstation/)
 [![License](https://img.shields.io/pypi/l/pocketstation.svg)](LICENSE)
@@ -144,8 +148,9 @@ without stopping microphone capture.
 
 This API does not provide model intelligence or a hosted inference service.
 Optional portable processing and explicit device AEC have separate
-[Session APIs](docs/guides/echo-cancellation.md) in the development candidate;
-published 0.1.5 wheels do not include them.
+[Session APIs](docs/guides/echo-cancellation.md). Ordinary wheels omit the
+portable engine and report its availability; an enabled build must be selected
+explicitly. Device processing has separate support and acoustic limits.
 Provider-side cancellation and receiver playout
 remain separate observations; PocketStation does not report that a person
 stopped hearing audio unless the receiver can prove it.
@@ -393,7 +398,12 @@ include dependencies with their own terms; see [third-party notices](THIRD_PARTY
 Read [support](SUPPORT.md), [security](SECURITY.md), and
 [contributing](CONTRIBUTING.md) for reporting and development expectations.
 
-Version 0.1.6 uses Core 1.1.13 for live audio history, recording clips and
-optional AEC APIs. See the [recording guide](docs/guides/recording-clips.md)
+Version 0.1.7 adds immutable process observations and explicit selection of
+1–32 original application processes through the existing Session API. Exact
+process-set acquisition requires macOS 26 or newer; replacements are never
+followed automatically. See the [capture guide](docs/getting-started/capture.md#capture-an-explicitly-selected-process-set).
+
+Core 1.1.15 also supplies live audio history, recording clips and optional AEC
+APIs. See the [recording guide](docs/guides/recording-clips.md)
 and [echo processing guide](docs/guides/echo-cancellation.md) for the APIs and
 their support limits.

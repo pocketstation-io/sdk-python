@@ -71,6 +71,21 @@ class Source:
     @staticmethod
     def microphone_id(device_id: str) -> Source: ...
 
+class ObservedProcessInstance:
+    def __init__(
+        self,
+        process_id: int,
+        platform: str,
+        stable_key: str,
+        process_start_time_ns: int,
+    ) -> None: ...
+    process_id: int
+    platform: str
+    kind: str
+    stable_key: str
+    source_id: SourceId
+    process_start_time_ns: int
+
 class DiscoveredSource:
     platform: str
     kind: str
@@ -122,6 +137,7 @@ def discover_sources(
     query_kind: str = "any",
     value: str | None = None,
 ) -> list[DiscoveredSource]: ...
+def discover_process_instances() -> list[ObservedProcessInstance]: ...
 def application_capture_available() -> bool: ...
 def microphone_permission_observation() -> str: ...
 
@@ -1359,6 +1375,9 @@ class Session:
     ) -> Session: ...
     id: int
     def capture(self, source: Source) -> Stem: ...
+    def capture_process_set(
+        self, members: list[ObservedProcessInstance]
+    ) -> SourceOutput: ...
     def audio_input(
         self,
         sample_rate_hz: int,

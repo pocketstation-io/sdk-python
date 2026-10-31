@@ -6,12 +6,14 @@ import asyncio
 
 from ..sources import (
     DiscoveredSource,
+    ObservedProcessInstance,
     PermissionObservation,
     SourceQuery,
 )
 from ..sources import (
     application_capture_available as _application_capture_available,
 )
+from ..sources import discover_process_instances as _discover_process_instances
 from ..sources import discover_sources as _discover_sources
 from ..sources import (
     microphone_permission_observation as _microphone_permission_observation,
@@ -23,6 +25,11 @@ async def discover_sources(
 ) -> tuple[DiscoveredSource, ...]:
     """Run native source discovery without blocking the asyncio event loop."""
     return await asyncio.to_thread(_discover_sources, query)
+
+
+async def discover_process_instances() -> tuple[ObservedProcessInstance, ...]:
+    """Observe original native process identities off the asyncio event loop."""
+    return await asyncio.to_thread(_discover_process_instances)
 
 
 async def application_capture_available() -> bool:
@@ -37,6 +44,7 @@ async def microphone_permission_observation() -> PermissionObservation:
 
 __all__ = [
     "application_capture_available",
+    "discover_process_instances",
     "discover_sources",
     "microphone_permission_observation",
 ]

@@ -109,6 +109,7 @@ from .source_authoring import (
 )
 from .sources import (
     application_capture_available,
+    discover_process_instances,
     discover_sources,
     microphone_permission_observation,
 )
@@ -220,6 +221,7 @@ __all__ = [
     "application_capture_available",
     "capture",
     "connector",
+    "discover_process_instances",
     "discover_sources",
     "microphone_permission_observation",
     "operator",

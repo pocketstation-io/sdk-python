@@ -1,15 +1,136 @@
 use pocketstation::{
-    ApplicationPolicyObservation, ApplicationSelector, CaptureAuthorizationSnapshot,
-    CaptureOpenOutcome, CapturePermissionLifecycle, CaptureScope, CaptureSessionGrant,
-    CaptureSource, DeviceId, DeviceSelector, PermissionEpoch, PermissionObservation, Platform,
-    ProcessId, ProcessTreeScope, SelectorPersistenceScope, Source, SourceIdentityStrength,
-    SourceKind, SourceQuery, SourceState, StableSourceId,
+    ApplicationPolicyObservation, ApplicationProcessSet, ApplicationSelector,
+    CaptureAuthorizationSnapshot, CaptureOpenOutcome, CapturePermissionLifecycle, CaptureScope,
+    CaptureSessionGrant, CaptureSource, DeviceId, DeviceSelector, ObservedProcessInstance,
+    PermissionEpoch, PermissionObservation, Platform, ProcessId, ProcessSetError, ProcessTreeScope,
+    SelectorPersistenceScope, Source, SourceIdentityStrength, SourceKind, SourceQuery, SourceState,
+    StableSourceId, MAX_APPLICATION_PROCESS_SET_MEMBERS,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::{PyBool, PyList};
 use std::sync::Mutex;
 
-use crate::errors::{coded_reason, parse_platform, validate_nonempty, validate_process_id};
+use crate::errors::{
+    coded_reason, parse_platform, session_error, validate_nonempty, validate_process_id,
+};
+
+#[pyclass(name = "ObservedProcessInstance", frozen)]
+pub(crate) struct PythonObservedProcessInstance {
+    member: ObservedProcessInstance,
+}
+
+#[pymethods]
+impl PythonObservedProcessInstance {
+    #[new]
+    fn new(
+        process_id: &Bound<'_, PyAny>,
+        platform: &str,
+        stable_key: String,
+        process_start_time_ns: &Bound<'_, PyAny>,
+    ) -> PyResult<Self> {
+        if process_id.is_instance_of::<PyBool>() || process_start_time_ns.is_instance_of::<PyBool>()
+        {
+            return Err(invalid_process_set(
+                "process ID and start time must be integers, not booleans",
+            ));
+        }
+        let process_id = process_id
+            .extract::<u32>()
+            .map_err(|_| invalid_process_set("process ID must be a positive native integer"))?;
+        let started_ns = process_start_time_ns.extract::<u64>().map_err(|_| {
+            invalid_process_set("process start time must be a positive unsigned 64-bit integer")
+        })?;
+        let platform = parse_platform(platform)
+            .map_err(|_| invalid_process_set("process platform is not recognized"))?;
+        ObservedProcessInstance::new(
+            ProcessId::new(process_id),
+            StableSourceId::new(platform, SourceKind::Application, stable_key),
+            started_ns,
+        )
+        .map(|member| Self { member })
+        .map_err(process_set_error)
+    }
+
+    #[getter]
+    fn process_id(&self) -> u32 {
+        self.member.process_id().get()
+    }
+
+    #[getter]
+    fn platform(&self) -> &'static str {
+        platform_name(self.member.stable_id().platform)
+    }
+
+    #[getter]
+    fn kind(&self) -> &'static str {
+        source_kind_name(self.member.stable_id().kind)
+    }
+
+    #[getter]
+    fn stable_key(&self) -> &str {
+        &self.member.stable_id().stable_key
+    }
+
+    #[getter]
+    fn source_id(&self) -> u64 {
+        self.member.stable_id().source_id().get()
+    }
+
+    #[getter]
+    fn process_start_time_ns(&self) -> u64 {
+        self.member.process_start_time_ns()
+    }
+}
+
+fn invalid_process_set(reason: &str) -> PyErr {
+    PyValueError::new_err(coded_reason("session.invalid_process_set", reason))
+}
+
+pub(crate) fn process_set_error(error: ProcessSetError) -> PyErr {
+    match error {
+        ProcessSetError::Declaration(error) => session_error(error),
+        error => PyValueError::new_err(coded_reason(error.code(), error.to_string())),
+    }
+}
+
+pub(crate) fn process_set(members: &Bound<'_, PyList>) -> PyResult<ApplicationProcessSet> {
+    let count = members.len();
+    if count == 0 {
+        return Err(process_set_error(ProcessSetError::Empty));
+    }
+    if count > MAX_APPLICATION_PROCESS_SET_MEMBERS {
+        return Err(process_set_error(ProcessSetError::TooManyMembers {
+            actual_count: count,
+        }));
+    }
+    let selected = members
+        .iter()
+        .map(|member| {
+            member
+                .extract::<PyRef<'_, PythonObservedProcessInstance>>()
+                .map(|member| member.member.clone())
+                .map_err(|_| {
+                    invalid_process_set("each member must be an observed process instance")
+                })
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    ApplicationProcessSet::new(selected).map_err(process_set_error)
+}
+
+#[pyfunction(name = "discover_process_instances")]
+fn python_discover_process_instances(
+    py: Python<'_>,
+) -> PyResult<Vec<PythonObservedProcessInstance>> {
+    py.detach(pocketstation::discover_process_instances)
+        .map(|members| {
+            members
+                .into_iter()
+                .map(|member| PythonObservedProcessInstance { member })
+                .collect()
+        })
+        .map_err(process_set_error)
+}
 
 #[derive(Clone)]
 pub(crate) enum SourceDeclaration {
@@ -598,6 +719,8 @@ fn python_microphone_permission_observation() -> &'static str {
 }
 
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<PythonObservedProcessInstance>()?;
+    module.add_function(wrap_pyfunction!(python_discover_process_instances, module)?)?;
     module.add_class::<PythonSource>()?;
     module.add_class::<PythonDiscoveredSource>()?;
     module.add_class::<PythonCaptureAuthorizationSnapshot>()?;

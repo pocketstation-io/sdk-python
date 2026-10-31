@@ -5,20 +5,25 @@ A release uses the exact seven distributions selected by a successful
 The run records 22 installed CPython consumers and one source rebuild. Every
 report identifies the source commit, platform, interpreter and artifact hash.
 
-The AEC candidate adds a mandatory installed native processor exercise. Each
-consumer must deliver 400 processed frames, preserve the application stem,
-reduce synthetic echo, retain near-end signal energy and stop successfully.
-The aggregate verifier rejects missing results and mute-only success. These
-generated PCM checks do not establish physical echo reduction or double-talk
-speech quality. Existing 0.1.5 qualification results predate this requirement.
+Version 0.1.7 is unreleased and uses published Core 1.1.15 and Relay Connector
+0.1.6. Ordinary distributions omit the portable AEC engine. Each installed
+consumer must report `available: false` and `unavailable_error_verified: true`;
+the aggregate verifier rejects missing or enabled-engine evidence for these
+wheels. Session and Operator execution, sync and asyncio delivery, saturation,
+successful stop, typing, RECORD integrity and uninstall checks remain required.
 
-Build the new native dependency on every declared target. Meson, Ninja,
-libclang, pkg-config, compiler tools and Rust `llvm-tools` must be available.
-The bundled source invokes POSIX tools and searches Unix archive names;
-installing prerequisites alone does not qualify Windows/MSVC. Keep the
-Windows cells and resolve failures before publication. Add the exact wrapper,
-WebRTC and bundled dependency license texts to the reviewed notices before
-finalizing and qualifying release wheels.
+Explicitly AEC-enabled builds have separate positive processor qualification:
+400 processed frames, 404 output frames including four tail frames, preserved
+application signal and provenance, reduced synthetic echo, retained near-end
+energy and successful stop. These generated PCM checks do not establish
+physical echo reduction or double-talk speech quality.
+
+Build each declared native target with the dependencies selected by the actual
+feature set. Enabled AEC builds additionally require Meson, Ninja, libclang,
+pkg-config and Rust `llvm-tools`, plus the retained engine dependency licenses.
+Installing prerequisites does not qualify Windows/MSVC; keep every declared
+Windows cell and resolve failures before publication. Ordinary and enabled
+artifacts must never substitute for one another's qualification.
 
 ## Prepare
 

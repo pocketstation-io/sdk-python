@@ -15,9 +15,9 @@ from .connector import Connector
 from .errors import CaptureError, PocketStationError, SessionError
 from .recording import RecordedAudio, RecordingClipWindow
 from .session import RecordingOutcome, RunningSession, Session, StopResult
-from .sources import Source, discover_sources
+from .sources import Source, discover_process_instances, discover_sources
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 __all__ = [
     "RUNTIME_COMPATIBILITY",
@@ -40,5 +40,6 @@ __all__ = [
     "StopResult",
     "aio",
     "capture",
+    "discover_process_instances",
     "discover_sources",
 ]

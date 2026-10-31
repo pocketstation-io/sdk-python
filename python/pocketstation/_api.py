@@ -326,6 +326,7 @@ from .sources import (
     CaptureScopeKind,
     CaptureSessionGrant,
     DiscoveredSource,
+    ObservedProcessInstance,
     PermissionObservation,
     Platform,
     ProcessInstanceSelector,
@@ -343,6 +344,7 @@ from .sources import (
     SourceState,
     StableSourceId,
     application_capture_available,
+    discover_process_instances,
     discover_sources,
     microphone_permission_observation,
 )
@@ -354,7 +356,7 @@ from .streams import (
     SignalStream,
 )
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 __all__ = [
     "RUNTIME_COMPATIBILITY",
     "STREAM_EOF",
@@ -495,6 +497,7 @@ __all__ = [
     "Multiplicity",
     "NativeExtensionLibrary",
     "NativeExtensionRegistration",
+    "ObservedProcessInstance",
     "OpenedNativeFormat",
     "Operator",
     "OperatorConfigValidator",
@@ -672,6 +675,7 @@ __all__ = [
     "application_capture_available",
     "capture",
     "connector",
+    "discover_process_instances",
     "discover_sources",
     "evaluate_source_activity",
     "evaluate_source_signal",

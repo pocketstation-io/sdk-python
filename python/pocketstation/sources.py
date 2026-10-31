@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from typing import TYPE_CHECKING, cast
 
+from . import _native as _native_module
 from ._native import CaptureAuthorizationSnapshot as _NativeCaptureAuthorizationSnapshot
 from ._native import CapturePermissionLifecycle as _NativeCapturePermissionLifecycle
 from ._native import CapturePermissionTransition as _NativeCapturePermissionTransition
@@ -26,8 +29,13 @@ from .errors import (
 )
 from .identity import SourceId
 
+if TYPE_CHECKING:
+    from ._native import ObservedProcessInstance as _NativeObservedProcessInstance
+
 _MAX_PROCESS_ID = (1 << 32) - 1
 _MAX_UNSIGNED_64 = (1 << 64) - 1
+_MAX_PROCESS_SET_PROCESS_ID = (1 << 31) - 1
+_MAX_PROCESS_SET_MEMBERS = 32
 
 
 class Platform(StrEnum):
@@ -253,6 +261,78 @@ class StableSourceId:
     kind: SourceKind
     stable_key: str
     source_id: SourceId | None
+
+
+@dataclass(frozen=True, slots=True)
+class ObservedProcessInstance:
+    """One original application process identity, including its start observation.
+
+    Keep the original snapshot until declaration. Discovery does not establish
+    the complete membership of an application or authorize its capture.
+    """
+
+    process_id: int
+    stable_id: StableSourceId
+    process_start_time_ns: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.process_id) is not int
+            or not 1 <= self.process_id <= _MAX_PROCESS_SET_PROCESS_ID
+        ):
+            raise _invalid_process_set(
+                "process ID must be an integer from 1 to 2147483647"
+            )
+        identity = self.stable_id
+        if (
+            not isinstance(identity, StableSourceId)
+            or not isinstance(identity.platform, Platform)
+            or identity.kind is not SourceKind.APPLICATION
+            or not isinstance(identity.stable_key, str)
+            or not identity.stable_key.strip()
+        ):
+            raise _invalid_process_set(
+                "member must identify one application on a known platform"
+            )
+        if (
+            type(self.process_start_time_ns) is not int
+            or not 1 <= self.process_start_time_ns <= _MAX_UNSIGNED_64
+        ):
+            raise _invalid_process_set(
+                "process start time must be a positive unsigned 64-bit integer"
+            )
+        if identity.source_id is not None and (
+            type(identity.source_id) is not int
+            or not 1 <= identity.source_id <= _MAX_UNSIGNED_64
+        ):
+            raise _invalid_process_set(
+                "optional source ID must be a positive unsigned 64-bit integer"
+            )
+        object.__setattr__(
+            self,
+            "stable_id",
+            StableSourceId(
+                identity.platform,
+                identity.kind,
+                str(identity.stable_key),
+                identity.source_id,
+            ),
+        )
+
+    @classmethod
+    def _from_native(
+        cls, member: _NativeObservedProcessInstance
+    ) -> ObservedProcessInstance:
+        return cls(
+            process_id=member.process_id,
+            stable_id=StableSourceId(
+                platform=Platform(member.platform),
+                kind=SourceKind(member.kind),
+                stable_key=member.stable_key,
+                source_id=SourceId(member.source_id),
+            ),
+            process_start_time_ns=member.process_start_time_ns,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -637,6 +717,76 @@ def discover_sources(query: SourceQuery | None = None) -> tuple[DiscoveredSource
     query_kind, value = _source_query_values(selected)
     native_sources = _native_call(lambda: _native_discover_sources(query_kind, value))
     return tuple(DiscoveredSource._from_native(source) for source in native_sources)
+
+
+def discover_process_instances() -> tuple[ObservedProcessInstance, ...]:
+    """Observe process incarnations without opening audio or prompting.
+
+    Exact process-set capture requires the matching native build and supported
+    macOS version. The caller must establish its own complete selected scope.
+    """
+    discover = getattr(_native_module, "discover_process_instances", None)
+    if discover is None:
+        raise CaptureError(
+            "this native build cannot observe exact process sets", "capture.unsupported"
+        )
+    members = cast("list[_NativeObservedProcessInstance]", _native_call(discover))
+    return tuple(ObservedProcessInstance._from_native(member) for member in members)
+
+
+def _invalid_process_set(message: str) -> SessionDeclarationError:
+    return SessionDeclarationError(message, "session.invalid_process_set")
+
+
+def _native_process_set_members(
+    members: Sequence[ObservedProcessInstance],
+) -> list[_NativeObservedProcessInstance]:
+    if not isinstance(members, Sequence):
+        raise _invalid_process_set(
+            "an exact process set must contain 1 through 32 members"
+        )
+    count = len(members)
+    if not 1 <= count <= _MAX_PROCESS_SET_MEMBERS:
+        raise _invalid_process_set(
+            "an exact process set must contain 1 through 32 members"
+        )
+    selected: list[ObservedProcessInstance] = []
+    for index in range(count):
+        member = members[index]
+        if not isinstance(member, ObservedProcessInstance):
+            raise _invalid_process_set("each member must be an ObservedProcessInstance")
+        selected.append(
+            ObservedProcessInstance(
+                member.process_id,
+                member.stable_id,
+                member.process_start_time_ns,
+            )
+        )
+    platform = selected[0].stable_id.platform
+    if any(member.stable_id.platform is not platform for member in selected):
+        raise _invalid_process_set("process-set members must belong to one platform")
+    if len({member.process_id for member in selected}) != len(selected):
+        raise _invalid_process_set("each process ID must appear exactly once")
+    selected.sort(key=lambda member: member.process_id)
+    native_type = getattr(_native_module, "ObservedProcessInstance", None)
+    if native_type is None:
+        raise CaptureError(
+            "this native build cannot declare exact process sets", "capture.unsupported"
+        )
+    return cast(
+        "list[_NativeObservedProcessInstance]",
+        _native_call(
+            lambda: [
+                native_type(
+                    member.process_id,
+                    member.stable_id.platform.value,
+                    member.stable_id.stable_key,
+                    member.process_start_time_ns,
+                )
+                for member in selected
+            ]
+        ),
+    )
 
 
 def application_capture_available() -> bool:
