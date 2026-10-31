@@ -3003,6 +3003,27 @@
     {
       "ecosystem": "cargo",
       "license_expression": "MIT OR Apache-2.0",
+      "name": "pocketstation",
+      "notice_origins": [
+        {
+          "origin": "crate:pocketstation@1.1.16/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "crate:pocketstation@1.1.16/LICENSE-MIT",
+          "sha256": "37c1efe6301b127afb9d810c5fab62bdc60f72a7fb55f7a85ae00c0b8f6c1a42"
+        }
+      ],
+      "notices": [
+        "37c1efe6301b127afb9d810c5fab62bdc60f72a7fb55f7a85ae00c0b8f6c1a42",
+        "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+      ],
+      "source_url": "https://crates.io/api/v1/crates/pocketstation/1.1.16/download",
+      "version": "1.1.16"
+    },
+    {
+      "ecosystem": "cargo",
+      "license_expression": "MIT OR Apache-2.0",
       "name": "pocketstation-relay",
       "notice_origins": [
         {
@@ -6082,6 +6103,23 @@
       "source_sha256": "347ba8e8e6b4483c71aa0082a5ebaf5da57cac0bbfb40d514b93c904ffe79d6b",
       "source_url": "https://repo.almalinux.org/vault/9.8/BaseOS/Source/Packages/openssl-3.5.8-1.el9_8.src.rpm",
       "version": "3.5.8-1.el9_8"
+    },
+    {
+      "ecosystem": "rpm",
+      "license_expression": "Apache-2.0",
+      "name": "openssl-libs",
+      "notice_origins": [
+        {
+          "origin": "openssl-3.5.8.tar.gz:openssl-3.5.8/LICENSE.txt",
+          "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+        }
+      ],
+      "notices": [
+        "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+      ],
+      "source_sha256": "33313dd77b97a5787afda11aceb2150dc2930668fdb3a279c4fbea61c06a14d1",
+      "source_url": "https://vault.almalinux.org/9.8/BaseOS/Source/Packages/openssl-3.5.8-2.el9_8.src.rpm",
+      "version": "3.5.8-2.el9_8"
     },
     {
       "ecosystem": "rpm",
