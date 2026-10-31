@@ -76,8 +76,8 @@ def _sbom() -> bytes:
             "bomFormat": "CycloneDX",
             "specVersion": "1.5",
             "components": [
-                {"name": "pocketstation", "version": "1.1.13"},
-                {"name": "pocketstation-relay", "version": "0.1.5"},
+                {"name": "pocketstation", "version": "1.1.15"},
+                {"name": "pocketstation-relay", "version": "0.1.6"},
             ],
         }
     ).encode()
@@ -91,8 +91,8 @@ def _compatibility() -> bytes:
     return (
         "RUNTIME_COMPATIBILITY = RuntimeCompatibility(\n"
         f'    sdk_version="{VERSION}",\n'
-        '    core_version="1.1.13",\n'
-        '    relay_connector_version="0.1.5",\n'
+        '    core_version="1.1.15",\n'
+        '    relay_connector_version="0.1.6",\n'
         '    python_requires=">=3.11",\n'
         '    python_abi="abi3-py311",\n'
         "    free_threaded_cpython=False,\n"
@@ -163,7 +163,7 @@ def _pyproject(*, version: str = VERSION) -> bytes:
 
 
 def _cargo_manifest(
-    *, version: str = VERSION, core_dependency: str = 'version = "=1.1.13"'
+    *, version: str = VERSION, core_dependency: str = 'version = "=1.1.15"'
 ) -> bytes:
     return (
         "[package]\n"
@@ -172,7 +172,7 @@ def _cargo_manifest(
         'license = "MIT"\n\n'
         "[dependencies]\n"
         f"pocketstation = {{ {core_dependency} }}\n"
-        'pocketstation-relay = { version = "=0.1.5" }\n'
+        'pocketstation-relay = { version = "=0.1.6" }\n'
     ).encode()
 
 
@@ -181,12 +181,12 @@ def _cargo_lock(*, version: str = VERSION) -> bytes:
         "version = 4\n\n"
         "[[package]]\n"
         'name = "pocketstation"\n'
-        'version = "1.1.13"\n'
+        'version = "1.1.15"\n'
         'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
         f'checksum = "{"a" * 64}"\n\n'
         "[[package]]\n"
         'name = "pocketstation-relay"\n'
-        'version = "0.1.5"\n'
+        'version = "0.1.6"\n'
         'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
         f'checksum = "{"b" * 64}"\n\n'
         "[[package]]\n"

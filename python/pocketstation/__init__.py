@@ -17,7 +17,7 @@ from .recording import RecordedAudio, RecordingClipWindow
 from .session import RecordingOutcome, RunningSession, Session, StopResult
 from .sources import Source, discover_process_instances, discover_sources
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 __all__ = [
     "RUNTIME_COMPATIBILITY",

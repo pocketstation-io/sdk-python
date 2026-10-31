@@ -2985,11 +2985,11 @@
       "name": "pocketstation",
       "notice_origins": [
         {
-          "origin": "crate:pocketstation@1.1.13/LICENSE-APACHE",
+          "origin": "crate:pocketstation@1.1.15/LICENSE-APACHE",
           "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
         },
         {
-          "origin": "crate:pocketstation@1.1.13/LICENSE-MIT",
+          "origin": "crate:pocketstation@1.1.15/LICENSE-MIT",
           "sha256": "37c1efe6301b127afb9d810c5fab62bdc60f72a7fb55f7a85ae00c0b8f6c1a42"
         }
       ],
@@ -2997,8 +2997,8 @@
         "37c1efe6301b127afb9d810c5fab62bdc60f72a7fb55f7a85ae00c0b8f6c1a42",
         "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
       ],
-      "source_url": "https://crates.io/api/v1/crates/pocketstation/1.1.13/download",
-      "version": "1.1.13"
+      "source_url": "https://crates.io/api/v1/crates/pocketstation/1.1.15/download",
+      "version": "1.1.15"
     },
     {
       "ecosystem": "cargo",
@@ -3006,11 +3006,11 @@
       "name": "pocketstation-relay",
       "notice_origins": [
         {
-          "origin": "https://raw.githubusercontent.com/pocketstation-io/connectors/4f44eae11aebc3144db37c1867d9cf925a498165/LICENSE-APACHE",
+          "origin": "https://raw.githubusercontent.com/pocketstation-io/connectors/f7851eb2a5602fa6fdca7a7cf86a281b7081eb26/LICENSE-APACHE",
           "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
         },
         {
-          "origin": "https://raw.githubusercontent.com/pocketstation-io/connectors/4f44eae11aebc3144db37c1867d9cf925a498165/LICENSE-MIT",
+          "origin": "https://raw.githubusercontent.com/pocketstation-io/connectors/f7851eb2a5602fa6fdca7a7cf86a281b7081eb26/LICENSE-MIT",
           "sha256": "37c1efe6301b127afb9d810c5fab62bdc60f72a7fb55f7a85ae00c0b8f6c1a42"
         }
       ],
@@ -3018,8 +3018,8 @@
         "37c1efe6301b127afb9d810c5fab62bdc60f72a7fb55f7a85ae00c0b8f6c1a42",
         "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
       ],
-      "source_url": "https://crates.io/api/v1/crates/pocketstation-relay/0.1.5/download",
-      "version": "0.1.5"
+      "source_url": "https://crates.io/api/v1/crates/pocketstation-relay/0.1.6/download",
+      "version": "0.1.6"
     },
     {
       "ecosystem": "cargo",

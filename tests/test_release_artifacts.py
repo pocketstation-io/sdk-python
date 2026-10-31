@@ -21,7 +21,7 @@ finally:
     sys.path.remove(str(TOOLS))
 
 SOURCE = "a" * 40
-TAG = "pocketstation-v0.1.6"
+TAG = "pocketstation-v0.1.7"
 
 
 def run_info() -> dict[str, object]:
@@ -77,7 +77,7 @@ def test_preparation_copies_only_verified_bytes(
     for path in files:
         path.write_bytes(b"synthetic copier unit-test input")
     manifest = {
-        "version": "0.1.6",
+        "version": "0.1.7",
         "runtime_cells": 22,
         "distributions": [
             {"filename": p.name, "sha256": release.digest(p)} for p in files

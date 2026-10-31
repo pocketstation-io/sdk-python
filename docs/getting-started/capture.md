@@ -42,9 +42,9 @@ new frames and reports the loss.
 
 ## Capture an explicitly selected process set
 
-The local development candidate adds `discover_process_instances()` and
-`Session.capture_process_set()`. These require the matching native candidate;
-published 0.1.6 does not expose them. Acquisition requires macOS 26 or newer
+Version 0.1.7 adds `discover_process_instances()` and
+`Session.capture_process_set()`. This version is unreleased and requires its
+matching native module with Core 1.1.15. Acquisition requires macOS 26 or newer
 with native capture enabled and ordinary operating-system consent. Other
 platforms or builds report `capture.unsupported`.
 
