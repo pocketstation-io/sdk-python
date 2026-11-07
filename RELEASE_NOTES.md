@@ -1,5 +1,16 @@
 # PocketStation for Python release notes
 
+## 0.1.8
+
+The native module uses Core 1.1.17. On Windows, application discovery checks
+all accessible active playback devices, including non-default virtual outputs.
+A failure on one device preserves results from the others. When a process
+appears on several devices, playing activity takes precedence over silence.
+Exited processes are rejected even when another program retains their handle.
+
+The existing Python APIs are unchanged. Physical Wave Link validation remains
+unavailable; this release does not claim compatibility with every audio driver.
+
 ## 0.1.7
 
 The native module uses published Core 1.1.16 and Relay Connector 0.1.6.

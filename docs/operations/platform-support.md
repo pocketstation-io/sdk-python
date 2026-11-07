@@ -120,6 +120,11 @@ microphone, the 10 ms voice profile, Relay, Chromium, and three recordings.
 
 ## Windows
 
+Version 0.1.8 uses Core 1.1.17 to discover application audio on all accessible
+active playback devices. This includes non-default outputs. One failed device
+does not discard other results. Discovery still requires the appropriate audio
+session and permissions; physical Wave Link testing remains unavailable.
+
 The release workflow builds Windows x64 and ARM64 wheels. Core selector and
 system-audio correctness at 10 ms and 20 ms have been exercised in an
 interactive Windows 11 ARM64 VM. VM scheduling is not a physical-device
