@@ -1428,9 +1428,9 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "pocketstation"
-version = "1.1.16"
+version = "1.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7143c0fb788141a71fcb0b4195b91ea4c86be1cd278f75b0344dff8d42ef59b"
+checksum = "3523990ff7fcc2c5e44fa085aa4786b62dc74b83405180064256179dae3f436e"
 dependencies = [
  "alsa",
  "cc",
@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "pocketstation-python"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "pocketstation",
  "pocketstation-relay",
